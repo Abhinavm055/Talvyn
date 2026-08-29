@@ -1,0 +1,136 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  authProvider String   @default("EMAIL")
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile UserProfile?
+  jobs    Job[]
+  notes   Note[]
+  resumes Resume[]
+}
+
+model UserProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Personal Information
+  legalFullName String?
+  givenName     String?
+  middleName    String?
+  familyName    String?
+  prefix        String?
+  preferredName String?
+  email         String?
+  phone         String?
+  country       String?
+  state         String?
+  city          String?
+  address       String?
+  postalCode    String?
+
+  // Professional Information
+  preferredRoles  String @default("[]") // JSON array string
+  skills          String @default("[]") // JSON array string
+  experienceYears Int?
+  linkedinUrl     String?
+  githubUrl       String?
+  portfolioUrl    String?
+  otherLinks      String @default("[]") // JSON array string
+  languages       String @default("[]") // JSON array string
+
+  // Education
+  institution    String?
+  degree         String?
+  specialization String?
+  cgpa           String?
+  graduationYear Int?
+
+  // Application Information
+  workAuthorization  String?
+  expectedSalary     String?
+  noticePeriod       String?
+  preferredLocations String @default("[]") // JSON array string
+  preferredJobTypes  String @default("[]") // JSON array string: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "FREELANCE" | "INTERNSHIP" | "TEMPORARY" | "OTHER"
+  // WorkStyle: "REMOTE" | "HYBRID" | "ONSITE" | "ANY"
+  workStyle          String @default("ANY")
+
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Job {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title         String
+  company       String
+  jobUrl        String?
+  sourceWebsite String?
+  location      String?
+  // JobType: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "FREELANCE" | "INTERNSHIP" | "TEMPORARY" | "OTHER"
+  jobType       String?
+  salary        String?
+  description   String?
+  // JobStatus: "SAVED" | "INTERESTED" | "APPLIED" | "ASSESSMENT" | "INTERVIEW" | "OFFER" | "ACCEPTED" | "REJECTED" | "WITHDRAWN" | "EXPIRED"
+  status        String   @default("SAVED")
+
+  dateSaved   DateTime  @default(now())
+  dateApplied DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes Note[]
+}
+
+model Note {
+  id     String @id @default(cuid())
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Resume {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  isDefault   Boolean @default(false)
+  fileUrl     String?
+  fileName    String?
+  fileSize    Int?
+  mimeType    String?
+  storagePath String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
