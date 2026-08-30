@@ -222,6 +222,31 @@ function packageExtension() {
   console.log(`Packaging from: ${DIST_DIR}`)
   console.log(`Target archive: ${OUT_ZIP}`)
 
+  // Ensure all icon assets are present in dist/icons
+  const distIconsDir = path.join(DIST_DIR, 'icons')
+  if (!fs.existsSync(distIconsDir)) {
+    fs.mkdirSync(distIconsDir, { recursive: true })
+  }
+
+  const srcIconsDir = path.join(ROOT_DIR, 'extension', 'icons')
+  if (fs.existsSync(srcIconsDir)) {
+    const iconFiles = fs.readdirSync(srcIconsDir)
+    for (const file of iconFiles) {
+      const src = path.join(srcIconsDir, file)
+      const dest = path.join(distIconsDir, file)
+      if (fs.statSync(src).isFile()) {
+        fs.copyFileSync(src, dest)
+      }
+    }
+  }
+
+  // Also ensure logotalvyn.png is present in dist/icons from root public if needed
+  const rootLogo = path.join(ROOT_DIR, 'public', 'logotalvyn.png')
+  const distLogo = path.join(distIconsDir, 'logotalvyn.png')
+  if (fs.existsSync(rootLogo) && !fs.existsSync(distLogo)) {
+    fs.copyFileSync(rootLogo, distLogo)
+  }
+
   try {
     createZipArchive(DIST_DIR, OUT_ZIP)
 

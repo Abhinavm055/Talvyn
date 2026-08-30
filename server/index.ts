@@ -22,12 +22,12 @@ function normalizeOrigin(url: string): string {
 }
 
 // Parse configured origins from environment variables (comma-separated support)
-const configuredOrigins: string[] = []
+const configuredOrigins: string[] = ['https://talvyn.vercel.app']
 
 if (config.clientUrl) {
   config.clientUrl.split(',').forEach((url) => {
     const trimmed = normalizeOrigin(url)
-    if (trimmed) configuredOrigins.push(trimmed)
+    if (trimmed && !configuredOrigins.includes(trimmed)) configuredOrigins.push(trimmed)
   })
 }
 
@@ -47,7 +47,7 @@ const devOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://12
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. curl, server-to-server, Postman)
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Postman)
       if (!origin) return callback(null, true)
 
       const normalizedIncoming = normalizeOrigin(origin)
@@ -61,19 +61,26 @@ app.use(
         return callback(null, true)
       }
 
-      // 3. Allow Chrome extension origin scheme (chrome-extension://<id>)
-      if (/^chrome-extension:\/\//.test(origin)) {
+      // 3. Allow Chromium, Chrome, Brave, Edge, and Firefox extension origin schemes
+      if (
+        /^chrome-extension:\/\//.test(origin) ||
+        /^moz-extension:\/\//.test(origin) ||
+        /^ms-browser-extension:\/\//.test(origin) ||
+        /^extension:\/\//.test(origin)
+      ) {
         return callback(null, true)
       }
 
-      // If matched none of above, check if origin matches clientUrl directly
-      if (normalizeOrigin(config.clientUrl) === normalizedIncoming) {
+      // 4. If matched clientUrl directly
+      if (config.clientUrl && normalizeOrigin(config.clientUrl) === normalizedIncoming) {
         return callback(null, true)
       }
 
-      callback(new Error(`CORS blocked for origin: ${origin}`))
+      callback(null, false)
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   })
 )
 

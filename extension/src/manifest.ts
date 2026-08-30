@@ -55,6 +55,14 @@ export default defineManifest({
     'https://talvyn.vercel.app/*',
   ],
 
+  // Web accessible resources
+  web_accessible_resources: [
+    {
+      resources: ['icons/*', 'assets/*'],
+      matches: ['<all_urls>'],
+    },
+  ],
+
   // Content security policy for MV3
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'",
