@@ -15,9 +15,9 @@ import fs from 'fs'
 import path from 'path'
 
 const ROOT_DIR = path.resolve(__dirname, '..')
-const DIST_PACKAGE_ZIP = path.join(ROOT_DIR, 'extension', 'dist-package', 'talvyn-chrome-extension.zip')
-const PUBLIC_ZIP = path.join(ROOT_DIR, 'public', 'downloads', 'talvyn-chrome-extension.zip')
-const DIST_ZIP = path.join(ROOT_DIR, 'dist', 'downloads', 'talvyn-chrome-extension.zip')
+const DIST_PACKAGE_ZIP = path.join(ROOT_DIR, 'extension', 'dist-package', 'talvyn-v1.zip')
+const PUBLIC_ZIP = path.join(ROOT_DIR, 'public', 'downloads', 'talvyn-v1.zip')
+const DIST_ZIP = path.join(ROOT_DIR, 'dist', 'downloads', 'talvyn-v1.zip')
 
 let passedChecks = 0
 let failedChecks = 0

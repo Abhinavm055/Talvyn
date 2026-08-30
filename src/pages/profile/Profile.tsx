@@ -13,6 +13,7 @@ import { TagInput, normalizeTags } from '../../components/ui/TagInput'
 import { SmartCombobox } from '../../components/ui/SmartCombobox'
 import { SmartMultiSelect } from '../../components/ui/SmartMultiSelect'
 import { Card } from '../../components/ui/Card'
+import { PhotoCropModal } from '../../components/profile/PhotoCropModal'
 import { searchCountries } from '../../data/countries'
 import { searchStates } from '../../data/states'
 import { searchCities } from '../../data/cities'
@@ -77,6 +78,7 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('personal')
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { user, setUser } = useAuthStore()
@@ -159,7 +161,7 @@ export default function Profile() {
 
     try {
       const res = await profileApi.uploadAvatar(file)
-      setUser({ ...user!, avatarUrl: res.avatarUrl })
+      setUser({ ...user!, avatarUrl: res.avatarUrl, profile: { ...user?.profile, avatarUrl: res.avatarUrl } as any })
       qc.invalidateQueries({ queryKey: ['profile'] })
     } catch (err: any) {
       setAvatarError(err.response?.data?.error || 'Failed to upload photo')
@@ -167,6 +169,12 @@ export default function Profile() {
       setAvatarUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  const handleCropSave = async (file: File) => {
+    const res = await profileApi.uploadAvatar(file)
+    setUser({ ...user!, avatarUrl: res.avatarUrl, profile: { ...user?.profile, avatarUrl: res.avatarUrl } as any })
+    qc.invalidateQueries({ queryKey: ['profile'] })
   }
 
   const handleAvatarDelete = async () => {
@@ -231,31 +239,26 @@ export default function Profile() {
             )}
 
             {/* Avatar Upload Overlay */}
-            <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
-              <label htmlFor="avatar-file-input" className="cursor-pointer p-2 text-white" title="Change photo">
+            <div
+              onClick={() => setIsCropModalOpen(true)}
+              className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+            >
+              <div className="cursor-pointer p-2 text-white" title="Change / Crop photo">
                 {avatarUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-              </label>
+              </div>
             </div>
           </div>
 
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold text-slate-900">{displayName}</h2>
-              <input
-                id="avatar-file-input"
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
-                className="hidden"
-                onChange={handleAvatarSelect}
-                disabled={avatarUploading}
-              />
-              <label
-                htmlFor="avatar-file-input"
-                className="text-xs font-semibold text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">{displayName}</h2>
+              <button
+                type="button"
+                onClick={() => setIsCropModalOpen(true)}
+                className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 bg-primary-50 dark:bg-primary-950/60 hover:bg-primary-100 px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
               >
                 {avatarUploading ? 'Uploading...' : 'Change Photo'}
-              </label>
+              </button>
               {user?.avatarUrl && (
                 <button
                   type="button"
@@ -621,6 +624,14 @@ export default function Profile() {
           </Card>
         )}
       </form>
+
+      {/* Photo Crop Modal */}
+      <PhotoCropModal
+        isOpen={isCropModalOpen}
+        onClose={() => setIsCropModalOpen(false)}
+        onSave={handleCropSave}
+        initialImageUrl={user?.avatarUrl || profile?.avatarUrl || undefined}
+      />
     </div>
   )
 }

@@ -6,7 +6,7 @@
       "dest": "/downloads/$1",
       "headers": {
         "Content-Type": "application/zip",
-        "Content-Disposition": "attachment; filename=\"talvyn-chrome-extension.zip\"",
+        "Content-Disposition": "attachment; filename=\"talvyn-v1.zip\"",
         "Cache-Control": "public, max-age=0, must-revalidate"
       }
     },
