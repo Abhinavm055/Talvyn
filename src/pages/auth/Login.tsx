@@ -33,11 +33,11 @@ export default function Login() {
     try {
       const result = await authApi.login(data)
       setAuth(result.token, result.user)
-      // Redirect based on onboarding status
-      if (!result.user.profile?.onboardingCompleted) {
-        navigate('/onboarding')
-      } else {
+      // Redirect based on onboarding status: explicit true -> /dashboard, otherwise -> /onboarding
+      if (result.user.profile?.onboardingCompleted === true) {
         navigate('/dashboard')
+      } else {
+        navigate('/onboarding')
       }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
@@ -46,10 +46,10 @@ export default function Login() {
   }
 
   const handleGoogleSuccess = (result: { user: { profile?: { onboardingCompleted?: boolean } | null } }) => {
-    if (!result.user.profile?.onboardingCompleted) {
-      navigate('/onboarding')
-    } else {
+    if (result.user.profile?.onboardingCompleted === true) {
       navigate('/dashboard')
+    } else {
+      navigate('/onboarding')
     }
   }
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Edit2, Save, X, User, Briefcase, GraduationCap, Settings, Camera, Trash2, Loader2, Upload } from 'lucide-react'
+import { Edit2, Save, X, User, Briefcase, GraduationCap, Settings, Camera, Trash2, Loader2 } from 'lucide-react'
 import { profileApi } from '../../api/profile'
 import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/ui/Button'
@@ -13,6 +13,10 @@ import { TagInput, normalizeTags } from '../../components/ui/TagInput'
 import { SmartCombobox } from '../../components/ui/SmartCombobox'
 import { SmartMultiSelect } from '../../components/ui/SmartMultiSelect'
 import { Card } from '../../components/ui/Card'
+import { searchCountries } from '../../data/countries'
+import { searchStates } from '../../data/states'
+import { searchCities } from '../../data/cities'
+import { searchWorkAuthorizations } from '../../data/workAuthorization'
 import { searchDegrees } from '../../data/degrees'
 import { searchFieldsOfStudy } from '../../data/fieldsOfStudy'
 import { searchSkills } from '../../data/skills'
@@ -83,7 +87,7 @@ export default function Profile() {
     queryFn: profileApi.get,
   })
 
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, control, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     values: profile
       ? {
@@ -123,6 +127,9 @@ export default function Profile() {
       : undefined,
   })
 
+  const watchedCountry = watch('country')
+  const watchedState = watch('state')
+
   const mutation = useMutation({
     mutationFn: (data: FormData) => profileApi.update(data as unknown as Partial<UserProfile>),
     onSuccess: (updatedProfile) => {
@@ -136,26 +143,26 @@ export default function Profile() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Client-side validation: Max 5MB, JPG/PNG/WEBP
     if (file.size > 5 * 1024 * 1024) {
-      setAvatarError('Image size must be less than 5 MB.')
+      setAvatarError('Image size exceeds 5 MB limit')
       return
     }
 
     const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
     if (!allowed.includes(file.type.toLowerCase())) {
-      setAvatarError('Please upload a PNG, JPG, or WEBP image.')
+      setAvatarError('Supported image formats: PNG, JPG, JPEG, WEBP')
       return
     }
 
-    setAvatarError(null)
     setAvatarUploading(true)
+    setAvatarError(null)
+
     try {
       const res = await profileApi.uploadAvatar(file)
       setUser({ ...user!, avatarUrl: res.avatarUrl })
       qc.invalidateQueries({ queryKey: ['profile'] })
     } catch (err: any) {
-      setAvatarError(err?.response?.data?.error || 'Failed to upload profile image.')
+      setAvatarError(err.response?.data?.error || 'Failed to upload photo')
     } finally {
       setAvatarUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -163,14 +170,17 @@ export default function Profile() {
   }
 
   const handleAvatarDelete = async () => {
+    if (!confirm('Are you sure you want to remove your profile photo?')) return
+
     setAvatarUploading(true)
     setAvatarError(null)
+
     try {
       await profileApi.deleteAvatar()
       setUser({ ...user!, avatarUrl: null })
       qc.invalidateQueries({ queryKey: ['profile'] })
     } catch (err: any) {
-      setAvatarError('Failed to remove profile image.')
+      setAvatarError(err.response?.data?.error || 'Failed to remove photo')
     } finally {
       setAvatarUploading(false)
     }
@@ -181,21 +191,7 @@ export default function Profile() {
     setIsEditing(false)
   }
 
-  if (!profile) {
-    return (
-      <div className="p-8 max-w-4xl mx-auto">
-        <div className="h-8 w-32 bg-slate-100 rounded animate-pulse mb-8" />
-        <div className="h-64 bg-white rounded-2xl animate-pulse" />
-      </div>
-    )
-  }
-
-  const displayName =
-    profile.preferredName ||
-    profile.givenName ||
-    profile.legalFullName ||
-    user?.email?.split('@')[0] ||
-    'User'
+  const displayName = profile?.legalFullName || profile?.givenName || user?.email?.split('@')[0] || 'User'
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -277,7 +273,7 @@ export default function Profile() {
 
             {avatarError && <p className="text-xs text-red-500 mt-1 font-medium">{avatarError}</p>}
 
-            {profile.preferredRoles && profile.preferredRoles.length > 0 && (
+            {profile?.preferredRoles && profile.preferredRoles.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {profile.preferredRoles.slice(0, 3).map((role: string) => (
                   <span key={role} className="text-xs bg-primary-50 text-primary-700 px-2.5 py-0.5 rounded-full font-medium border border-primary-100/60">
@@ -349,11 +345,54 @@ export default function Profile() {
               <Input label="Phone" disabled={!isEditing} {...register('phone')} placeholder="+1 555 000 0000" />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Country" disabled={!isEditing} {...register('country')} placeholder="Country" />
-              <Input label="State / Province" disabled={!isEditing} {...register('state')} placeholder="State" />
+              <Controller
+                control={control}
+                name="country"
+                render={({ field }) => (
+                  <SmartCombobox
+                    label="Country"
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!isEditing}
+                    loadOptions={async (q) => searchCountries(q)}
+                    placeholder="Search country (e.g. India, United States)..."
+                    allowCustom
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="state"
+                render={({ field }) => (
+                  <SmartCombobox
+                    label="State / Province"
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!isEditing}
+                    loadOptions={async (q) => searchStates(q, watchedCountry || undefined)}
+                    placeholder="Search state (e.g. Kerala, California)..."
+                    allowCustom
+                  />
+                )}
+              />
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <Input label="City" disabled={!isEditing} {...register('city')} className="col-span-2" placeholder="City" />
+              <Controller
+                control={control}
+                name="city"
+                render={({ field }) => (
+                  <SmartCombobox
+                    label="City"
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!isEditing}
+                    loadOptions={async (q) => searchCities(q, watchedCountry || undefined, watchedState || undefined)}
+                    placeholder="Search city (e.g. Kochi, Bengaluru)..."
+                    allowCustom
+                    className="col-span-2"
+                  />
+                )}
+              />
               <Input label="Postal Code" disabled={!isEditing} {...register('postalCode')} placeholder="ZIP / Postal code" />
             </div>
             <Input label="Street Address" disabled={!isEditing} {...register('address')} placeholder="Street address" />
@@ -380,7 +419,7 @@ export default function Profile() {
                       category: r.domain,
                     }))
                   }
-                  placeholder="Search and select roles..."
+                  placeholder="Search and select roles (e.g. Software Engineer, Product Manager)..."
                 />
               )}
             />
@@ -400,7 +439,27 @@ export default function Profile() {
                       category: s.category,
                     }))
                   }
-                  placeholder="Search and select skills..."
+                  placeholder="Search and select skills (e.g. React, Python, PostgreSQL)..."
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="languages"
+              render={({ field }) => (
+                <SmartMultiSelect
+                  label="Languages"
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={!isEditing}
+                  loadOptions={async (q) =>
+                    searchLanguages(q).map((l) => ({
+                      value: l.name,
+                      label: l.nativeName ? `${l.name} (${l.nativeName})` : l.name,
+                      category: l.category,
+                    }))
+                  }
+                  placeholder="Search and select languages (e.g. English, Malayalam, Hindi)..."
                 />
               )}
             />
@@ -434,7 +493,7 @@ export default function Profile() {
                   onChange={field.onChange}
                   disabled={!isEditing}
                   loadOptions={async (q) => institutionSearchService.searchInstitutions(q)}
-                  placeholder="Search university or college..."
+                  placeholder="Search university or college (e.g. MG University, IIT, Anna University)..."
                   allowCustom
                 />
               )}
@@ -454,7 +513,7 @@ export default function Profile() {
                       label: d.label,
                       category: d.category,
                     }))}
-                    placeholder="Select degree..."
+                    placeholder="Select degree (e.g. B.Tech, MBA, MCA)..."
                     allowCustom
                   />
                 )}
@@ -473,7 +532,7 @@ export default function Profile() {
                       label: f.label,
                       category: f.category,
                     }))}
-                    placeholder="Select field of study..."
+                    placeholder="Select field of study (e.g. Computer Science, Finance)..."
                     allowCustom
                   />
                 )}
@@ -490,7 +549,21 @@ export default function Profile() {
         {activeTab === 'preferences' && (
           <Card padding="lg" className="space-y-5">
             <h3 className="text-base font-semibold text-slate-900 border-b pb-3 border-slate-100">Career & Job Preferences</h3>
-            <Input label="Work Authorization" placeholder="e.g. US Citizen, H1-B, Open Work Permit, Indian Citizen" disabled={!isEditing} {...register('workAuthorization')} />
+            <Controller
+              control={control}
+              name="workAuthorization"
+              render={({ field }) => (
+                <SmartCombobox
+                  label="Work Authorization"
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={!isEditing}
+                  loadOptions={async (q) => searchWorkAuthorizations(q)}
+                  placeholder="Select or enter work authorization status (e.g. Citizen, H1-B, PR)..."
+                  allowCustom
+                />
+              )}
+            />
             <div className="grid grid-cols-2 gap-4">
               <Input label="Expected Salary" placeholder="e.g. $80,000/yr or Negotiable" disabled={!isEditing} {...register('expectedSalary')} />
               <Input label="Notice Period" placeholder="e.g. 2 weeks, Immediate, 1 month" disabled={!isEditing} {...register('noticePeriod')} />
@@ -505,7 +578,7 @@ export default function Profile() {
                   onChange={field.onChange}
                   disabled={!isEditing}
                   loadOptions={async (q) => locationSearchService.searchLocations(q)}
-                  placeholder="Search locations (e.g. Bengaluru, Remote)..."
+                  placeholder="Search locations (e.g. Bengaluru, Remote, Kochi)..."
                 />
               )}
             />
@@ -524,24 +597,6 @@ export default function Profile() {
                     sublabel: jt.description,
                   }))}
                   placeholder="Select job types (Full Time, Internship, Contract)..."
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="languages"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Languages"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  options={searchLanguages('').map((l) => ({
-                    value: l.name,
-                    label: l.nativeName ? `${l.name} (${l.nativeName})` : l.name,
-                    category: l.category,
-                  }))}
-                  placeholder="Search languages (English, Hindi, Spanish)..."
                 />
               )}
             />

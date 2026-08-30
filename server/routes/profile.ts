@@ -212,6 +212,7 @@ function safeParseArray(val: unknown): string[] {
 function deserializeProfile(profile: any) {
   return {
     ...profile,
+    onboardingCompleted: Boolean(profile.onboardingCompleted),
     preferredRoles: safeParseArray(profile.preferredRoles),
     skills: safeParseArray(profile.skills),
     otherLinks: safeParseArray(profile.otherLinks),

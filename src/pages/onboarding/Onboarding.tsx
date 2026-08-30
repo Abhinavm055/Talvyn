@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -12,11 +12,16 @@ import { Select } from '../../components/ui/Select'
 import { TagInput, normalizeTags } from '../../components/ui/TagInput'
 import { SmartCombobox } from '../../components/ui/SmartCombobox'
 import { SmartMultiSelect } from '../../components/ui/SmartMultiSelect'
+import { searchCountries } from '../../data/countries'
+import { searchStates } from '../../data/states'
+import { searchCities } from '../../data/cities'
+import { searchWorkAuthorizations } from '../../data/workAuthorization'
 import { searchDegrees } from '../../data/degrees'
 import { searchFieldsOfStudy } from '../../data/fieldsOfStudy'
 import { searchSkills } from '../../data/skills'
 import { searchRoles } from '../../data/roles'
 import { searchJobTypes } from '../../data/jobTypes'
+import { searchLanguages } from '../../data/languages'
 import { institutionSearchService } from '../../services/institutionSearch'
 import { locationSearchService } from '../../services/locationSearch'
 import { cn } from '../../lib/utils'
@@ -45,6 +50,7 @@ const schema = z.object({
   linkedinUrl: z.string().optional(),
   portfolioUrl: z.string().optional(),
   otherLinks: z.array(z.string()).default([]),
+  languages: z.array(z.string()).default([]),
   // Education
   institution: z.string().optional(),
   degree: z.string().optional(),
@@ -68,22 +74,39 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const { user, setUser } = useAuthStore()
 
-  const { register, handleSubmit, control, formState: { errors } } = useForm<FormData>({
+  // Guard: If existing user already completed onboarding, redirect directly to dashboard
+  useEffect(() => {
+    if (user?.profile?.onboardingCompleted === true) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [user, navigate])
+
+  const { register, handleSubmit, control, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       givenName: user?.profile?.givenName || '',
       email: user?.email || '',
+      country: user?.profile?.country || '',
+      state: user?.profile?.state || '',
+      city: user?.profile?.city || '',
+      address: user?.profile?.address || '',
+      postalCode: user?.profile?.postalCode || '',
       preferredRoles: normalizeTags(user?.profile?.preferredRoles),
       skills: normalizeTags(user?.profile?.skills),
       otherLinks: normalizeTags(user?.profile?.otherLinks),
+      languages: normalizeTags(user?.profile?.languages),
       institution: user?.profile?.institution || '',
       degree: user?.profile?.degree || '',
       specialization: user?.profile?.specialization || '',
+      workAuthorization: user?.profile?.workAuthorization || '',
       preferredLocations: normalizeTags(user?.profile?.preferredLocations),
       preferredJobTypes: normalizeTags(user?.profile?.preferredJobTypes),
       workStyle: user?.profile?.workStyle || 'ANY',
     },
   })
+
+  const watchedCountry = watch('country')
+  const watchedState = watch('state')
 
   const onSubmit = async (data: FormData) => {
     setSaving(true)
@@ -133,9 +156,6 @@ export default function Onboarding() {
                 {i < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
               </div>
               <span className={cn('text-xs font-medium', i === step ? 'text-primary-700' : 'text-slate-400')}>{s}</span>
-              {i < STEPS.length - 1 && (
-                <div className={cn('absolute hidden')} />
-              )}
             </div>
           ))}
         </div>
@@ -163,11 +183,51 @@ export default function Onboarding() {
                   <Input label="Phone Number" type="tel" placeholder="+1 555 000 0000" {...register('phone')} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <Input label="Country" placeholder="Country" {...register('country')} />
-                  <Input label="State / Province" placeholder="State" {...register('state')} />
+                  <Controller
+                    control={control}
+                    name="country"
+                    render={({ field }) => (
+                      <SmartCombobox
+                        label="Country"
+                        value={field.value}
+                        onChange={field.onChange}
+                        loadOptions={async (q) => searchCountries(q)}
+                        placeholder="Search country (e.g. India, United States)..."
+                        allowCustom
+                      />
+                    )}
+                  />
+                  <Controller
+                    control={control}
+                    name="state"
+                    render={({ field }) => (
+                      <SmartCombobox
+                        label="State / Province"
+                        value={field.value}
+                        onChange={field.onChange}
+                        loadOptions={async (q) => searchStates(q, watchedCountry)}
+                        placeholder="Search state (e.g. Kerala, California)..."
+                        allowCustom
+                      />
+                    )}
+                  />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                  <Input label="City" placeholder="City" {...register('city')} className="col-span-2" />
+                  <Controller
+                    control={control}
+                    name="city"
+                    render={({ field }) => (
+                      <SmartCombobox
+                        label="City"
+                        value={field.value}
+                        onChange={field.onChange}
+                        loadOptions={async (q) => searchCities(q, watchedCountry, watchedState)}
+                        placeholder="Search city (e.g. Kochi, Bengaluru)..."
+                        allowCustom
+                        className="col-span-2"
+                      />
+                    )}
+                  />
                   <Input label="Postal Code" placeholder="ZIP / Postal" {...register('postalCode')} />
                 </div>
                 <Input label="Street Address" placeholder="123 Main St, Apt 4" {...register('address')} />
@@ -216,6 +276,25 @@ export default function Onboarding() {
                     />
                   )}
                 />
+                <Controller
+                  control={control}
+                  name="languages"
+                  render={({ field }) => (
+                    <SmartMultiSelect
+                      label="Languages Known"
+                      value={field.value}
+                      onChange={field.onChange}
+                      loadOptions={async (q) =>
+                        searchLanguages(q).map((l) => ({
+                          value: l.name,
+                          label: l.name,
+                          category: l.category,
+                        }))
+                      }
+                      placeholder="Search languages (e.g. English, Malayalam, Hindi)..."
+                    />
+                  )}
+                />
                 <Input
                   label="Years of Experience"
                   type="number"
@@ -254,7 +333,7 @@ export default function Onboarding() {
                       value={field.value}
                       onChange={field.onChange}
                       loadOptions={async (q) => institutionSearchService.searchInstitutions(q)}
-                      placeholder="Search university or college name..."
+                      placeholder="Search university or college name (e.g. MG University, IIT, Anna University)..."
                       allowCustom
                     />
                   )}
@@ -274,7 +353,7 @@ export default function Onboarding() {
                           label: d.label,
                           category: d.category,
                         }))}
-                        placeholder="Select degree (e.g. B.Tech, MBA)..."
+                        placeholder="Select degree (e.g. B.Tech, MBA, MCA)..."
                         allowCustom
                       />
                     )}
@@ -285,7 +364,7 @@ export default function Onboarding() {
                     name="specialization"
                     render={({ field }) => (
                       <SmartCombobox
-                        label="Field of Study / Major"
+                        label="Field of Study / Specialization"
                         value={field.value}
                         onChange={field.onChange}
                         options={searchFieldsOfStudy('').map((f) => ({
@@ -293,7 +372,7 @@ export default function Onboarding() {
                           label: f.label,
                           category: f.category,
                         }))}
-                        placeholder="e.g. Computer Science, Finance..."
+                        placeholder="e.g. Computer Science, Artificial Intelligence..."
                         allowCustom
                       />
                     )}
@@ -311,10 +390,19 @@ export default function Onboarding() {
             {step === 3 && (
               <div className="space-y-5">
                 <h2 className="text-lg font-semibold text-slate-900 mb-6">Application Preferences</h2>
-                <Input
-                  label="Work Authorization"
-                  placeholder="e.g. US Citizen, H1-B, PR, Open Work Permit"
-                  {...register('workAuthorization')}
+                <Controller
+                  control={control}
+                  name="workAuthorization"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="Work Authorization"
+                      value={field.value}
+                      onChange={field.onChange}
+                      loadOptions={async (q) => searchWorkAuthorizations(q)}
+                      placeholder="Select or enter work authorization status (e.g. Citizen, H1-B, PR)..."
+                      allowCustom
+                    />
+                  )}
                 />
                 <div className="grid grid-cols-2 gap-4">
                   <Input label="Expected Salary" placeholder="e.g. $80,000/year or Negotiable" {...register('expectedSalary')} />
@@ -329,7 +417,7 @@ export default function Onboarding() {
                       value={field.value}
                       onChange={field.onChange}
                       loadOptions={async (q) => locationSearchService.searchLocations(q)}
-                      placeholder="Search locations (e.g. Bengaluru, Remote, San Francisco)..."
+                      placeholder="Search locations (e.g. Bengaluru, Remote, Kochi)..."
                     />
                   )}
                 />

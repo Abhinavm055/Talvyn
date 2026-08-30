@@ -51,11 +51,13 @@ export function formatUserProfile(profile: any) {
 
   return {
     ...profile,
+    onboardingCompleted: Boolean(profile.onboardingCompleted),
     preferredRoles: parseArray(profile.preferredRoles),
     skills: parseArray(profile.skills),
     otherLinks: parseArray(profile.otherLinks),
     preferredLocations: parseArray(profile.preferredLocations),
     preferredJobTypes: parseArray(profile.preferredJobTypes),
+    languages: parseArray(profile.languages),
   }
 }
 

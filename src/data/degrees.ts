@@ -25,22 +25,18 @@ export const DEGREE_CATEGORIES = [
 
 export const DEGREES: DegreeOption[] = [
   // Engineering & Technology
-  { value: 'B.Tech', label: 'B.Tech - Bachelor of Technology', category: 'Engineering & Technology', aliases: ['btech', 'b tech', 'b.tech.'] },
-  { value: 'B.E.', label: 'B.E. - Bachelor of Engineering', category: 'Engineering & Technology', aliases: ['be', 'b e', 'b.e.'] },
-  { value: 'M.Tech', label: 'M.Tech - Master of Technology', category: 'Engineering & Technology', aliases: ['mtech', 'm tech', 'm.tech.'] },
-  { value: 'M.E.', label: 'M.E. - Master of Engineering', category: 'Engineering & Technology', aliases: ['me', 'm e', 'm.e.'] },
-  { value: 'Diploma in Engineering', label: 'Diploma in Engineering', category: 'Engineering & Technology', aliases: ['polytechnic', 'diploma'] },
-  { value: 'PhD Engineering', label: 'PhD - Doctor of Philosophy (Engineering)', category: 'Engineering & Technology', aliases: ['doctorate', 'phd'] },
+  { value: 'B.Tech', label: 'B.Tech - Bachelor of Technology', category: 'Engineering & Technology', aliases: ['btech', 'b tech', 'b.tech.', 'b.tech'] },
+  { value: 'B.E.', label: 'B.E. - Bachelor of Engineering', category: 'Engineering & Technology', aliases: ['be', 'b e', 'b.e.', 'b.e'] },
+  { value: 'M.Tech', label: 'M.Tech - Master of Technology', category: 'Engineering & Technology', aliases: ['mtech', 'm tech', 'm.tech.', 'm.tech'] },
+  { value: 'M.E.', label: 'M.E. - Master of Engineering', category: 'Engineering & Technology', aliases: ['me', 'm e', 'm.e.', 'm.e'] },
+  { value: 'Diploma', label: 'Diploma in Engineering', category: 'Engineering & Technology', aliases: ['polytechnic', 'diploma'] },
+  { value: 'PhD', label: 'Doctor of Philosophy (PhD)', category: 'Engineering & Technology', aliases: ['doctorate', 'phd', 'ph.d.'] },
 
   // Computer & IT
   { value: 'BCA', label: 'BCA - Bachelor of Computer Applications', category: 'Computer & IT', aliases: ['bca', 'computer applications'] },
   { value: 'MCA', label: 'MCA - Master of Computer Applications', category: 'Computer & IT', aliases: ['mca'] },
-  { value: 'B.Sc Computer Science', label: 'B.Sc Computer Science / IT', category: 'Computer & IT', aliases: ['bsc cs', 'bsc it', 'b.sc cs'] },
-  { value: 'M.Sc Computer Science', label: 'M.Sc Computer Science / IT', category: 'Computer & IT', aliases: ['msc cs', 'msc it', 'm.sc cs'] },
-  { value: 'B.Tech Computer Science', label: 'B.Tech in Computer Science & Engineering (CSE)', category: 'Computer & IT', aliases: ['cse', 'btech cse'] },
-  { value: 'B.Tech Information Technology', label: 'B.Tech in Information Technology (IT)', category: 'Computer & IT', aliases: ['btech it', 'information technology'] },
-  { value: 'B.Tech Artificial Intelligence', label: 'B.Tech in AI & Machine Learning', category: 'Computer & IT', aliases: ['btech ai', 'aiml', 'ai ml'] },
-  { value: 'B.Tech Data Science', label: 'B.Tech in Data Science', category: 'Computer & IT', aliases: ['btech ds', 'data science'] },
+  { value: 'B.Sc CS', label: 'B.Sc in Computer Science / IT', category: 'Computer & IT', aliases: ['bsc cs', 'bsc it', 'b.sc cs'] },
+  { value: 'M.Sc CS', label: 'M.Sc in Computer Science / IT', category: 'Computer & IT', aliases: ['msc cs', 'msc it', 'm.sc cs'] },
 
   // Business & Management
   { value: 'BBA', label: 'BBA - Bachelor of Business Administration', category: 'Business & Management', aliases: ['bba', 'business administration'] },
@@ -49,44 +45,32 @@ export const DEGREES: DegreeOption[] = [
   { value: 'PGDM', label: 'PGDM - Post Graduate Diploma in Management', category: 'Business & Management', aliases: ['pgdm'] },
 
   // Commerce & Finance
-  { value: 'B.Com', label: 'B.Com - Bachelor of Commerce', category: 'Commerce & Finance', aliases: ['bcom', 'b.com.'] },
-  { value: 'B.Com (Hons)', label: 'B.Com (Honours)', category: 'Commerce & Finance', aliases: ['bcom hons', 'bcom honours'] },
-  { value: 'M.Com', label: 'M.Com - Master of Commerce', category: 'Commerce & Finance', aliases: ['mcom'] },
-  { value: 'CA', label: 'Chartered Accountancy (CA)', category: 'Commerce & Finance', aliases: ['ca', 'chartered accountant'] },
+  { value: 'Bachelor of Commerce (B.Com)', label: 'Bachelor of Commerce (B.Com)', category: 'Commerce & Finance', aliases: ['bcom', 'b.com.', 'b.com'] },
+  { value: 'Bachelor of Commerce Honours (B.Com Hons)', label: 'Bachelor of Commerce Honours (B.Com Hons)', category: 'Commerce & Finance', aliases: ['bcom hons', 'bcom honours'] },
+  { value: 'Master of Commerce (M.Com)', label: 'Master of Commerce (M.Com)', category: 'Commerce & Finance', aliases: ['mcom', 'm.com'] },
+  { value: 'Chartered Accountancy (CA)', label: 'Chartered Accountancy (CA)', category: 'Commerce & Finance', aliases: ['ca', 'chartered accountant'] },
 
   // Science
-  { value: 'B.Sc', label: 'B.Sc - Bachelor of Science', category: 'Science', aliases: ['bsc', 'b.sc.'] },
-  { value: 'M.Sc', label: 'M.Sc - Master of Science', category: 'Science', aliases: ['msc', 'm.sc.'] },
-  { value: 'PhD Science', label: 'PhD - Doctor of Philosophy (Science)', category: 'Science', aliases: ['phd science'] },
+  { value: 'Bachelor of Science (B.Sc)', label: 'Bachelor of Science (B.Sc)', category: 'Science', aliases: ['bsc', 'b.sc.', 'b.sc'] },
+  { value: 'Master of Science (M.Sc)', label: 'Master of Science (M.Sc)', category: 'Science', aliases: ['msc', 'm.sc.', 'm.sc'] },
 
   // Arts & Humanities
-  { value: 'BA', label: 'BA - Bachelor of Arts', category: 'Arts & Humanities', aliases: ['ba', 'b.a.'] },
-  { value: 'MA', label: 'MA - Master of Arts', category: 'Arts & Humanities', aliases: ['ma', 'm.a.'] },
-  { value: 'BSW', label: 'BSW - Bachelor of Social Work', category: 'Arts & Humanities', aliases: ['bsw'] },
-  { value: 'MSW', label: 'MSW - Master of Social Work', category: 'Arts & Humanities', aliases: ['msw'] },
+  { value: 'Bachelor of Arts (B.A.)', label: 'Bachelor of Arts (B.A.)', category: 'Arts & Humanities', aliases: ['ba', 'b.a.', 'b.a'] },
+  { value: 'Master of Arts (M.A.)', label: 'Master of Arts (M.A.)', category: 'Arts & Humanities', aliases: ['ma', 'm.a.', 'm.a'] },
 
   // Design & Architecture
-  { value: 'B.Des', label: 'B.Des - Bachelor of Design', category: 'Design & Architecture', aliases: ['bdes', 'b.des', 'design'] },
-  { value: 'M.Des', label: 'M.Des - Master of Design', category: 'Design & Architecture', aliases: ['mdes', 'm.des'] },
-  { value: 'B.Arch', label: 'B.Arch - Bachelor of Architecture', category: 'Design & Architecture', aliases: ['barch', 'architecture'] },
+  { value: 'Bachelor of Design (B.Des)', label: 'Bachelor of Design (B.Des)', category: 'Design & Architecture', aliases: ['bdes', 'b.des', 'design'] },
+  { value: 'Bachelor of Architecture (B.Arch)', label: 'Bachelor of Architecture (B.Arch)', category: 'Design & Architecture', aliases: ['barch', 'architecture'] },
 
-  // Law & Legal
-  { value: 'LLB', label: 'LLB - Bachelor of Laws', category: 'Law & Legal', aliases: ['llb', 'law'] },
-  { value: 'BA LLB', label: 'BA LLB - Integrated Law', category: 'Law & Legal', aliases: ['ba llb', 'ballb'] },
-  { value: 'BBA LLB', label: 'BBA LLB - Integrated Business Law', category: 'Law & Legal', aliases: ['bba llb'] },
-  { value: 'LLM', label: 'LLM - Master of Laws', category: 'Law & Legal', aliases: ['llm'] },
+  // Law
+  { value: 'Bachelor of Laws (LLB)', label: 'Bachelor of Laws (LLB)', category: 'Law & Legal', aliases: ['llb', 'law'] },
+  { value: 'Integrated Law (BA LLB)', label: 'Integrated Law (BA LLB)', category: 'Law & Legal', aliases: ['ba llb', 'ballb'] },
+  { value: 'Master of Laws (LLM)', label: 'Master of Laws (LLM)', category: 'Law & Legal', aliases: ['llm'] },
 
-  // Medicine & Healthcare
-  { value: 'MBBS', label: 'MBBS - Bachelor of Medicine & Surgery', category: 'Medicine & Healthcare', aliases: ['mbbs', 'medical'] },
-  { value: 'BDS', label: 'BDS - Bachelor of Dental Surgery', category: 'Medicine & Healthcare', aliases: ['bds', 'dental'] },
-  { value: 'B.Pharm', label: 'B.Pharm - Bachelor of Pharmacy', category: 'Medicine & Healthcare', aliases: ['bpharm', 'pharmacy'] },
-  { value: 'M.Pharm', label: 'M.Pharm - Master of Pharmacy', category: 'Medicine & Healthcare', aliases: ['mpharm'] },
-  { value: 'B.Sc Nursing', label: 'B.Sc Nursing', category: 'Medicine & Healthcare', aliases: ['nursing'] },
-
-  // Education
-  { value: 'B.Ed', label: 'B.Ed - Bachelor of Education', category: 'Other', aliases: ['bed', 'teaching'] },
-  { value: 'M.Ed', label: 'M.Ed - Master of Education', category: 'Other', aliases: ['med'] },
-  { value: 'Other', label: 'Other Degree / Certification', category: 'Other', aliases: ['other', 'custom'] },
+  // General / Other
+  { value: 'Diploma', label: 'Diploma', category: 'Other', aliases: ['diploma'] },
+  { value: 'Associate Degree', label: 'Associate Degree', category: 'Other', aliases: ['associate', 'associate degree'] },
+  { value: 'Other', label: 'Other', category: 'Other', aliases: ['other', 'custom'] },
 ]
 
 /**
@@ -100,7 +84,7 @@ export function searchDegrees(query: string): DegreeOption[] {
     if (d.value.toLowerCase().includes(q)) return true
     if (d.label.toLowerCase().includes(q)) return true
     if (d.category.toLowerCase().includes(q)) return true
-    if (d.aliases?.some((a) => a.includes(q))) return true
+    if (d.aliases?.some((a) => a.toLowerCase().includes(q))) return true
     return false
   })
 }

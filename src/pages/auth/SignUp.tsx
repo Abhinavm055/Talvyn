@@ -50,10 +50,10 @@ export default function SignUp() {
   }
 
   const handleGoogleSuccess = (result: { user: { profile?: { onboardingCompleted?: boolean } | null } }) => {
-    if (!result.user.profile?.onboardingCompleted) {
-      navigate('/onboarding')
-    } else {
+    if (result.user.profile?.onboardingCompleted === true) {
       navigate('/dashboard')
+    } else {
+      navigate('/onboarding')
     }
   }
 

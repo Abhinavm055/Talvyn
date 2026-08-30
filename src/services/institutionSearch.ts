@@ -1,6 +1,6 @@
 /**
  * Talvyn Institution Search Service (Phase 2E.1)
- * Provider abstraction supporting local curated datasets, caching, and future remote providers.
+ * Provider abstraction supporting local curated datasets, token normalization, caching, and future remote providers.
  */
 
 export interface Institution {
@@ -16,6 +16,19 @@ export interface InstitutionSearchProvider {
 }
 
 export const CURATED_INSTITUTIONS: Institution[] = [
+  // ─── Kerala Universities & Colleges ─────────────────────────────────────────
+  { name: 'Mahatma Gandhi University (MG University)', location: 'Kottayam, Kerala', country: 'India', type: 'University', aliases: ['mg', 'm g', 'mgu', 'mg university', 'mahatma gandhi university', 'mgu kerala'] },
+  { name: 'APJ Abdul Kalam Technological University (KTU)', location: 'Thiruvananthapuram, Kerala', country: 'India', type: 'University', aliases: ['ktu', 'kerala technological university', 'kalam technological university'] },
+  { name: 'University of Calicut (Calicut University)', location: 'Malappuram / Kozhikode, Kerala', country: 'India', type: 'University', aliases: ['calicut university', 'uoc', 'calicut'] },
+  { name: 'University of Kerala (Kerala University)', location: 'Thiruvananthapuram, Kerala', country: 'India', type: 'University', aliases: ['kerala university', 'uok'] },
+  { name: 'Cochin University of Science and Technology (CUSAT)', location: 'Kochi, Kerala', country: 'India', type: 'University', aliases: ['cusat', 'cochin university'] },
+  { name: 'National Institute of Technology Calicut (NIT Calicut)', location: 'Kozhikode, Kerala', country: 'India', type: 'Institute of Technology', aliases: ['nitc', 'nit calicut'] },
+  { name: 'Indian Institute of Management Kozhikode (IIM Kozhikode)', location: 'Kozhikode, Kerala', country: 'India', type: 'Business School', aliases: ['iimk', 'iim kozhikode', 'iim calicut'] },
+  { name: 'College of Engineering Trivandrum (CET)', location: 'Thiruvananthapuram, Kerala', country: 'India', type: 'College', aliases: ['cet', 'cet trivandrum'] },
+  { name: 'Government Engineering College Thrissur (GECT)', location: 'Thrissur, Kerala', country: 'India', type: 'College', aliases: ['gec thrissur', 'gect'] },
+  { name: 'Model Engineering College, Kochi (MEC)', location: 'Kochi, Kerala', country: 'India', type: 'College', aliases: ['mec', 'mec kochi', 'model engineering college'] },
+  { name: 'TKM College of Engineering, Kollam', location: 'Kollam, Kerala', country: 'India', type: 'College', aliases: ['tkm', 'tkmce'] },
+
   // ─── IITs (Indian Institutes of Technology) ──────────────────────────────────
   { name: 'Indian Institute of Technology Madras (IIT Madras)', location: 'Chennai, Tamil Nadu', country: 'India', type: 'Institute of Technology', aliases: ['iitm', 'iit madras', 'iit chennai'] },
   { name: 'Indian Institute of Technology Bombay (IIT Bombay)', location: 'Mumbai, Maharashtra', country: 'India', type: 'Institute of Technology', aliases: ['iitb', 'iit bombay', 'iit mumbai'] },
@@ -38,7 +51,6 @@ export const CURATED_INSTITUTIONS: Institution[] = [
   { name: 'National Institute of Technology Karnataka, Surathkal (NITK)', location: 'Surathkal, Karnataka', country: 'India', type: 'Institute of Technology', aliases: ['nitk', 'nit surathkal'] },
   { name: 'National Institute of Technology Rourkela (NIT Rourkela)', location: 'Rourkela, Odisha', country: 'India', type: 'Institute of Technology', aliases: ['nitr', 'nit rourkela'] },
   { name: 'National Institute of Technology Warangal (NIT Warangal)', location: 'Warangal, Telangana', country: 'India', type: 'Institute of Technology', aliases: ['nitw', 'nit warangal'] },
-  { name: 'National Institute of Technology Calicut (NIT Calicut)', location: 'Kozhikode, Kerala', country: 'India', type: 'Institute of Technology', aliases: ['nitc', 'nit calicut'] },
   { name: 'Visvesvaraya National Institute of Technology (VNIT Nagpur)', location: 'Nagpur, Maharashtra', country: 'India', type: 'Institute of Technology', aliases: ['vnit', 'vnit nagpur'] },
   { name: 'Malaviya National Institute of Technology (MNIT Jaipur)', location: 'Jaipur, Rajasthan', country: 'India', type: 'Institute of Technology', aliases: ['mnit', 'mnit jaipur'] },
   { name: 'Motilal Nehru National Institute of Technology (MNNIT Allahabad)', location: 'Prayagraj, Uttar Pradesh', country: 'India', type: 'Institute of Technology', aliases: ['mnnit', 'mnnit allahabad'] },
@@ -53,15 +65,12 @@ export const CURATED_INSTITUTIONS: Institution[] = [
 
   // ─── Major State & Central Universities ─────────────────────────────────────
   { name: 'Anna University, Chennai', location: 'Chennai, Tamil Nadu', country: 'India', type: 'University', aliases: ['anna university', 'au chennai'] },
-  { name: 'Anna University Regional Campus, Coimbatore', location: 'Coimbatore, Tamil Nadu', country: 'India', type: 'University', aliases: ['anna university coimbatore'] },
-  { name: 'Anna University Regional Campus, Madurai', location: 'Madurai, Tamil Nadu', country: 'India', type: 'University', aliases: ['anna university madurai'] },
   { name: 'College of Engineering, Guindy (CEG Anna University)', location: 'Chennai, Tamil Nadu', country: 'India', type: 'College', aliases: ['ceg', 'ceg anna university'] },
   { name: 'University of Delhi (Delhi University / DU)', location: 'New Delhi, Delhi', country: 'India', type: 'University', aliases: ['du', 'delhi university'] },
   { name: 'University of Mumbai (Mumbai University)', location: 'Mumbai, Maharashtra', country: 'India', type: 'University', aliases: ['mu', 'mumbai university'] },
   { name: 'Savitribai Phule Pune University (Pune University)', location: 'Pune, Maharashtra', country: 'India', type: 'University', aliases: ['sppu', 'pune university'] },
   { name: 'Visvesvaraya Technological University (VTU)', location: 'Belagavi, Karnataka', country: 'India', type: 'University', aliases: ['vtu', 'vtu belgaum'] },
   { name: 'Jawaharlal Nehru Technological University (JNTU Hyderabad)', location: 'Hyderabad, Telangana', country: 'India', type: 'University', aliases: ['jntuh', 'jntu hyderabad'] },
-  { name: 'Jawaharlal Nehru Technological University (JNTU Kakinada)', location: 'Kakinada, Andhra Pradesh', country: 'India', type: 'University', aliases: ['jntuk', 'jntu kakinada'] },
   { name: 'Banaras Hindu University (BHU)', location: 'Varanasi, Uttar Pradesh', country: 'India', type: 'University', aliases: ['bhu'] },
   { name: 'Jawaharlal Nehru University (JNU)', location: 'New Delhi, Delhi', country: 'India', type: 'University', aliases: ['jnu'] },
   { name: 'University of Calcutta (Calcutta University)', location: 'Kolkata, West Bengal', country: 'India', type: 'University', aliases: ['calcutta university', 'cu'] },
@@ -74,15 +83,11 @@ export const CURATED_INSTITUTIONS: Institution[] = [
   { name: 'Manipal Academy of Higher Education (MAHE)', location: 'Manipal, Karnataka', country: 'India', type: 'University', aliases: ['manipal', 'mit manipal'] },
   { name: 'PSG College of Technology', location: 'Coimbatore, Tamil Nadu', country: 'India', type: 'College', aliases: ['psg tech', 'psg coimbatore'] },
   { name: 'SSN College of Engineering', location: 'Chennai, Tamil Nadu', country: 'India', type: 'College', aliases: ['ssn', 'ssn chennai'] },
-  { name: 'Thapar Institute of Engineering and Technology', location: 'Patiala, Punjab', country: 'India', type: 'University', aliases: ['thapar'] },
   { name: 'Amity University', location: 'Noida, Uttar Pradesh', country: 'India', type: 'University', aliases: ['amity', 'amity noida'] },
   { name: 'Christ University', location: 'Bengaluru, Karnataka', country: 'India', type: 'University', aliases: ['christ', 'christ bangalore'] },
   { name: 'Loyola College, Chennai', location: 'Chennai, Tamil Nadu', country: 'India', type: 'College', aliases: ['loyola chennai'] },
-  { name: 'Madras Christian College (MCC)', location: 'Chennai, Tamil Nadu', country: 'India', type: 'College', aliases: ['mcc chennai'] },
   { name: 'St. Stephen\'s College, Delhi', location: 'New Delhi, Delhi', country: 'India', type: 'College', aliases: ['st stephens'] },
   { name: 'St. Xavier\'s College, Mumbai', location: 'Mumbai, Maharashtra', country: 'India', type: 'College', aliases: ['st xaviers mumbai'] },
-  { name: 'St. Xavier\'s College, Kolkata', location: 'Kolkata, West Bengal', country: 'India', type: 'College', aliases: ['st xaviers kolkata'] },
-  { name: 'Symbiosis International University', location: 'Pune, Maharashtra', country: 'India', type: 'University', aliases: ['symbiosis', 'siu pune'] },
 
   // ─── Business Schools ───────────────────────────────────────────────────────
   { name: 'Indian Institute of Management Ahmedabad (IIM Ahmedabad)', location: 'Ahmedabad, Gujarat', country: 'India', type: 'Business School', aliases: ['iima', 'iim ahmedabad'] },
@@ -101,28 +106,27 @@ export const CURATED_INSTITUTIONS: Institution[] = [
   { name: 'University of Cambridge', location: 'Cambridge', country: 'United Kingdom', type: 'University', aliases: ['cambridge', 'cantab'] },
   { name: 'Imperial College London', location: 'London', country: 'United Kingdom', type: 'University', aliases: ['imperial'] },
   { name: 'National University of Singapore (NUS)', location: 'Singapore', country: 'Singapore', type: 'University', aliases: ['nus', 'national university of singapore'] },
-  { name: 'Nanyang Technological University (NTU)', location: 'Singapore', country: 'Singapore', type: 'University', aliases: ['ntu', 'nanyang'] },
   { name: 'University of Toronto', location: 'Toronto, Ontario', country: 'Canada', type: 'University', aliases: ['uoft', 'u of t'] },
-  { name: 'University of Waterloo', location: 'Waterloo, Ontario', country: 'Canada', type: 'University', aliases: ['waterloo', 'uwaterloo'] },
-  { name: 'ETH Zurich', location: 'Zurich', country: 'Switzerland', type: 'University', aliases: ['eth', 'swiss federal institute of technology'] },
+  { name: 'ETH Zurich', location: 'Zurich', country: 'Switzerland', type: 'University', aliases: ['eth'] },
   { name: 'Georgia Institute of Technology (Georgia Tech)', location: 'Atlanta, GA', country: 'United States', type: 'University', aliases: ['gatech', 'georgia tech'] },
   { name: 'University of Washington', location: 'Seattle, WA', country: 'United States', type: 'University', aliases: ['uw', 'udub'] },
-  { name: 'University of Illinois Urbana-Champaign (UIUC)', location: 'Urbana, IL', country: 'United States', type: 'University', aliases: ['uiuc'] },
-  { name: 'Columbia University', location: 'New York, NY', country: 'United States', type: 'University', aliases: ['columbia'] },
 ]
 
 export class LocalInstitutionProvider implements InstitutionSearchProvider {
   private cache = new Map<string, string[]>()
 
   async searchInstitutions(query: string, maxResults = 10): Promise<string[]> {
-    const q = query.trim().toLowerCase()
-    if (!q) {
+    const rawQ = query.trim().toLowerCase()
+    if (!rawQ) {
       return CURATED_INSTITUTIONS.slice(0, maxResults).map((i) => i.name)
     }
 
-    if (this.cache.has(q)) {
-      return this.cache.get(q)!.slice(0, maxResults)
+    if (this.cache.has(rawQ)) {
+      return this.cache.get(rawQ)!.slice(0, maxResults)
     }
+
+    // Also support tokenized query (e.g. "m g" -> "mg")
+    const collapsedQ = rawQ.replace(/\s+/g, '')
 
     const exact: string[] = []
     const prefix: string[] = []
@@ -130,19 +134,25 @@ export class LocalInstitutionProvider implements InstitutionSearchProvider {
 
     for (const item of CURATED_INSTITUTIONS) {
       const lowerName = item.name.toLowerCase()
-      const matchAlias = item.aliases?.some((a) => a.toLowerCase().includes(q))
+      const matchAlias = item.aliases?.some((a) => {
+        const aLower = a.toLowerCase()
+        return aLower.includes(rawQ) || aLower.replace(/\s+/g, '').includes(collapsedQ)
+      })
 
-      if (lowerName === q) {
+      if (lowerName === rawQ || (item.aliases && item.aliases.includes(rawQ))) {
         exact.push(item.name)
-      } else if (lowerName.startsWith(q) || item.aliases?.some((a) => a.toLowerCase().startsWith(q))) {
+      } else if (
+        lowerName.startsWith(rawQ) ||
+        item.aliases?.some((a) => a.toLowerCase().startsWith(rawQ) || a.toLowerCase().replace(/\s+/g, '').startsWith(collapsedQ))
+      ) {
         prefix.push(item.name)
-      } else if (lowerName.includes(q) || item.location.toLowerCase().includes(q) || matchAlias) {
+      } else if (lowerName.includes(rawQ) || item.location.toLowerCase().includes(rawQ) || matchAlias) {
         contains.push(item.name)
       }
     }
 
     const combined = Array.from(new Set([...exact, ...prefix, ...contains]))
-    this.cache.set(q, combined)
+    this.cache.set(rawQ, combined)
 
     return combined.slice(0, maxResults)
   }

@@ -33,7 +33,8 @@
     "test:application-assistant": "tsx extension/test/verify-application-assistant.ts",
     "test:profile-resumes": "tsx test/verify-profile-resume-storage.ts",
     "test:extension-connection": "tsx test/verify-extension-connection.ts",
-    "test:migration-auth": "tsx test/verify-migration-auth.ts"
+    "test:migration-auth": "tsx test/verify-migration-auth.ts",
+    "test:dropdowns-auth": "tsx test/verify-dropdowns-auth.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
