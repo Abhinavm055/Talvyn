@@ -1,8 +1,40 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": false,
+  "headers": [
+    {
+      "source": "/downloads/(.*)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/zip"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"talvyn-chrome-extension.zip\""
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/downloads/(.*)",
+      "destination": "/downloads/$1"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/icons/(.*)",
+      "destination": "/icons/$1"
+    },
+    {
+      "source": "/((?!downloads/|assets/|icons/|favicon\\.svg|logotalvyn\\.png|.*\\.[\\w]+$).*)",
       "destination": "/index.html"
     }
   ]
