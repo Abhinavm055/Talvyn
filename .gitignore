@@ -33,6 +33,7 @@ build/
 extension/dist/
 extension/dist-package/
 *.zip
+!public/downloads/*.zip
 
 # Logs
 logs

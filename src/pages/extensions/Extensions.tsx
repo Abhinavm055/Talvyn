@@ -18,7 +18,6 @@ import { Card } from '../../components/ui/Card'
 export default function Extensions() {
   const { user } = useAuthStore()
   const [copiedUrl, setCopiedUrl] = useState(false)
-  const [downloading, setDownloading] = useState(false)
 
   // Direct static download link served by Vercel deployment
   const downloadUrl = '/downloads/talvyn-chrome-extension.zip'
@@ -28,18 +27,6 @@ export default function Extensions() {
     navigator.clipboard.writeText(chromeExtensionsUrl)
     setCopiedUrl(true)
     setTimeout(() => setCopiedUrl(false), 2500)
-  }
-
-  const handleDownload = () => {
-    setDownloading(true)
-    // Create programmatic anchor to trigger native browser download
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = 'talvyn-chrome-extension.zip'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setTimeout(() => setDownloading(false), 1200)
   }
 
   const userEmail = user?.email || 'your-account@example.com'
@@ -66,15 +53,16 @@ export default function Extensions() {
 
         <div className="flex flex-col items-start md:items-end gap-2 shrink-0">
           <div className="flex items-center gap-3">
-            <Button
-              size="lg"
-              icon={<Download className="w-4 h-4" />}
-              onClick={handleDownload}
-              loading={downloading}
-              className="shadow-sm shadow-primary-600/20"
+            <a
+              href={downloadUrl}
+              download="talvyn-chrome-extension.zip"
+              target="_self"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-[0.98] text-white transition-all shadow-sm shadow-primary-600/20"
             >
-              Download Extension
-            </Button>
+              <Download className="w-4 h-4" />
+              <span>Download Extension</span>
+            </a>
 
             <a
               href="chrome://extensions"
@@ -176,14 +164,16 @@ export default function Extensions() {
               <p className="text-xs text-slate-500">
                 Download the Talvyn Chrome Extension ZIP file.
               </p>
-              <button
-                type="button"
-                onClick={handleDownload}
+              <a
+                href={downloadUrl}
+                download="talvyn-chrome-extension.zip"
+                target="_self"
+                rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100/80 border border-primary-200/80 px-3 py-1.5 rounded-lg transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Download talvyn-chrome-extension.zip</span>
-              </button>
+              </a>
             </div>
           </div>
 
