@@ -37,9 +37,9 @@ export default function Extensions() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
         <div className="flex items-start gap-4">
           <img
-            src="/icons/icon48.svg"
+            src="/logotalvyn.png"
             alt="Talvyn Extension"
-            className="w-13 h-13 rounded-2xl shadow-md shadow-primary-600/15 shrink-0"
+            className="w-13 h-13 rounded-2xl shadow-md shadow-primary-600/15 shrink-0 object-contain"
           />
           <div className="space-y-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">

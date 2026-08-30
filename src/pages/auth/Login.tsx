@@ -58,9 +58,7 @@ export default function Login() {
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col justify-between p-12">
         <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center">
-            <span className="text-white text-sm font-bold">T</span>
-          </div>
+          <img src="/logotalvyn.png" alt="Talvyn" className="w-8 h-8 rounded-xl object-contain shadow-xs bg-white/10 p-0.5" />
           <span className="text-xl font-bold text-white">Talvyn</span>
         </Link>
         <div>

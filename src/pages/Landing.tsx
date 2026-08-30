@@ -56,9 +56,7 @@ export default function Landing() {
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center">
-              <span className="text-white text-sm font-bold">T</span>
-            </div>
+            <img src="/logotalvyn.png" alt="Talvyn" className="w-8 h-8 rounded-xl object-contain shadow-xs" />
             <span className="text-lg font-bold text-slate-900 tracking-tight">Talvyn</span>
           </div>
           <div className="flex items-center gap-3">
@@ -199,9 +197,7 @@ export default function Landing() {
       <footer className="py-12 border-t border-slate-100">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xs font-bold">T</span>
-            </div>
+            <img src="/logotalvyn.png" alt="Talvyn" className="w-6 h-6 rounded-lg object-contain shadow-2xs" />
             <span className="font-semibold text-slate-900">Talvyn</span>
           </div>
           <p className="text-sm text-slate-400">© 2025 Talvyn. From Potential to Offer.</p>

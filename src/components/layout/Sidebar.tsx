@@ -42,7 +42,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
-          <img src="/icons/icon32.svg" alt="Talvyn" className="w-8 h-8 rounded-xl shadow-xs" />
+          <img src="/logotalvyn.png" alt="Talvyn" className="w-8 h-8 rounded-xl object-contain shadow-xs" />
           <span className="text-lg font-bold text-slate-900 tracking-tight">Talvyn</span>
         </div>
       </div>
