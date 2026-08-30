@@ -1,125 +1,105 @@
 # Talvyn Production Deployment Guide
 
-This document outlines the production readiness architecture, environment variables, database migration plan, security protocols, and deployment sequence for Talvyn.
+This document provides the complete, step-by-step instructions for deploying Talvyn to production:
+- **Backend**: Render (Node.js/Express)
+- **Frontend**: Vercel (React/Vite SPA)
+- **Database**: Neon PostgreSQL
+- **Extension**: Chrome Extension Distribution
 
 ---
 
 ## 1. Environment Variables Specification
 
-### A. Backend API Environment Variables (`server`)
+### A. Backend API Environment Variables (Render Dashboard)
 
 | Variable | Description | Example (Production) | Sensitive? |
 |---|---|---|---|
-| `PORT` | Server listening port | `3001` or provided by host (`process.env.PORT`) | No |
+| `PORT` | Server listening port | Automatically assigned by Render (e.g. `10000`) | No |
 | `NODE_ENV` | Environment mode | `production` | No |
-| `CLIENT_URL` | Allowed frontend origin for CORS | `https://app.talvyn.com` | No |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:password@db.example.com:5432/talvyn?sslmode=require` | **YES (CRITICAL)** |
-| `JWT_SECRET` | Secret key for signing access tokens | `64+ char random hex string` | **YES (CRITICAL)** |
-| `JWT_REFRESH_SECRET` | Secret key for refresh tokens | `64+ char random hex string` | **YES (CRITICAL)** |
+| `DATABASE_URL` | Neon PostgreSQL connection string | `postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/talvyn?sslmode=require` | **YES (CRITICAL)** |
+| `CLIENT_URL` | Allowed frontend origin for CORS (Vercel domain) | `https://talvyn.vercel.app` | No |
+| `JWT_SECRET` | Secret key for signing access tokens | `64+ character random secret` | **YES (CRITICAL)** |
+| `JWT_REFRESH_SECRET` | Secret key for refresh tokens | `64+ character random secret` | **YES (CRITICAL)** |
 | `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID | `*.apps.googleusercontent.com` | Public Identifier |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 Web Client Secret | `GOCSPX-...` | **YES (CRITICAL)** |
-| `GOOGLE_ALLOWED_ORIGIN` | Allowed Google auth redirect origin | `https://app.talvyn.com` | No |
+| `GOOGLE_ALLOWED_ORIGIN` | Allowed Google auth origin (Vercel domain) | `https://talvyn.vercel.app` | No |
 
 > 🔒 **Security Rule**: Never commit `.env` or paste backend secrets into frontend client code, repository commits, or extension bundles.
 
 ---
 
-### B. Frontend Environment Variables (`Vite SPA`)
+### B. Frontend Environment Variables (Vercel Project Settings)
 
 | Variable | Description | Example (Production) | Sensitive? |
 |---|---|---|---|
-| `VITE_API_URL` | Production Backend API Base URL | `https://api.talvyn.com` | No (Public) |
+| `VITE_API_URL` | Render Backend API Base URL | `https://talvyn-api.onrender.com` | No (Public) |
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth Web Client ID for Sign-In | `*.apps.googleusercontent.com` | No (Public) |
 
 ---
 
-### C. Chrome Extension Configuration
-
-The extension communicates with the Talvyn API via `extension/src/utils/config.ts`:
-
-```ts
-export const CONFIG = {
-  API_BASE: process.env.NODE_ENV === 'production' ? 'https://api.talvyn.com' : 'http://localhost:3001',
-  DASHBOARD_URL: process.env.NODE_ENV === 'production' ? 'https://app.talvyn.com' : 'http://localhost:5173',
-  STORAGE_KEY_TOKEN: 'talvyn_token',
-  STORAGE_KEY_USER: 'talvyn_user',
-  STORAGE_KEY_LAST_JOB: 'talvyn_last_job',
-} as const
-```
-
----
-
-## 2. Database Migration Plan: SQLite → PostgreSQL
-
-Talvyn currently uses local SQLite with Prisma for local development. For production:
-
-### Step 1: Update Prisma Datasource Provider
-In `prisma/schema.prisma`:
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-### Step 2: Set Production `DATABASE_URL`
-Configure a managed PostgreSQL instance (e.g. Supabase, Neon, AWS RDS, Railway, or PlanetScale):
-```env
-DATABASE_URL="postgresql://postgres:[PASSWORD]@[HOST]:5432/talvyn?sslmode=require"
-```
-
-### Step 3: Run Database Migrations
-```bash
-# Push schema directly to managed PostgreSQL
-npx prisma db push
-
-# Generate updated Prisma Client
-npx prisma generate
-```
-
-### Data Migration Compatibility:
-All JSON string arrays (`skills`, `preferredRoles`, `languages`, `preferredLocations`, `preferredJobTypes`, `otherLinks`) stored in SQLite strings map 1-to-1 seamlessly into PostgreSQL `Text` or native `Json` columns without breaking code changes.
-
----
-
-## 3. Storage Layer Architecture: Local → Cloud Storage
-
-- Current: `LocalStorageProvider` writes avatars and resumes to `uploads/avatars` and `uploads/resumes`.
-- Production: The storage abstraction layer (`server/services/storageService.ts`) allows swapping `LocalStorageProvider` for a cloud bucket provider (e.g. `SupabaseStorageProvider` or `S3StorageProvider`) by implementing the `StorageProvider` interface.
-
----
-
-## 4. Deployment Order & Execution Sequence
+## 2. Deployment Sequence
 
 ```mermaid
 flowchart TD
-    A[1. Provision Managed PostgreSQL Database] --> B[2. Run Prisma Migrations & Generate Client]
-    B --> C[3. Deploy Express Backend API]
-    C --> D[4. Deploy React Web SPA on Vercel / Netlify / Cloudflare]
-    C --> E[5. Package Chrome Extension: npm run package:extension]
-    E --> F[6. Publish ZIP to Chrome Web Store Developer Dashboard]
+    A[1. Neon Database Ready] --> B[2. Deploy Backend on Render]
+    B --> C[3. Run prisma migrate deploy]
+    B --> D[4. Deploy Frontend on Vercel]
+    D --> E[5. Update Google Cloud Console Authorized Origins]
+    B --> F[6. Package Chrome Extension with Production API URL]
 ```
-
-1. **Database Deployment**: Provision managed PostgreSQL and run `npx prisma db push`.
-2. **Backend API Deployment**:
-   - Host on Render, Railway, Fly.io, or AWS Elastic Beanstalk / ECS.
-   - Configure all backend environment variables (`DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_SECRET`, `CLIENT_URL`).
-   - Run health check: `GET https://api.talvyn.com/api/health`.
-3. **Frontend Web App Deployment**:
-   - Host on Vercel, Cloudflare Pages, Netlify, or AWS S3 + CloudFront.
-   - Set `VITE_API_URL=https://api.talvyn.com` and `VITE_GOOGLE_CLIENT_ID`.
-   - Run `npm run build:web`.
-4. **Chrome Extension Distribution**:
-   - Run `npm run package:extension`.
-   - Upload `extension/dist-package/talvyn-chrome-extension.zip` to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devcenter).
 
 ---
 
-## 5. Pre-Deployment Verification Checklist
+## 3. Manual Deployment Steps
 
-- [x] All 11 automated test suites passing (`npm run test:onboarding`, `npm run test:google-auth`, etc.)
-- [x] Zero build errors across `build:server`, `build:web`, and `build:extension`
-- [x] PostCSS & Tailwind configurations using `.cjs` to eliminate Node typeless warnings
-- [x] Code splitting & route lazy-loading active (reduced vendor bundles)
-- [x] `.gitignore` verified to exclude `.env`, `*.db`, `uploads/`, `dist/`, `dist-package/`
-- [x] Zero API keys or secrets exposed in frontend or extension builds
+### Step 1: Database Migration (Neon PostgreSQL)
+1. Verify `DATABASE_URL` in Neon Console.
+2. In Render build step (or via local terminal with production `DATABASE_URL`):
+   ```bash
+   npm run db:deploy
+   ```
+   *(Uses `prisma migrate deploy` which applies existing migrations without deleting any data).*
+
+### Step 2: Deploy Backend to Render
+1. Go to [Render Dashboard](https://dashboard.render.com).
+2. Click **New +** $\to$ **Web Service** $\to$ Connect repository `Abhinavm055/Talvyn`.
+3. Configure settings:
+   - **Name**: `talvyn-backend`
+   - **Environment**: `Node`
+   - **Build Command**: `npm install && npm run prisma:generate && npm run build:server`
+   - **Start Command**: `npm run start:server`
+   - **Health Check Path**: `/api/health`
+4. Add the Backend Environment Variables listed in Section 1A.
+5. Deploy and verify health check at `https://your-backend.onrender.com/api/health`.
+
+### Step 3: Deploy Frontend to Vercel
+1. Go to [Vercel Dashboard](https://vercel.com).
+2. Click **Add New...** $\to$ **Project** $\to$ Import repository `Abhinavm055/Talvyn`.
+3. Configure settings:
+   - **Framework Preset**: `Vite`
+   - **Build Command**: `npm run build:web`
+   - **Output Directory**: `dist`
+4. Add the Frontend Environment Variables listed in Section 1B:
+   - `VITE_API_URL`: Your Render backend URL (e.g. `https://talvyn-api.onrender.com`)
+   - `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth Web Client ID
+5. Deploy! Vercel will use `vercel.json` for client-side SPA routing.
+
+### Step 4: Update Google Cloud Console OAuth Credentials
+1. Open [Google Cloud Console](https://console.cloud.google.com/) $\to$ **APIs & Services** $\to$ **Credentials**.
+2. Edit your Web Client ID:
+   - **Authorized JavaScript origins**:
+     - `https://your-frontend.vercel.app`
+     - `http://localhost:5173`
+   - **Authorized redirect URIs**:
+     - `https://your-frontend.vercel.app`
+     - `https://your-frontend.vercel.app/login`
+3. Save changes.
+
+### Step 5: Package Chrome Extension for Production
+1. In `extension/src/utils/config.ts`, update `API_BASE` to your Render API URL and `DASHBOARD_URL` to your Vercel URL (or use environment override).
+2. Run packaging command:
+   ```bash
+   npm run package:extension
+   ```
+3. The production package is created at `extension/dist-package/talvyn-chrome-extension.zip`.
+4. Distribute `.zip` or upload to the Chrome Web Store Developer Dashboard.

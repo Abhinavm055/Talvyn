@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: talvyn-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run prisma:generate && npm run build:server
+    startCommand: npm run start:server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ALLOWED_ORIGIN
+        sync: false
