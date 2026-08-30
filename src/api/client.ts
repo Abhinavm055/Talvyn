@@ -3,13 +3,20 @@ import { useAuthStore } from '../store/authStore'
 
 // In development, defaults to '/api' (proxied by Vite to localhost:3001).
 // In production, reads VITE_API_URL (e.g. 'https://talvyn-api.onrender.com') if configured.
-const rawApiUrl = import.meta.env.VITE_API_URL
-const apiBase = rawApiUrl
-  ? (rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.replace(/\/+$/, '')}/api`)
-  : '/api'
+const getApiBaseUrl = (): string => {
+  const envUrl =
+    typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL
+      ? import.meta.env.VITE_API_URL
+      : typeof process !== 'undefined' && process?.env?.VITE_API_URL
+        ? process.env.VITE_API_URL
+        : ''
+
+  if (!envUrl) return '/api'
+  return envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/+$/, '')}/api`
+}
 
 export const apiClient = axios.create({
-  baseURL: apiBase,
+  baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
 })
 

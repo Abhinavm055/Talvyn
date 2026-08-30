@@ -25,6 +25,7 @@
     "db:verify:data": "tsx scripts/verify-sqlite-to-postgres.ts",
     "db:studio": "prisma studio",
     "preview": "vite preview",
+    "test": "tsx test/verify-dropdowns-auth.ts && tsx test/verify-google-auth.ts && tsx test/verify-onboarding-taginput.ts && tsx test/verify-smart-inputs.ts && tsx test/verify-profile-resume-storage.ts && tsx test/verify-extension-connection.ts && tsx test/verify-migration-auth.ts && tsx extension/test/verify-scoring.ts && tsx extension/test/verify-autofill.ts && tsx extension/test/verify-success-detection.ts && tsx extension/test/verify-opportunity-timeline.ts && tsx extension/test/verify-hardening.ts && tsx extension/test/verify-application-assistant.ts",
     "test:scoring": "tsx extension/test/verify-scoring.ts",
     "test:autofill": "tsx extension/test/verify-autofill.ts",
     "test:success": "tsx extension/test/verify-success-detection.ts",
