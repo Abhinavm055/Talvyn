@@ -18,12 +18,12 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
 function getStoredTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'system'
+  if (typeof window === 'undefined') return 'dark'
   const stored = localStorage.getItem(STORAGE_KEY) as ThemeMode | null
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
     return stored
   }
-  return 'system'
+  return 'dark'
 }
 
 function applyThemeToDOM(theme: ThemeMode): 'light' | 'dark' {

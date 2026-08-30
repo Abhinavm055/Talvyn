@@ -95,26 +95,27 @@ export function TagInput({
   }
 
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+    <div className={cn('flex flex-col gap-1.5 w-full', className)}>
+      {label && <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-[#A1A1AA]">{label}</label>}
       <div
         className={cn(
-          'flex flex-wrap gap-1.5 min-h-[40px] px-3 py-2 rounded-xl border bg-white',
-          'focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent',
-          'transition-colors duration-150',
-          error ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'
+          'flex flex-wrap gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border bg-white dark:bg-[#161725]',
+          'hover:border-slate-300 dark:hover:bg-[#1C1C2B]',
+          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent',
+          'transition-all duration-150',
+          error ? 'border-red-400' : 'border-slate-200 dark:border-[#1E1E2A]'
         )}
       >
         {safeValue.map((tag, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-medium"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-violet-950/70 text-primary-700 dark:text-violet-300 border border-primary-100/60 dark:border-violet-800/60 rounded-lg text-xs font-medium"
           >
             {tag}
             <button
               type="button"
               onClick={() => removeTag(i)}
-              className="hover:text-primary-900 transition-colors cursor-pointer"
+              className="hover:text-primary-900 dark:hover:text-violet-100 transition-colors cursor-pointer"
             >
               <X className="w-3 h-3" />
             </button>
@@ -127,11 +128,11 @@ export function TagInput({
           onKeyDown={handleKeyDown}
           onBlur={() => inputValue && addTag(inputValue)}
           placeholder={safeValue.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[120px] text-sm outline-none bg-transparent text-slate-900 placeholder:text-slate-400"
+          className="flex-1 min-w-[120px] text-sm outline-none bg-transparent text-slate-900 dark:text-[#E5E7EB] placeholder:text-slate-400 dark:placeholder-[#71717A]"
         />
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
-      <p className="text-xs text-slate-400">Press Enter or comma to add</p>
+      <p className="text-xs text-slate-400 dark:text-slate-500">Press Enter or comma to add</p>
     </div>
   )
 }

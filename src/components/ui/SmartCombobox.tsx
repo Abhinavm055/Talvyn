@@ -22,6 +22,7 @@ export interface SmartComboboxProps {
   disabled?: boolean
   allowCustom?: boolean
   clearable?: boolean
+  icon?: React.ReactNode
 }
 
 export function SmartCombobox({
@@ -37,6 +38,7 @@ export function SmartCombobox({
   disabled = false,
   allowCustom = true,
   clearable = true,
+  icon,
 }: SmartComboboxProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -194,16 +196,17 @@ export function SmartCombobox({
   const showCustomOption = allowCustom && query.trim().length > 0 && !isExactMatchInItems
 
   return (
-    <div ref={containerRef} className={cn('relative flex flex-col gap-1.5', className)}>
-      {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+    <div ref={containerRef} className={cn('relative flex flex-col gap-1.5 w-full', className)}>
+      {label && <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-[#A1A1AA]">{label}</label>}
 
       <div
         className={cn(
-          'relative flex items-center min-h-[42px] px-3 py-1.5 rounded-xl border bg-white',
-          'focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent',
+          'relative flex items-center h-11 px-3.5 rounded-xl border bg-white dark:bg-[#161725]',
+          'hover:border-slate-300 dark:hover:bg-[#1C1C2B]',
+          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent',
           'transition-all duration-150',
-          disabled ? 'opacity-60 bg-slate-50 cursor-not-allowed' : 'cursor-text',
-          error ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'
+          disabled ? 'opacity-60 bg-slate-50 dark:bg-[#13141f] cursor-not-allowed' : 'cursor-text',
+          error ? 'border-red-400' : 'border-slate-200 dark:border-[#1E1E2A]'
         )}
         onClick={() => {
           if (!disabled) {
@@ -212,7 +215,13 @@ export function SmartCombobox({
           }
         }}
       >
-        <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+        {icon ? (
+          <div className="mr-2 text-slate-400 dark:text-violet-400 shrink-0">
+            {icon}
+          </div>
+        ) : (
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-2 shrink-0" />
+        )}
 
         <input
           ref={inputRef}
@@ -229,25 +238,25 @@ export function SmartCombobox({
           aria-expanded={isOpen}
           aria-autocomplete="list"
           role="combobox"
-          className="flex-1 text-sm bg-transparent outline-none text-slate-900 placeholder:text-slate-400"
+          className="flex-1 text-sm bg-transparent outline-none text-slate-900 dark:text-[#E5E7EB] placeholder:text-slate-400 dark:placeholder-[#71717A]"
         />
 
         {isLoading ? (
-          <Loader2 className="w-4 h-4 text-primary-500 animate-spin shrink-0 ml-1.5" />
+          <Loader2 className="w-4 h-4 text-primary-500 dark:text-violet-400 animate-spin shrink-0 ml-1.5" />
         ) : (
           <div className="flex items-center gap-1 shrink-0 ml-1.5">
             {clearable && query && !disabled && (
               <button
                 type="button"
                 onClick={handleClear}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-full transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full transition-colors"
                 title="Clear selection"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
             <ChevronDown
-              className={cn('w-4 h-4 text-slate-400 transition-transform duration-150', isOpen && 'rotate-180')}
+              className={cn('w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-150', isOpen && 'rotate-180')}
             />
           </div>
         )}
@@ -257,14 +266,14 @@ export function SmartCombobox({
       {isOpen && !disabled && (
         <div
           className={cn(
-            'absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden',
+            'absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#161725] rounded-xl border border-slate-200 dark:border-[#1E1E2A] shadow-xl z-50 overflow-hidden',
             'animate-in fade-in duration-100 max-h-64 flex flex-col'
           )}
         >
           <ul
             ref={listboxRef}
             role="listbox"
-            className="overflow-y-auto py-1.5 divide-y divide-slate-50 text-sm focus:outline-none"
+            className="overflow-y-auto py-1.5 divide-y divide-slate-50 dark:divide-[#1E1E2A]/50 text-sm focus:outline-none"
           >
             {items.map((opt, idx) => {
               const isSelected = value === opt.value
@@ -282,20 +291,22 @@ export function SmartCombobox({
                   }}
                   className={cn(
                     'px-3.5 py-2 flex items-center justify-between cursor-pointer transition-colors',
-                    isHighlighted ? 'bg-primary-50 text-primary-900' : 'text-slate-700 hover:bg-slate-50',
-                    isSelected && 'font-semibold text-primary-700'
+                    isHighlighted
+                      ? 'bg-primary-50 dark:bg-[#1C1C2B] text-primary-900 dark:text-white'
+                      : 'text-slate-700 dark:text-[#E5E7EB] hover:bg-slate-50 dark:hover:bg-[#1C1C2B]',
+                    isSelected && 'font-semibold text-primary-700 dark:text-violet-400'
                   )}
                 >
                   <div className="flex flex-col pr-2">
                     <span className="truncate">{opt.label}</span>
-                    {opt.sublabel && <span className="text-xs text-slate-400">{opt.sublabel}</span>}
+                    {opt.sublabel && <span className="text-xs text-slate-400 dark:text-slate-500">{opt.sublabel}</span>}
                   </div>
                   {opt.category && (
-                    <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-2 shrink-0">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-2 shrink-0">
                       {opt.category}
                     </span>
                   )}
-                  {isSelected && <Check className="w-4 h-4 text-primary-600 shrink-0 ml-2" />}
+                  {isSelected && <Check className="w-4 h-4 text-primary-600 dark:text-violet-400 shrink-0 ml-2" />}
                 </li>
               )
             })}
@@ -310,12 +321,14 @@ export function SmartCombobox({
                   handleSelect(query.trim())
                 }}
                 className={cn(
-                  'px-3.5 py-2 flex items-center justify-between cursor-pointer border-t border-slate-100 transition-colors',
-                  highlightedIndex === items.length ? 'bg-indigo-50 text-indigo-900' : 'bg-slate-50/70 text-slate-700 hover:bg-indigo-50/50'
+                  'px-3.5 py-2 flex items-center justify-between cursor-pointer border-t border-slate-100 dark:border-[#1E1E2A] transition-colors',
+                  highlightedIndex === items.length
+                    ? 'bg-indigo-50 dark:bg-[#1C1C2B] text-indigo-900 dark:text-white'
+                    : 'bg-slate-50/70 dark:bg-[#13141f] text-slate-700 dark:text-[#E5E7EB] hover:bg-indigo-50/50 dark:hover:bg-[#1C1C2B]'
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-primary-600 bg-primary-100 px-1.5 py-0.5 rounded">Custom</span>
+                  <span className="text-xs font-semibold text-primary-600 dark:text-violet-400 bg-primary-100 dark:bg-violet-950/60 px-1.5 py-0.5 rounded">Custom</span>
                   <span>Use &ldquo;{query.trim()}&rdquo;</span>
                 </div>
               </li>

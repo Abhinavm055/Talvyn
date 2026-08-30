@@ -27,6 +27,18 @@ module.exports = {
           50:  '#f8fafc',
           100: '#f1f5f9',
           200: '#e2e8f0',
+        },
+        dark: {
+          bg: '#0B0B0F',
+          card: '#11121A',
+          border: '#1E1E2A',
+          input: '#161725',
+          'input-hover': '#1C1C2B',
+        },
+        violet: {
+          accent: '#7C3AED',
+          light: '#A78BFA',
+          glow: 'rgba(124, 58, 237, 0.25)',
         }
       },
       fontFamily: {

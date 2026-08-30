@@ -4,29 +4,32 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
-  Edit2,
-  Save,
-  X,
   User,
+  Mail,
+  Phone,
+  Globe,
+  MapPin,
+  Building2,
+  Save,
+  Upload,
+  Pencil,
+  Trash2,
+  Camera,
   Briefcase,
   GraduationCap,
   Settings,
-  Camera,
-  Crop,
-  Trash2,
-  Loader2,
   CheckCircle2,
-  ShieldCheck,
+  Loader2,
+  X,
+  Plus,
 } from 'lucide-react'
 import { profileApi } from '../../api/profile'
 import { useAuthStore } from '../../store/authStore'
-import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { TagInput } from '../../components/ui/TagInput'
 import { SmartCombobox } from '../../components/ui/SmartCombobox'
 import { SmartMultiSelect } from '../../components/ui/SmartMultiSelect'
-import { Card } from '../../components/ui/Card'
 import { PhotoCropModal } from '../../components/profile/PhotoCropModal'
 import { searchCountries } from '../../data/countries'
 import { searchStates } from '../../data/states'
@@ -81,17 +84,17 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 const TABS = [
-  { id: 'personal', label: 'Personal', icon: User },
-  { id: 'professional', label: 'Professional', icon: Briefcase },
-  { id: 'education', label: 'Education', icon: GraduationCap },
-  { id: 'preferences', label: 'Preferences', icon: Settings },
+  { id: 'personal', label: 'Personal Information', icon: User },
+  { id: 'professional', label: 'Professional & Skills', icon: Briefcase },
+  { id: 'education', label: 'Academic Background', icon: GraduationCap },
+  { id: 'preferences', label: 'Career Preferences', icon: Settings },
 ]
 
 export default function Profile() {
-  const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState('personal')
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [isCropModalOpen, setIsCropModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -113,7 +116,7 @@ export default function Profile() {
           familyName: profile.familyName || '',
           prefix: profile.prefix || '',
           preferredName: profile.preferredName || '',
-          email: profile.email || '',
+          email: profile.email || user?.email || '',
           phone: profile.phone || '',
           country: profile.country || '',
           state: profile.state || '',
@@ -151,39 +154,10 @@ export default function Profile() {
     onSuccess: (updatedProfile) => {
       qc.setQueryData(['profile'], updatedProfile)
       setUser({ ...user!, profile: updatedProfile })
-      setIsEditing(false)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
     },
   })
-
-  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarError('Image size exceeds 5 MB limit')
-      return
-    }
-
-    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
-    if (!allowed.includes(file.type.toLowerCase())) {
-      setAvatarError('Supported image formats: PNG, JPG, JPEG, WEBP')
-      return
-    }
-
-    setAvatarUploading(true)
-    setAvatarError(null)
-
-    try {
-      const res = await profileApi.uploadAvatar(file)
-      setUser({ ...user!, avatarUrl: res.avatarUrl, profile: { ...user?.profile, avatarUrl: res.avatarUrl } as any })
-      qc.invalidateQueries({ queryKey: ['profile'] })
-    } catch (err: any) {
-      setAvatarError(err.response?.data?.error || 'Failed to upload photo')
-    } finally {
-      setAvatarUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
 
   const handleCropSave = async (file: File) => {
     setAvatarUploading(true)
@@ -192,6 +166,7 @@ export default function Profile() {
       const res = await profileApi.uploadAvatar(file)
       setUser({ ...user!, avatarUrl: res.avatarUrl, profile: { ...user?.profile, avatarUrl: res.avatarUrl } as any })
       qc.invalidateQueries({ queryKey: ['profile'] })
+      setIsCropModalOpen(false)
     } catch (err: any) {
       setAvatarError(err.response?.data?.error || 'Failed to upload photo')
     } finally {
@@ -216,475 +191,627 @@ export default function Profile() {
     }
   }
 
-  const handleCancel = () => {
-    reset()
-    setIsEditing(false)
-  }
-
-  const displayName =
-    profile?.legalFullName ||
-    profile?.givenName ||
-    profile?.preferredName ||
-    user?.email?.split('@')[0] ||
-    'User'
-
   const currentAvatar = user?.avatarUrl || profile?.avatarUrl
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-300">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">My Profile</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1">
-            Manage your personal background, professional experience, and career preferences.
-          </p>
-        </div>
-        {!isEditing ? (
-          <Button variant="outline" icon={<Edit2 className="w-4 h-4" />} onClick={() => setIsEditing(true)}>
-            Edit Profile
-          </Button>
-        ) : (
-          <div className="flex gap-2">
-            <Button variant="ghost" icon={<X className="w-4 h-4" />} onClick={handleCancel}>
-              Cancel
-            </Button>
-            <Button
-              icon={<Save className="w-4 h-4" />}
-              onClick={handleSubmit((d) => mutation.mutate(d))}
-              loading={mutation.isPending}
-            >
-              Save Changes
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Profile Photo & Identity Card */}
-      <Card padding="lg" className="border-slate-200/90 dark:border-slate-800">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          {/* Avatar + Info */}
-          <div className="flex items-center gap-5">
-            <div className="relative group shrink-0">
-              {currentAvatar ? (
-                <img
-                  src={currentAvatar}
-                  alt={displayName}
-                  className="w-20 h-20 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shadow-sm"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-indigo-100 dark:from-primary-950 dark:to-indigo-950 flex items-center justify-center ring-2 ring-primary-200 dark:ring-primary-900 shadow-sm">
-                  <span className="text-primary-700 dark:text-primary-300 text-2xl font-bold uppercase">
-                    {displayName.charAt(0)}
-                  </span>
-                </div>
-              )}
-
-              {/* Camera Hover Overlay */}
-              <div
-                onClick={() => setIsCropModalOpen(true)}
-                className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
-                title="Change / Crop photo"
-              >
-                {avatarUploading ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
-                ) : (
-                  <Camera className="w-5 h-5 text-white" />
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight">
-                  {displayName}
-                </h2>
-                {profile?.onboardingCompleted && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Profile Complete
-                  </span>
-                )}
-              </div>
-
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{user?.email}</p>
-
-              {avatarError && <p className="text-xs text-red-500 font-medium">{avatarError}</p>}
-
-              {profile?.preferredRoles && profile.preferredRoles.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {profile.preferredRoles.slice(0, 3).map((role: string) => (
-                    <span
-                      key={role}
-                      className="text-[11px] bg-primary-50 dark:bg-primary-950/60 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-md font-medium border border-primary-100/60 dark:border-primary-900/60"
-                    >
-                      {role}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Photo Actions */}
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Crop className="w-3.5 h-3.5" />}
-              onClick={() => setIsCropModalOpen(true)}
-              disabled={avatarUploading}
-            >
-              {currentAvatar ? 'Crop / Change Photo' : 'Upload Photo'}
-            </Button>
-
-            {currentAvatar && (
-              <button
-                type="button"
-                onClick={handleAvatarDelete}
-                disabled={avatarUploading}
-                className="p-2 rounded-xl text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                title="Remove photo"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 flex-wrap gap-2">
-          <span>Square 1:1 image recommended (PNG, JPG, WEBP up to 5 MB).</span>
-          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Synchronized across all extensions and devices
-          </span>
-        </div>
-      </Card>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl w-fit border border-slate-200/60 dark:border-slate-700/60">
+    <div className="p-4 sm:p-6 md:p-8 max-w-5xl mx-auto space-y-6 text-[#E5E7EB]">
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-[#11121A] p-1.5 rounded-2xl border border-[#1E1E2A]">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => setActiveTab(id)}
             className={cn(
-              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all',
+              'flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-150 whitespace-nowrap cursor-pointer',
               activeTab === id
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-semibold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-gradient-to-r from-violet-600/30 to-indigo-600/30 text-violet-300 border border-violet-500/40 shadow-xs font-semibold'
+                : 'text-[#A1A1AA] hover:text-[#E5E7EB] hover:bg-[#161725]'
             )}
           >
-            <Icon className="w-4 h-4" />
+            <Icon className="w-4 h-4 text-violet-400" />
             <span>{label}</span>
           </button>
         ))}
       </div>
 
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))}>
-        {/* Personal */}
+      {/* Main Profile Form */}
+      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-6">
+        {/* CARD 1: Profile Information / Active Tab */}
         {activeTab === 'personal' && (
-          <Card padding="lg" className="space-y-5 border-slate-200/90 dark:border-slate-800">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white border-b pb-3 border-slate-100 dark:border-slate-800">
-              Personal Information
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Legal Full Name" placeholder="Full legal name" disabled={!isEditing} {...register('legalFullName')} />
-              <Input label="Preferred Name" placeholder="Nickname / Preferred Name" disabled={!isEditing} {...register('preferredName')} />
+          <div className="bg-[#11121A] border border-[#1E1E2A] rounded-2xl p-6 sm:p-8 shadow-xl space-y-6">
+            {/* Header */}
+            <div className="flex items-center gap-3.5 pb-2">
+              <div className="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-800/40 text-violet-400 flex items-center justify-center shrink-0">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-[#E5E7EB] tracking-tight">Profile Information</h2>
+                <p className="text-xs sm:text-sm text-[#71717A]">
+                  Manage your personal information and how it appears across Talvyn.
+                </p>
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="First / Given Name" disabled={!isEditing} {...register('givenName')} />
-              <Input label="Middle Name" disabled={!isEditing} {...register('middleName')} />
-              <Input label="Family / Last Name" disabled={!isEditing} {...register('familyName')} />
+
+            {/* Form Fields Grid */}
+            <div className="space-y-5">
+              {/* Row 1: Legal Full Name & Preferred Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <Input
+                  label="Legal Full Name"
+                  placeholder="Full legal name"
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('legalFullName')}
+                />
+                <Input
+                  label="Preferred Name"
+                  placeholder="Nickname / Preferred Name"
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('preferredName')}
+                />
+              </div>
+
+              {/* Row 2: First, Middle, Family Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+                <Input
+                  label="First / Given Name"
+                  placeholder="First name"
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('givenName')}
+                />
+                <Input
+                  label="Middle Name"
+                  placeholder="Middle name"
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('middleName')}
+                />
+                <Input
+                  label="Family / Last Name"
+                  placeholder="Family / Last name"
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('familyName')}
+                />
+              </div>
+
+              {/* Row 3: Prefix / Initial */}
+              <div>
+                <Input
+                  label="Prefix / Initial"
+                  placeholder="e.g. Dr., Mr., Ms."
+                  icon={<User className="w-4 h-4 text-violet-400" />}
+                  {...register('prefix')}
+                />
+              </div>
+
+              {/* Row 4: Email & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <Input
+                  label="Email"
+                  type="email"
+                  placeholder="you@example.com"
+                  icon={<Mail className="w-4 h-4 text-violet-400" />}
+                  error={errors.email?.message}
+                  {...register('email')}
+                />
+                <Input
+                  label="Phone"
+                  placeholder="+1 555 000 0000"
+                  icon={<Phone className="w-4 h-4 text-violet-400" />}
+                  {...register('phone')}
+                />
+              </div>
+
+              {/* Row 5: Country & State */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <Controller
+                  control={control}
+                  name="country"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="Country"
+                      value={field.value}
+                      onChange={field.onChange}
+                      loadOptions={async (q) => searchCountries(q)}
+                      placeholder="Search country (e.g. India, United States)..."
+                      icon={<Globe className="w-4 h-4 text-violet-400" />}
+                      allowCustom
+                    />
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="state"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="State / Province"
+                      value={field.value}
+                      onChange={field.onChange}
+                      loadOptions={async (q) => searchStates(q, watchedCountry || undefined)}
+                      placeholder="Search state (e.g. Kerala, California)..."
+                      icon={<MapPin className="w-4 h-4 text-violet-400" />}
+                      allowCustom
+                    />
+                  )}
+                />
+              </div>
+
+              {/* Row 6: City & Postal Code */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <Controller
+                  control={control}
+                  name="city"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="City"
+                      value={field.value}
+                      onChange={field.onChange}
+                      loadOptions={async (q) => searchCities(q, watchedCountry || undefined, watchedState || undefined)}
+                      placeholder="Search city (e.g. Kochi, Bengaluru)..."
+                      icon={<Building2 className="w-4 h-4 text-violet-400" />}
+                      allowCustom
+                    />
+                  )}
+                />
+                <Input
+                  label="Postal Code"
+                  placeholder="ZIP / Postal code"
+                  icon={<Mail className="w-4 h-4 text-violet-400" />}
+                  {...register('postalCode')}
+                />
+              </div>
+
+              {/* Street Address */}
+              <div>
+                <Input
+                  label="Street Address"
+                  placeholder="Street address / Apartment / Suite"
+                  icon={<MapPin className="w-4 h-4 text-violet-400" />}
+                  {...register('address')}
+                />
+              </div>
             </div>
-            <Input label="Prefix / Initial" placeholder="e.g. Dr., Mr., Ms." disabled={!isEditing} {...register('prefix')} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Email" type="email" disabled={!isEditing} {...register('email')} error={errors.email?.message} />
-              <Input label="Phone" disabled={!isEditing} {...register('phone')} placeholder="+1 555 000 0000" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Controller
-                control={control}
-                name="country"
-                render={({ field }) => (
-                  <SmartCombobox
-                    label="Country"
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={!isEditing}
-                    loadOptions={async (q) => searchCountries(q)}
-                    placeholder="Search country (e.g. India, United States)..."
-                    allowCustom
-                  />
+
+            {/* Bottom Actions for Card 1 */}
+            <div className="flex items-center justify-between pt-4 border-t border-[#1E1E2A]">
+              <div className="flex items-center gap-2">
+                {saveSuccess && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Changes saved successfully
+                  </span>
                 )}
-              />
-              <Controller
-                control={control}
-                name="state"
-                render={({ field }) => (
-                  <SmartCombobox
-                    label="State / Province"
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={!isEditing}
-                    loadOptions={async (q) => searchStates(q, watchedCountry || undefined)}
-                    placeholder="Search state (e.g. Kerala, California)..."
-                    allowCustom
-                  />
+              </div>
+              <button
+                type="submit"
+                disabled={mutation.isPending}
+                className="bg-gradient-to-r from-[#7C3AED] to-[#6366F1] hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-6 py-2.5 rounded-xl shadow-lg shadow-violet-900/30 flex items-center gap-2 transition-all duration-150 cursor-pointer disabled:opacity-60"
+              >
+                {mutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
                 )}
-              />
+                <span>Save Changes</span>
+              </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Controller
-                control={control}
-                name="city"
-                render={({ field }) => (
-                  <SmartCombobox
-                    label="City"
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={!isEditing}
-                    loadOptions={async (q) => searchCities(q, watchedCountry || undefined, watchedState || undefined)}
-                    placeholder="Search city (e.g. Kochi, Bengaluru)..."
-                    allowCustom
-                    className="sm:col-span-2"
-                  />
-                )}
-              />
-              <Input label="Postal Code" disabled={!isEditing} {...register('postalCode')} placeholder="ZIP / Postal code" />
-            </div>
-            <Input label="Street Address" disabled={!isEditing} {...register('address')} placeholder="Street address" />
-          </Card>
+          </div>
         )}
 
-        {/* Professional */}
+        {/* Professional Tab */}
         {activeTab === 'professional' && (
-          <Card padding="lg" className="space-y-5 border-slate-200/90 dark:border-slate-800">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white border-b pb-3 border-slate-100 dark:border-slate-800">
-              Professional Experience & Skills
-            </h3>
-            <Controller
-              control={control}
-              name="preferredRoles"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Preferred Roles"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) =>
-                    searchRoles(q).map((r) => ({
-                      value: r.title,
-                      label: r.title,
-                      category: r.domain,
-                    }))
-                  }
-                  placeholder="Search and select roles (e.g. Software Engineer, Product Manager)..."
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="skills"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Skills & Technologies"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) =>
-                    searchSkills(q).map((s) => ({
-                      value: s.name,
-                      label: s.name,
-                      category: s.category,
-                    }))
-                  }
-                  placeholder="Search and select skills (e.g. React, Python, PostgreSQL)..."
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="languages"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Languages"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) =>
-                    searchLanguages(q).map((l) => ({
-                      value: l.name,
-                      label: l.nativeName ? `${l.name} (${l.nativeName})` : l.name,
-                      category: l.category,
-                    }))
-                  }
-                  placeholder="Search and select languages (e.g. English, Malayalam, Hindi)..."
-                />
-              )}
-            />
-            <Input label="Years of Experience" type="number" disabled={!isEditing} {...register('experienceYears')} placeholder="0" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="LinkedIn URL" disabled={!isEditing} {...register('linkedinUrl')} placeholder="https://linkedin.com/in/username" />
-              <Input label="GitHub URL" disabled={!isEditing} {...register('githubUrl')} placeholder="https://github.com/username" />
+          <div className="bg-[#11121A] border border-[#1E1E2A] rounded-2xl p-6 sm:p-8 shadow-xl space-y-6">
+            <div className="flex items-center gap-3.5 pb-2">
+              <div className="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-800/40 text-violet-400 flex items-center justify-center shrink-0">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-[#E5E7EB] tracking-tight">Professional Experience & Skills</h2>
+                <p className="text-xs sm:text-sm text-[#71717A]">
+                  Define your core skillsets, domain experience, and portfolio links.
+                </p>
+              </div>
             </div>
-            <Input label="Portfolio / Website URL" disabled={!isEditing} {...register('portfolioUrl')} placeholder="https://yourportfolio.com" />
-            <Controller
-              control={control}
-              name="otherLinks"
-              render={({ field }) => (
-                <TagInput label="Other Professional Links" value={field.value} onChange={field.onChange} placeholder="Add URL and press Enter" />
-              )}
-            />
-          </Card>
+
+            <div className="space-y-5">
+              <Controller
+                control={control}
+                name="preferredRoles"
+                render={({ field }) => (
+                  <SmartMultiSelect
+                    label="Preferred Roles"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) =>
+                      searchRoles(q).map((r) => ({
+                        value: r.title,
+                        label: r.title,
+                        category: r.domain,
+                      }))
+                    }
+                    placeholder="Search and select roles (e.g. Software Engineer, Product Manager)..."
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="skills"
+                render={({ field }) => (
+                  <SmartMultiSelect
+                    label="Skills & Technologies"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) =>
+                      searchSkills(q).map((s) => ({
+                        value: s.name,
+                        label: s.name,
+                        category: s.category,
+                      }))
+                    }
+                    placeholder="Search and select skills (e.g. React, Python, PostgreSQL)..."
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="languages"
+                render={({ field }) => (
+                  <SmartMultiSelect
+                    label="Languages"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) =>
+                      searchLanguages(q).map((l) => ({
+                        value: l.name,
+                        label: l.nativeName ? `${l.name} (${l.nativeName})` : l.name,
+                        category: l.category,
+                      }))
+                    }
+                    placeholder="Search and select languages (e.g. English, Malayalam, Hindi)..."
+                  />
+                )}
+              />
+              <Input
+                label="Years of Experience"
+                type="number"
+                icon={<Briefcase className="w-4 h-4 text-violet-400" />}
+                placeholder="0"
+                {...register('experienceYears')}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="LinkedIn URL"
+                  placeholder="https://linkedin.com/in/username"
+                  icon={<Globe className="w-4 h-4 text-violet-400" />}
+                  {...register('linkedinUrl')}
+                />
+                <Input
+                  label="GitHub URL"
+                  placeholder="https://github.com/username"
+                  icon={<Globe className="w-4 h-4 text-violet-400" />}
+                  {...register('githubUrl')}
+                />
+              </div>
+              <Input
+                label="Portfolio / Website URL"
+                placeholder="https://yourportfolio.com"
+                icon={<Globe className="w-4 h-4 text-violet-400" />}
+                {...register('portfolioUrl')}
+              />
+              <Controller
+                control={control}
+                name="otherLinks"
+                render={({ field }) => (
+                  <TagInput label="Other Professional Links" value={field.value} onChange={field.onChange} placeholder="Add URL and press Enter" />
+                )}
+              />
+            </div>
+
+            <div className="flex items-center justify-end pt-4 border-t border-[#1E1E2A]">
+              <button
+                type="submit"
+                disabled={mutation.isPending}
+                className="bg-gradient-to-r from-[#7C3AED] to-[#6366F1] hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-6 py-2.5 rounded-xl shadow-lg shadow-violet-900/30 flex items-center gap-2 transition-all duration-150 cursor-pointer disabled:opacity-60"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
         )}
 
-        {/* Education */}
+        {/* Education Tab */}
         {activeTab === 'education' && (
-          <Card padding="lg" className="space-y-5 border-slate-200/90 dark:border-slate-800">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white border-b pb-3 border-slate-100 dark:border-slate-800">
-              Academic Background
-            </h3>
-            <Controller
-              control={control}
-              name="institution"
-              render={({ field }) => (
-                <SmartCombobox
-                  label="Institution / University"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) => institutionSearchService.searchInstitutions(q)}
-                  placeholder="Search university or college (e.g. MG University, IIT, Anna University)..."
-                  allowCustom
+          <div className="bg-[#11121A] border border-[#1E1E2A] rounded-2xl p-6 sm:p-8 shadow-xl space-y-6">
+            <div className="flex items-center gap-3.5 pb-2">
+              <div className="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-800/40 text-violet-400 flex items-center justify-center shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-[#E5E7EB] tracking-tight">Academic Background</h2>
+                <p className="text-xs sm:text-sm text-[#71717A]">
+                  Add your university degrees, GPA, and major field of study.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <Controller
+                control={control}
+                name="institution"
+                render={({ field }) => (
+                  <SmartCombobox
+                    label="Institution / University"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) => institutionSearchService.searchInstitutions(q)}
+                    placeholder="Search university or college (e.g. IIT, Stanford)..."
+                    icon={<GraduationCap className="w-4 h-4 text-violet-400" />}
+                    allowCustom
+                  />
+                )}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Controller
+                  control={control}
+                  name="degree"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="Degree"
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={searchDegrees('').map((d) => ({
+                        value: d.value,
+                        label: d.label,
+                        category: d.category,
+                      }))}
+                      placeholder="Select degree (e.g. B.Tech, MBA, MCA)..."
+                      icon={<GraduationCap className="w-4 h-4 text-violet-400" />}
+                      allowCustom
+                    />
+                  )}
                 />
-              )}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Controller
-                control={control}
-                name="degree"
-                render={({ field }) => (
-                  <SmartCombobox
-                    label="Degree"
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={!isEditing}
-                    options={searchDegrees('').map((d) => ({
-                      value: d.value,
-                      label: d.label,
-                      category: d.category,
-                    }))}
-                    placeholder="Select degree (e.g. B.Tech, MBA, MCA)..."
-                    allowCustom
-                  />
-                )}
-              />
-              <Controller
-                control={control}
-                name="specialization"
-                render={({ field }) => (
-                  <SmartCombobox
-                    label="Field of Study / Major"
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={!isEditing}
-                    options={searchFieldsOfStudy('').map((f) => ({
-                      value: f.value,
-                      label: f.label,
-                      category: f.category,
-                    }))}
-                    placeholder="Select field of study (e.g. Computer Science, Finance)..."
-                    allowCustom
-                  />
-                )}
-              />
+                <Controller
+                  control={control}
+                  name="specialization"
+                  render={({ field }) => (
+                    <SmartCombobox
+                      label="Field of Study / Major"
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={searchFieldsOfStudy('').map((f) => ({
+                        value: f.value,
+                        label: f.label,
+                        category: f.category,
+                      }))}
+                      placeholder="Select field of study (e.g. Computer Science)..."
+                      icon={<GraduationCap className="w-4 h-4 text-violet-400" />}
+                      allowCustom
+                    />
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="CGPA / Grade"
+                  placeholder="e.g. 3.8/4.0 or 8.5/10"
+                  icon={<GraduationCap className="w-4 h-4 text-violet-400" />}
+                  {...register('cgpa')}
+                />
+                <Input
+                  label="Graduation Year"
+                  type="number"
+                  placeholder="2025"
+                  icon={<GraduationCap className="w-4 h-4 text-violet-400" />}
+                  {...register('graduationYear')}
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="CGPA / Grade" placeholder="e.g. 3.8/4.0 or 8.5/10" disabled={!isEditing} {...register('cgpa')} />
-              <Input label="Graduation Year" type="number" placeholder="2024" disabled={!isEditing} {...register('graduationYear')} />
+
+            <div className="flex items-center justify-end pt-4 border-t border-[#1E1E2A]">
+              <button
+                type="submit"
+                disabled={mutation.isPending}
+                className="bg-gradient-to-r from-[#7C3AED] to-[#6366F1] hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-6 py-2.5 rounded-xl shadow-lg shadow-violet-900/30 flex items-center gap-2 transition-all duration-150 cursor-pointer disabled:opacity-60"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Changes</span>
+              </button>
             </div>
-          </Card>
+          </div>
         )}
 
-        {/* Preferences */}
+        {/* Preferences Tab */}
         {activeTab === 'preferences' && (
-          <Card padding="lg" className="space-y-5 border-slate-200/90 dark:border-slate-800">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white border-b pb-3 border-slate-100 dark:border-slate-800">
-              Career & Job Preferences
-            </h3>
-            <Controller
-              control={control}
-              name="workAuthorization"
-              render={({ field }) => (
-                <SmartCombobox
-                  label="Work Authorization"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) => searchWorkAuthorizations(q)}
-                  placeholder="Select or enter work authorization status (e.g. Citizen, H1-B, PR)..."
-                  allowCustom
-                />
-              )}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Expected Salary" placeholder="e.g. $80,000/yr or Negotiable" disabled={!isEditing} {...register('expectedSalary')} />
-              <Input label="Notice Period" placeholder="e.g. 2 weeks, Immediate, 1 month" disabled={!isEditing} {...register('noticePeriod')} />
+          <div className="bg-[#11121A] border border-[#1E1E2A] rounded-2xl p-6 sm:p-8 shadow-xl space-y-6">
+            <div className="flex items-center gap-3.5 pb-2">
+              <div className="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-800/40 text-violet-400 flex items-center justify-center shrink-0">
+                <Settings className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-[#E5E7EB] tracking-tight">Career & Job Preferences</h2>
+                <p className="text-xs sm:text-sm text-[#71717A]">
+                  Configure your salary expectations, notice period, and preferred work models.
+                </p>
+              </div>
             </div>
-            <Controller
-              control={control}
-              name="preferredLocations"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Preferred Locations"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  loadOptions={async (q) => locationSearchService.searchLocations(q)}
-                  placeholder="Search locations (e.g. Bengaluru, Remote, Kochi)..."
+
+            <div className="space-y-5">
+              <Controller
+                control={control}
+                name="workAuthorization"
+                render={({ field }) => (
+                  <SmartCombobox
+                    label="Work Authorization"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) => searchWorkAuthorizations(q)}
+                    placeholder="Select or enter work authorization status..."
+                    icon={<Globe className="w-4 h-4 text-violet-400" />}
+                    allowCustom
+                  />
+                )}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Expected Salary"
+                  placeholder="e.g. $80,000/yr or Negotiable"
+                  icon={<Settings className="w-4 h-4 text-violet-400" />}
+                  {...register('expectedSalary')}
                 />
-              )}
-            />
-            <Controller
-              control={control}
-              name="preferredJobTypes"
-              render={({ field }) => (
-                <SmartMultiSelect
-                  label="Preferred Job Types"
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!isEditing}
-                  options={searchJobTypes('').map((jt) => ({
-                    value: jt.value,
-                    label: jt.label,
-                    sublabel: jt.description,
-                  }))}
-                  placeholder="Select job types (Full Time, Internship, Contract)..."
+                <Input
+                  label="Notice Period"
+                  placeholder="e.g. 2 weeks, Immediate, 1 month"
+                  icon={<Settings className="w-4 h-4 text-violet-400" />}
+                  {...register('noticePeriod')}
                 />
-              )}
-            />
-            <Controller
-              control={control}
-              name="workStyle"
-              render={({ field }) => (
-                <Select
-                  label="Work Style Preference"
-                  value={field.value}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  disabled={!isEditing}
-                  options={[
-                    { value: 'ANY', label: 'Open to All' },
-                    { value: 'REMOTE', label: 'Remote' },
-                    { value: 'HYBRID', label: 'Hybrid' },
-                    { value: 'ONSITE', label: 'On-site' },
-                  ]}
-                />
-              )}
-            />
-          </Card>
+              </div>
+              <Controller
+                control={control}
+                name="preferredLocations"
+                render={({ field }) => (
+                  <SmartMultiSelect
+                    label="Preferred Locations"
+                    value={field.value}
+                    onChange={field.onChange}
+                    loadOptions={async (q) => locationSearchService.searchLocations(q)}
+                    placeholder="Search locations (e.g. Bengaluru, Remote, Kochi)..."
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="preferredJobTypes"
+                render={({ field }) => (
+                  <SmartMultiSelect
+                    label="Preferred Job Types"
+                    value={field.value}
+                    onChange={field.onChange}
+                    options={searchJobTypes('').map((jt) => ({
+                      value: jt.value,
+                      label: jt.label,
+                      sublabel: jt.description,
+                    }))}
+                    placeholder="Select job types (Full Time, Internship, Contract)..."
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="workStyle"
+                render={({ field }) => (
+                  <Select
+                    label="Work Style Preference"
+                    value={field.value}
+                    onChange={(e) => field.onChange(e.target.value)}
+                    icon={<Building2 className="w-4 h-4 text-violet-400" />}
+                    options={[
+                      { value: 'ANY', label: 'Open to All' },
+                      { value: 'REMOTE', label: 'Remote' },
+                      { value: 'HYBRID', label: 'Hybrid' },
+                      { value: 'ONSITE', label: 'On-site' },
+                    ]}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="flex items-center justify-end pt-4 border-t border-[#1E1E2A]">
+              <button
+                type="submit"
+                disabled={mutation.isPending}
+                className="bg-gradient-to-r from-[#7C3AED] to-[#6366F1] hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-6 py-2.5 rounded-xl shadow-lg shadow-violet-900/30 flex items-center gap-2 transition-all duration-150 cursor-pointer disabled:opacity-60"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
         )}
       </form>
+
+      {/* CARD 2: Profile Photo Card */}
+      <div className="bg-[#11121A] border border-[#1E1E2A] rounded-2xl p-6 sm:p-8 shadow-xl space-y-6">
+        {/* Header with Upload Action */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-800/40 text-violet-400 flex items-center justify-center shrink-0">
+              <Camera className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-[#E5E7EB] tracking-tight">Profile Photo</h2>
+              <p className="text-xs sm:text-sm text-[#71717A]">
+                This photo will be displayed on your profile and across Talvyn.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsCropModalOpen(true)}
+            disabled={avatarUploading}
+            className="bg-[#161725] hover:bg-[#1C1C2B] border border-[#1E1E2A] text-[#E5E7EB] hover:text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium flex items-center gap-2 transition-all duration-150 cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
+          >
+            {avatarUploading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+            ) : (
+              <Upload className="w-4 h-4 text-violet-400" />
+            )}
+            <span>Upload New Photo</span>
+          </button>
+        </div>
+
+        {/* Photo Display & Guidance */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 pt-2">
+          {/* Avatar with Violet Edit Button */}
+          <div className="relative group shrink-0">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-[#1E1E2A] bg-[#161725] flex items-center justify-center overflow-hidden shadow-md">
+              {currentAvatar ? (
+                <img
+                  src={currentAvatar}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User className="w-12 h-12 text-slate-500" />
+              )}
+            </div>
+
+            {/* Violet Edit Pencil Badge */}
+            <button
+              type="button"
+              onClick={() => setIsCropModalOpen(true)}
+              className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-[#7C3AED] hover:bg-violet-500 text-white flex items-center justify-center shadow-md cursor-pointer transition-transform hover:scale-110"
+              title="Crop / Change Photo"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Guidelines & Meta */}
+          <div className="border-l border-[#1E1E2A] pl-5 sm:pl-6 py-1 space-y-1 text-left">
+            <p className="text-xs sm:text-sm text-[#A1A1AA] font-medium">
+              Recommended: Square image (1:1)
+            </p>
+            <p className="text-xs text-[#71717A]">
+              Minimum 200x200px • JPG, PNG upto 5MB
+            </p>
+            {avatarError && <p className="text-xs text-red-400 font-medium pt-1">{avatarError}</p>}
+            {currentAvatar && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleAvatarDelete}
+                  disabled={avatarUploading}
+                  className="text-xs text-red-400/80 hover:text-red-400 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Remove photo</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Photo Crop Modal */}
       <PhotoCropModal
