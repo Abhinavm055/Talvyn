@@ -17,6 +17,9 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
+    "db:migrate:data:dry": "tsx scripts/migrate-sqlite-to-postgres.ts --dry-run",
+    "db:migrate:data": "tsx scripts/migrate-sqlite-to-postgres.ts",
+    "db:verify:data": "tsx scripts/verify-sqlite-to-postgres.ts",
     "db:studio": "prisma studio",
     "preview": "vite preview",
     "test:scoring": "tsx extension/test/verify-scoring.ts",
@@ -29,7 +32,8 @@
     "test:smart-inputs": "tsx test/verify-smart-inputs.ts",
     "test:application-assistant": "tsx extension/test/verify-application-assistant.ts",
     "test:profile-resumes": "tsx test/verify-profile-resume-storage.ts",
-    "test:extension-connection": "tsx test/verify-extension-connection.ts"
+    "test:extension-connection": "tsx test/verify-extension-connection.ts",
+    "test:migration-auth": "tsx test/verify-migration-auth.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
