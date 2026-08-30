@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -24,6 +24,9 @@ model User {
   jobs    Job[]
   notes   Note[]
   resumes Resume[]
+
+  @@index([email])
+  @@index([googleId])
 }
 
 model UserProfile {
@@ -77,6 +80,8 @@ model UserProfile {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Job {
@@ -103,6 +108,10 @@ model Job {
   updatedAt DateTime @updatedAt
 
   notes Note[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
 }
 
 model Note {
@@ -115,6 +124,9 @@ model Note {
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([jobId])
+  @@index([userId])
 }
 
 model Resume {
@@ -133,4 +145,6 @@ model Resume {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
