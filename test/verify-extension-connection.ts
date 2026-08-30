@@ -46,9 +46,16 @@ async function runTests() {
   // ─── 1. Extension Configuration Validation ──────────────────────────────────
   console.log('--- 1. Testing Extension Configuration ---')
 
+  const validApiBases = ['http://localhost:3001', 'https://talvyn-backend-7ucf.onrender.com']
   assert(
-    CONFIG.API_BASE === 'http://localhost:3001',
-    'Extension API_BASE is correctly configured for development backend (http://localhost:3001)'
+    validApiBases.includes(CONFIG.API_BASE),
+    `Extension API_BASE is valid (${CONFIG.API_BASE})`
+  )
+
+  const validDashboardUrls = ['http://localhost:5173', 'https://talvyn.vercel.app']
+  assert(
+    validDashboardUrls.includes(CONFIG.DASHBOARD_URL),
+    `Extension DASHBOARD_URL is valid (${CONFIG.DASHBOARD_URL})`
   )
 
   assert(
@@ -164,6 +171,8 @@ async function runTests() {
   const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn-chrome-extension.zip')
   const distManifestPath = path.resolve(process.cwd(), 'extension', 'dist', 'manifest.json')
 
+  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn-chrome-extension.zip')
+
   assert(
     fs.existsSync(distManifestPath),
     'Extension dist directory contains compiled manifest.json'
@@ -171,7 +180,12 @@ async function runTests() {
 
   assert(
     fs.existsSync(packageZipPath),
-    'Distribution package talvyn-chrome-extension.zip exists and is generated'
+    'Distribution package talvyn-chrome-extension.zip exists in extension/dist-package'
+  )
+
+  assert(
+    fs.existsSync(publicZipPath),
+    'Public download package exists in public/downloads for static hosting on Vercel'
   )
 
   if (fs.existsSync(packageZipPath)) {

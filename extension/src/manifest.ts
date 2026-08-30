@@ -48,10 +48,11 @@ export default defineManifest({
     'scripting',    // Programmatic script injection if needed
   ],
 
-  // Host permissions — must match the Talvyn API URL
+  // Host permissions — must match the Talvyn API and frontend URLs
   host_permissions: [
     'http://localhost:3001/*',
-    'https://api.talvyn.com/*',   // production placeholder
+    'https://talvyn-backend-7ucf.onrender.com/*',
+    'https://talvyn.vercel.app/*',
   ],
 
   // Content security policy for MV3

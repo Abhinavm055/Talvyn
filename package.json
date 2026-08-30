@@ -9,7 +9,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:extension": "npm run dev --prefix extension",
     "build": "npm run build:server && npm run build:web",
-    "build:web": "tsc && vite build",
+    "build:web": "npm run package:extension && tsc && vite build",
     "build:server": "tsc -p server/tsconfig.json",
     "build:extension": "npm run build --prefix extension",
     "package:extension": "npm run build:extension && tsx scripts/package-extension.ts",

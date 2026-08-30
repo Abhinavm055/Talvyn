@@ -21,7 +21,7 @@ import { navigationObserver } from './navigationObserver'
 import { opportunityClassifier } from '../opportunityDetection/opportunityClassifier'
 import { readinessScorer } from '../services/readinessScorer'
 import { resumesService } from '../services/resumesService'
-import { getToken, getUser } from '../utils/storage'
+import { getToken, getUser, setToken, setUser, clearAuth } from '../utils/storage'
 import { jobsService } from '../services/jobsService'
 import { profileService } from '../services/profileService'
 import { ExtractedJob, UserProfile, AnalyzedJob, Resume } from '../types'
@@ -290,9 +290,72 @@ async function handleSingleSave(): Promise<void> {
   }
 }
 
+// ─── Web Dashboard Connection Handshake Bridge ──────────────────────────────
+function initWebBridge() {
+  try {
+    document.documentElement.setAttribute('data-talvyn-extension-installed', 'true')
+  } catch {
+    /* DOM attribute */
+  }
+
+  window.addEventListener('message', async (event) => {
+    if (event.source !== window) return
+    const data = event.data
+    if (!data || typeof data !== 'object') return
+
+    // 1. Status Ping from Web App
+    if (data.type === 'TALVYN_PING_EXTENSION') {
+      const token = await getToken()
+      const user = await getUser()
+      window.postMessage(
+        {
+          type: 'TALVYN_PONG_EXTENSION',
+          installed: true,
+          version: '1.0.0',
+          connected: Boolean(token),
+          email: user?.email || null,
+        },
+        '*'
+      )
+    }
+
+    // 2. One-click Account Connection from Web App
+    if (data.type === 'TALVYN_CONNECT_EXTENSION') {
+      const { token, user } = data
+      if (token && user) {
+        await setToken(token)
+        await setUser(user)
+        window.postMessage(
+          {
+            type: 'TALVYN_CONNECT_SUCCESS',
+            success: true,
+            email: user.email,
+          },
+          '*'
+        )
+      }
+    }
+
+    // 3. Disconnect from Web App
+    if (data.type === 'TALVYN_DISCONNECT_EXTENSION') {
+      await clearAuth()
+      window.postMessage(
+        {
+          type: 'TALVYN_DISCONNECT_SUCCESS',
+          success: true,
+        },
+        '*'
+      )
+    }
+  })
+}
+
 // ─── Hardened Startup & SPA Navigation Observer (Phase 2F) ─────────────────
 
 async function init() {
+  // Initialize bridge immediately
+  initWebBridge()
+
   if (document.readyState === 'loading') {
     await new Promise<void>((res) => document.addEventListener('DOMContentLoaded', () => res()))
   }

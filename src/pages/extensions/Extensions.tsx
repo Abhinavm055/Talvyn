@@ -1,43 +1,111 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Puzzle,
   CheckCircle2,
   AlertCircle,
   Download,
   ExternalLink,
-  Copy,
-  Check,
-  Terminal,
-  ShieldCheck,
   Zap,
-  Layers,
   Sparkles,
+  RefreshCw,
+  Layers,
   ArrowRight,
+  ShieldCheck,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { cn } from '../../lib/utils'
 
+type ExtensionStatus = 'checking' | 'not_detected' | 'installed_not_connected' | 'connected'
+
 export default function Extensions() {
-  const { user } = useAuthStore()
-  const [copiedFolder, setCopiedFolder] = useState(false)
-  const [copiedCmd, setCopiedCmd] = useState(false)
+  const { user, token } = useAuthStore()
+  const [status, setStatus] = useState<ExtensionStatus>('checking')
+  const [connectedEmail, setConnectedEmail] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [connectionSuccessMsg, setConnectionSuccessMsg] = useState<string | null>(null)
 
-  // Real project path for unpacked extension dist
-  const distPath = 'c:\\Users\\malay\\Projects\\Talvyn\\extension\\dist'
-  const packageCmd = 'npm run package:extension'
+  // Direct download link pointing to the static bundle hosted on Vercel
+  const downloadUrl = '/downloads/talvyn-chrome-extension.zip'
 
-  const handleCopyFolder = () => {
-    navigator.clipboard.writeText(distPath)
-    setCopiedFolder(true)
-    setTimeout(() => setCopiedFolder(false), 2000)
-  }
+  // Ping the Chrome Extension content script to check status
+  const checkExtensionStatus = useCallback(() => {
+    setStatus('checking')
+    window.postMessage({ type: 'TALVYN_PING_EXTENSION' }, '*')
 
-  const handleCopyCmd = () => {
-    navigator.clipboard.writeText(packageCmd)
-    setCopiedCmd(true)
-    setTimeout(() => setCopiedCmd(false), 2000)
+    const timer = window.setTimeout(() => {
+      setStatus((prev) => (prev === 'checking' ? 'not_detected' : prev))
+    }, 600)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Listen for extension handshake responses
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== window) return
+      const data = event.data
+      if (!data || typeof data !== 'object') return
+
+      if (data.type === 'TALVYN_PONG_EXTENSION') {
+        if (data.connected && data.email) {
+          setConnectedEmail(data.email)
+          if (data.email === user?.email) {
+            setStatus('connected')
+          } else {
+            setStatus('installed_not_connected')
+          }
+        } else {
+          setConnectedEmail(null)
+          setStatus('installed_not_connected')
+        }
+      }
+
+      if (data.type === 'TALVYN_CONNECT_SUCCESS') {
+        setStatus('connected')
+        setConnectedEmail(data.email || user?.email || null)
+        setConnecting(false)
+        setConnectionSuccessMsg('Extension successfully connected to your Talvyn account!')
+        setTimeout(() => setConnectionSuccessMsg(null), 5000)
+      }
+
+      if (data.type === 'TALVYN_DISCONNECT_SUCCESS') {
+        setStatus('installed_not_connected')
+        setConnectedEmail(null)
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    const cleanup = checkExtensionStatus()
+
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      cleanup()
+    }
+  }, [user, checkExtensionStatus])
+
+  // One-click Connect Extension handler
+  const handleConnectExtension = () => {
+    if (!token || !user) return
+    setConnecting(true)
+    setConnectionSuccessMsg(null)
+
+    // Broadcast secure session to extension
+    window.postMessage(
+      {
+        type: 'TALVYN_CONNECT_EXTENSION',
+        token,
+        user,
+      },
+      '*'
+    )
+
+    // Fallback if extension did not acknowledge
+    setTimeout(() => {
+      setConnecting(false)
+      window.postMessage({ type: 'TALVYN_PING_EXTENSION' }, '*')
+    }, 1500)
   }
 
   const displayName =
@@ -51,141 +119,184 @@ export default function Extensions() {
     <div className="p-8 max-w-5xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center border border-primary-100/80 shadow-2xs">
-              <Puzzle className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Chrome Extension</h1>
-              <p className="text-slate-500 text-sm">
-                Supercharge your job search with 1-click job saving, smart autofill, and automatic tracking.
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-primary-600 text-white flex items-center justify-center shadow-md shadow-primary-600/20 shrink-0">
+            <Puzzle className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Talvyn Chrome Extension</h1>
+            <p className="text-slate-500 text-sm">
+              Save jobs with 1 click, autofill application forms, and track submissions automatically.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            icon={copiedCmd ? <Check className="text-emerald-600" /> : <Terminal />}
-            onClick={handleCopyCmd}
-            title="Copy package command"
-          >
-            {copiedCmd ? 'Command Copied!' : 'Package ZIP'}
-          </Button>
+        <div className="flex items-center gap-3 shrink-0">
           <a
-            href="chrome://extensions"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-colors shadow-sm"
+            href={downloadUrl}
+            download="talvyn-chrome-extension.zip"
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-all shadow-sm shadow-primary-600/20 active:scale-98"
           >
-            <span>Open Chrome Extensions</span>
-            <ExternalLink className="w-3.5 h-3.5" />
+            <Download className="w-4 h-4" />
+            <span>Download Extension</span>
           </a>
         </div>
       </div>
 
-      {/* Account Connection Status Banner */}
+      {/* Success Notification */}
+      {connectionSuccessMsg && (
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium animate-in fade-in duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{connectionSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* Extension Connection Status Card */}
       <Card padding="lg" className="bg-gradient-to-br from-white to-slate-50/50 border-slate-200">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Account Integration</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                Talvyn API Ready
-              </span>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Connection Status</span>
+
+              {status === 'checking' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Checking Extension...
+                </span>
+              )}
+
+              {status === 'connected' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  Connected
+                </span>
+              )}
+
+              {status === 'installed_not_connected' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  Extension Installed · Not Connected
+                </span>
+              )}
+
+              {status === 'not_detected' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  Extension Not Detected
+                </span>
+              )}
             </div>
+
             <h2 className="text-lg font-bold text-slate-900">
-              Connected Account: <span className="text-primary-600">{user?.email}</span>
+              {status === 'connected' ? (
+                <>
+                  Active for <span className="text-primary-600">{connectedEmail || user?.email}</span>
+                </>
+              ) : status === 'installed_not_connected' ? (
+                'Extension is ready to connect'
+              ) : (
+                'Get started with the Talvyn Chrome Extension'
+              )}
             </h2>
-            <p className="text-xs text-slate-500 max-w-xl">
-              When signed in through the extension, jobs you save or apply to on LinkedIn, Indeed, Ashby, and Lever will automatically sync with your Talvyn dashboard under{' '}
-              <strong>{displayName}</strong>.
+
+            <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
+              {status === 'connected'
+                ? `The extension is connected to your Talvyn account. Saved jobs and submitted applications from LinkedIn, Indeed, Ashby, and Lever will automatically sync under ${displayName}.`
+                : status === 'installed_not_connected'
+                ? 'The extension is installed in your browser. Click Connect Extension below to pair it with your logged-in account in one click.'
+                : 'Follow the 7 simple steps below to add the extension to your Chrome browser, then connect your account.'}
             </p>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs min-w-[240px]">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sync Endpoints</div>
-            <div className="space-y-1 font-mono text-[11px] text-slate-600">
-              <div className="flex items-center justify-between">
-                <span>API Base:</span>
-                <span className="text-emerald-700 font-bold">http://localhost:3001</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Auth Provider:</span>
-                <span className="text-slate-800">{user?.authProvider || 'EMAIL'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Resumes Synced:</span>
-                <span className="text-primary-700 font-bold">Live Profile</span>
-              </div>
-            </div>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            {status === 'connected' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RefreshCw className={connecting ? 'animate-spin' : ''} />}
+                onClick={handleConnectExtension}
+                loading={connecting}
+              >
+                Reconnect
+              </Button>
+            ) : status === 'installed_not_connected' ? (
+              <Button
+                size="md"
+                icon={<Sparkles />}
+                onClick={handleConnectExtension}
+                loading={connecting}
+              >
+                Connect Extension
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RefreshCw className="w-3.5 h-3.5" />}
+                onClick={checkExtensionStatus}
+              >
+                Check Again
+              </Button>
+            )}
           </div>
         </div>
       </Card>
 
-      {/* How it Works / Feature Highlights */}
+      {/* Feature Highlights */}
       <div>
-        <h2 className="text-base font-bold text-slate-900 mb-4">How Talvyn for Chrome Works</h2>
+        <h2 className="text-base font-bold text-slate-900 mb-4">What the Extension Does</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card padding="md" className="space-y-2">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
-              1
+              <Zap className="w-4 h-4" />
             </div>
             <h3 className="font-semibold text-sm text-slate-900">Smart Job Scanner</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Detects listings across career portals, matches requirements against your skills and roles, and computes instant relevance scores.
+              Detects listings across career portals, matches requirements against your skills, and computes instant relevance scores.
             </p>
           </Card>
 
           <Card padding="md" className="space-y-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">
-              2
+              <Sparkles className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-sm text-slate-900">Universal Application Autofill</h3>
+            <h3 className="font-semibold text-sm text-slate-900">Universal Autofill</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Fills complex application fields in one click without overwriting custom input. Flags high-risk questions for user review.
+              Fills complex application forms in one click using your profile data without overwriting your custom inputs.
             </p>
           </Card>
 
           <Card padding="md" className="space-y-2">
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm">
-              3
+              <Layers className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-sm text-slate-900">Automatic Tracking & Timeline</h3>
+            <h3 className="font-semibold text-sm text-slate-900">Automatic Tracking</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Detects successful application submissions and updates your status from In Progress to Applied with timeline milestones.
+              Detects completed job submissions and automatically records applied status and milestones on your timeline.
             </p>
           </Card>
         </div>
       </div>
 
-      {/* Step-by-Step Installation Instructions (Developer Mode / Unpacked) */}
+      {/* 7-Step Simple User Installation Guide */}
       <Card padding="lg" className="space-y-6">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Install Talvyn for Chrome (Developer Mode)</h2>
+          <h2 className="text-lg font-bold text-slate-900">How to Install (7 Simple Steps)</h2>
           <p className="text-slate-500 text-xs mt-0.5">
-            Follow these simple steps to load the extension into your Chrome browser.
+            Follow these quick instructions to install and start using the extension in Google Chrome.
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Step 1 */}
           <div className="flex items-start gap-4">
             <div className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
               1
             </div>
             <div className="space-y-1 flex-1">
-              <h3 className="text-sm font-semibold text-slate-900">Build or Package the Extension</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Download the extension ZIP</h3>
               <p className="text-xs text-slate-500">
-                Run the build command in your terminal to generate the latest production bundle:
+                Click the <strong>Download Extension</strong> button above to download <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono text-[11px]">talvyn-chrome-extension.zip</code>.
               </p>
-              <div className="flex items-center gap-2 bg-slate-900 text-slate-100 p-2.5 rounded-lg text-xs font-mono max-w-lg">
-                <span className="text-slate-400 select-none">$</span>
-                <span className="flex-1">npm run build:extension</span>
-              </div>
             </div>
           </div>
 
@@ -195,13 +306,10 @@ export default function Extensions() {
               2
             </div>
             <div className="space-y-1 flex-1">
-              <h3 className="text-sm font-semibold text-slate-900">Open Chrome Extension Manager</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Extract the ZIP</h3>
               <p className="text-xs text-slate-500">
-                In your Google Chrome address bar, navigate to:
+                Right-click the downloaded ZIP file and extract or unzip it into a folder on your computer.
               </p>
-              <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-800 font-semibold border border-slate-200">
-                chrome://extensions
-              </div>
             </div>
           </div>
 
@@ -211,9 +319,9 @@ export default function Extensions() {
               3
             </div>
             <div className="space-y-1 flex-1">
-              <h3 className="text-sm font-semibold text-slate-900">Enable Developer Mode</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Open chrome://extensions</h3>
               <p className="text-xs text-slate-500">
-                Turn on the <strong>Developer mode</strong> toggle located in the top-right corner of the Extensions page.
+                In your Google Chrome address bar, type <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono text-[11px]">chrome://extensions</code> and press Enter.
               </p>
             </div>
           </div>
@@ -223,22 +331,11 @@ export default function Extensions() {
             <div className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
               4
             </div>
-            <div className="space-y-1.5 flex-1">
-              <h3 className="text-sm font-semibold text-slate-900">Click &quot;Load unpacked&quot; and Select the Folder</h3>
+            <div className="space-y-1 flex-1">
+              <h3 className="text-sm font-semibold text-slate-900">Turn on Developer mode</h3>
               <p className="text-xs text-slate-500">
-                Click the <strong>Load unpacked</strong> button in the top-left toolbar, and select this folder from your project:
+                Toggle on the <strong>Developer mode</strong> switch in the top-right corner of the Extensions page.
               </p>
-              <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 p-2.5 rounded-xl max-w-xl">
-                <span className="font-mono text-xs text-slate-800 truncate select-all">{distPath}</span>
-                <button
-                  type="button"
-                  onClick={handleCopyFolder}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs"
-                >
-                  {copiedFolder ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedFolder ? 'Copied' : 'Copy Path'}</span>
-                </button>
-              </div>
             </div>
           </div>
 
@@ -248,44 +345,38 @@ export default function Extensions() {
               5
             </div>
             <div className="space-y-1 flex-1">
-              <h3 className="text-sm font-semibold text-slate-900">Sign in to Connect</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Click &quot;Load unpacked&quot;</h3>
               <p className="text-xs text-slate-500">
-                Pin the Talvyn icon to your Chrome toolbar, click it, and sign in with your account credentials. You are ready to start applying!
+                Click the <strong>Load unpacked</strong> button in the top-left toolbar.
               </p>
             </div>
           </div>
-        </div>
-      </Card>
 
-      {/* Production Packaging & Distribution */}
-      <Card padding="lg" className="border-dashed border-slate-300 bg-slate-50/50 space-y-4">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Download className="w-4 h-4 text-primary-600" />
-              Production Distribution & Web Store Package
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Generate a clean, optimized ZIP archive for publishing to the Chrome Web Store or sharing with your team.
-            </p>
+          {/* Step 6 */}
+          <div className="flex items-start gap-4">
+            <div className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+              6
+            </div>
+            <div className="space-y-1 flex-1">
+              <h3 className="text-sm font-semibold text-slate-900">Select the extracted extension folder</h3>
+              <p className="text-xs text-slate-500">
+                Browse to and select the folder you extracted in Step 2.
+              </p>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={copiedCmd ? <Check /> : <Terminal />}
-            onClick={handleCopyCmd}
-          >
-            {copiedCmd ? 'Copied to Clipboard' : 'Copy npm script'}
-          </Button>
-        </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2 text-xs text-slate-600">
-          <div className="font-mono text-slate-900 font-semibold">
-            Artifact generated at: <span className="text-primary-600 font-normal">extension/dist-package/talvyn-chrome-extension.zip</span>
+          {/* Step 7 */}
+          <div className="flex items-start gap-4">
+            <div className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+              7
+            </div>
+            <div className="space-y-1 flex-1">
+              <h3 className="text-sm font-semibold text-slate-900">Open Talvyn and connect the extension</h3>
+              <p className="text-xs text-slate-500">
+                Return to this Talvyn page and click <strong>Connect Extension</strong>. Your account will pair instantly!
+              </p>
+            </div>
           </div>
-          <p className="text-slate-500 text-[11px]">
-            The packaging script strictly bundles only production manifests, icons, and transpiled scripts. All backend secrets, environment variables, and source files are excluded automatically.
-          </p>
         </div>
       </Card>
     </div>
