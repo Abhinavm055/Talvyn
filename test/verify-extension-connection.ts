@@ -168,10 +168,10 @@ async function runTests() {
   // ─── 7. Package ZIP Artifact Integrity ─────────────────────────────────────
   console.log('\n--- 7. Testing Extension Production Package Artifact ---')
 
-  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn-v1.zip')
+  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'Talvyn v1.zip')
   const distManifestPath = path.resolve(process.cwd(), 'extension', 'dist', 'manifest.json')
 
-  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn-v1.zip')
+  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'Talvyn v1.zip')
 
   assert(
     fs.existsSync(distManifestPath),
@@ -180,7 +180,7 @@ async function runTests() {
 
   assert(
     fs.existsSync(packageZipPath),
-    'Distribution package talvyn-v1.zip exists in extension/dist-package'
+    'Distribution package Talvyn v1.zip exists in extension/dist-package'
   )
 
   assert(

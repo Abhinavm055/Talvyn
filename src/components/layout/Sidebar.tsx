@@ -8,14 +8,12 @@ import {
   Puzzle,
   LogOut,
   ChevronRight,
-  ChevronDown,
   Monitor,
   Sun,
   Moon,
-  Check,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
-import { useThemeStore, ThemeMode } from '../../store/themeStore'
+import { useThemeStore } from '../../store/themeStore'
 import { cn } from '../../lib/utils'
 
 const navItems = [
@@ -44,13 +42,7 @@ export function Sidebar() {
     user?.email?.split('@')[0] ||
     'User'
 
-  const avatarUrl = user?.profile?.avatarUrl
-
-  const themeOptions: { mode: ThemeMode; label: string; subtext: string; icon: typeof Monitor }[] = [
-    { mode: 'system', label: 'Default', subtext: 'Follow system', icon: Monitor },
-    { mode: 'light', label: 'Light', subtext: 'Always light', icon: Sun },
-    { mode: 'dark', label: 'Dark', subtext: 'Always dark', icon: Moon },
-  ]
+  const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl
 
   return (
     <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-colors duration-150 select-none">
@@ -95,50 +87,56 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Theme Section */}
-      <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-        <span className="px-1 text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">
+      {/* Theme Section - Sleek Segmented Control */}
+      <div className="px-3 py-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+        <span className="px-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
           Theme
         </span>
-        <div className="space-y-1">
-          {themeOptions.map((opt) => {
-            const Icon = opt.icon
-            const isSelected = theme === opt.mode
-            return (
-              <button
-                key={opt.mode}
-                type="button"
-                onClick={() => setTheme(opt.mode)}
-                className={cn(
-                  'w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all border text-xs',
-                  isSelected
-                    ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/40 text-primary-900 dark:text-primary-100 shadow-2xs'
-                    : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
-                )}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Icon
-                    className={cn(
-                      'w-4 h-4 shrink-0',
-                      isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500'
-                    )}
-                  />
-                  <div className="min-w-0">
-                    <div className="font-semibold leading-none">{opt.label}</div>
-                    <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-none">
-                      {opt.subtext}
-                    </div>
-                  </div>
-                </div>
+        <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+          <button
+            type="button"
+            onClick={() => setTheme('light')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150',
+              theme === 'light'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            )}
+            title="Light theme"
+          >
+            <Sun className="w-3.5 h-3.5" />
+            <span>Light</span>
+          </button>
 
-                {isSelected && (
-                  <div className="w-4.5 h-4.5 rounded-full bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <Check className="w-2.5 h-2.5 stroke-[3]" />
-                  </div>
-                )}
-              </button>
-            )
-          })}
+          <button
+            type="button"
+            onClick={() => setTheme('dark')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150',
+              theme === 'dark'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            )}
+            title="Dark theme"
+          >
+            <Moon className="w-3.5 h-3.5" />
+            <span>Dark</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme('system')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150',
+              theme === 'system'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            )}
+            title="System theme"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span>System</span>
+          </button>
         </div>
       </div>
 
@@ -149,7 +147,7 @@ export function Sidebar() {
             <img
               src={avatarUrl}
               alt={displayName}
-              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-slate-700"
+              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-slate-700 shadow-2xs"
             />
           ) : (
             <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0 ring-1 ring-primary-200 dark:ring-primary-900">
@@ -164,7 +162,6 @@ export function Sidebar() {
             </p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{user?.email}</p>
           </div>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         </div>
 
         <button

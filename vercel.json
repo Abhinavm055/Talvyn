@@ -6,17 +6,23 @@
       "dest": "/downloads/$1",
       "headers": {
         "Content-Type": "application/zip",
-        "Content-Disposition": "attachment; filename=\"talvyn-v1.zip\"",
+        "Content-Disposition": "attachment; filename=\"Talvyn v1.zip\"",
         "Cache-Control": "public, max-age=0, must-revalidate"
       }
     },
     {
       "src": "/assets/(.*)",
-      "dest": "/assets/$1"
+      "dest": "/assets/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
     },
     {
       "src": "/icons/(.*)",
-      "dest": "/icons/$1"
+      "dest": "/icons/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=86400"
+      }
     },
     {
       "src": "/favicon.svg",
@@ -28,7 +34,10 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/index.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
     }
   ]
 }

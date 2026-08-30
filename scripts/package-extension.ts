@@ -19,9 +19,9 @@ import zlib from 'zlib'
 const ROOT_DIR = path.resolve(__dirname, '..')
 const DIST_DIR = path.join(ROOT_DIR, 'extension', 'dist')
 const OUT_DIR = path.join(ROOT_DIR, 'extension', 'dist-package')
-const OUT_ZIP = path.join(OUT_DIR, 'talvyn-v1.zip')
+const OUT_ZIP = path.join(OUT_DIR, 'Talvyn v1.zip')
 const PUBLIC_DOWNLOADS_DIR = path.join(ROOT_DIR, 'public', 'downloads')
-const PUBLIC_ZIP = path.join(PUBLIC_DOWNLOADS_DIR, 'talvyn-v1.zip')
+const PUBLIC_ZIP = path.join(PUBLIC_DOWNLOADS_DIR, 'Talvyn v1.zip')
 
 interface ZipEntry {
   relativePath: string
@@ -230,7 +230,7 @@ function packageExtension() {
       fs.copyFileSync(OUT_ZIP, PUBLIC_ZIP)
 
       const stats = fs.statSync(OUT_ZIP)
-      console.log(`\n✓ Successfully created production ZIP: talvyn-v1.zip`)
+      console.log(`\n✓ Successfully created production ZIP: Talvyn v1.zip`)
       console.log(`  File size: ${(stats.size / 1024).toFixed(1)} KB`)
       console.log(`  Artifact 1: ${OUT_ZIP}`)
       console.log(`  Artifact 2: ${PUBLIC_ZIP}\n`)
