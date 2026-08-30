@@ -40,11 +40,7 @@ function renderLogin(isSessionExpired = false) {
     <div style="padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
       <!-- Header -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <div style="
-          width:34px;height:34px;background:#4f46e5;border-radius:10px;
-          display:flex;align-items:center;justify-content:center;
-          font-size:16px;font-weight:700;color:white;flex-shrink:0;box-shadow:0 2px 4px rgba(79,70,229,0.25);
-        ">T</div>
+        <img src="/icons/icon32.svg" alt="Talvyn" style="width:34px;height:34px;border-radius:10px;box-shadow:0 2px 4px rgba(79,70,229,0.25);flex-shrink:0;" />
         <div>
           <div style="font-weight:700;font-size:15px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Extension</div>
           <div style="font-size:11px;color:#64748b;">From Potential to Offer.</div>
@@ -184,12 +180,8 @@ async function renderDashboard(user: AuthUser) {
         padding:14px 16px;background:#4f46e5;display:flex;
         align-items:center;justify-content:space-between;
       ">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="
-            width:28px;height:28px;background:rgba(255,255,255,0.2);border-radius:8px;
-            display:flex;align-items:center;justify-content:center;
-            font-size:14px;font-weight:700;color:white;flex-shrink:0;
-          ">T</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <img src="/icons/icon32.svg" alt="Talvyn" style="width:28px;height:28px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.2);flex-shrink:0;" />
           <div>
             <div style="font-weight:700;font-size:13px;color:white;letter-spacing:-0.1px;">Talvyn</div>
             <div style="font-size:11px;color:rgba(255,255,255,0.85);">${escapeHtml(displayName)}</div>

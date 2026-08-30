@@ -12,25 +12,12 @@
       <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1E1B4B" flood-opacity="0.25"/>
     </filter>
   </defs>
-
-  <!-- Background Squircle -->
   <rect width="128" height="128" rx="30" fill="url(#talvynBg)"/>
-  
-  <!-- Subtle Top Highlight Border -->
   <rect x="1" y="1" width="126" height="126" rx="29" stroke="white" stroke-opacity="0.18" stroke-width="1.5"/>
-
-  <!-- Modern Talvyn 'T' Career Growth Monogram -->
   <g filter="url(#subtleGlow)" fill="url(#talvynAccent)">
-    <!-- Top Left Crossbar Wing -->
     <path d="M 28 38 C 28 32.477 32.477 28 38 28 L 56 28 L 50 46 L 28 46 Z"/>
-    
-    <!-- Top Right Crossbar Wing -->
     <path d="M 72 28 L 90 28 C 95.523 28 100 32.477 100 38 L 100 46 L 78 46 Z"/>
-    
-    <!-- Central Rising Upward Stem & Arrowhead Peak -->
     <path d="M 52 42 L 64 22 L 76 42 L 72 96 C 72 100.418 68.418 104 64 104 C 59.582 104 56 100.418 56 96 Z"/>
-    
-    <!-- Spark of Opportunity Accent -->
     <circle cx="64" cy="58" r="3.5" fill="#6366F1"/>
   </g>
 </svg>
