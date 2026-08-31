@@ -249,8 +249,28 @@ async function runTests() {
     'Security verified: No JWT tokens or credentials printed to console logs'
   )
 
-  // ─── 8. Package ZIP Artifact Integrity & Manifest Validation ─────────────
-  console.log('\n--- 8. Testing Extension Production Package Artifact & Manifest ---')
+  // ─── 8. UI Consistency & Anti-Conflict Validations ───────────────────────
+  console.log('\n--- 8. Testing Popup UI Consistency & Conflict Prevention ---')
+
+  assert(
+    !popupCode.includes('Not logged in yet'),
+    'Popup UI does NOT contain conflicting "Not logged in yet" text'
+  )
+
+  assert(
+    !popupCode.includes('OR SIGN IN DIRECTLY') && !popupCode.includes('Sign In with Password'),
+    'Popup UI does NOT contain embedded password login forms in connected/disconnected views'
+  )
+
+  const indexHtmlPath = path.resolve(process.cwd(), 'index.html')
+  const indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8')
+  assert(
+    indexHtmlContent.includes('favicon.svg') || indexHtmlContent.includes('logotalvyn.png'),
+    'Website index.html references the official Talvyn favicon / logo asset'
+  )
+
+  // ─── 9. Package ZIP Artifact Integrity & Manifest Validation ─────────────
+  console.log('\n--- 9. Testing Extension Production Package Artifact & Manifest ---')
 
   const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'Talvyn v1.zip')
   const packageZipLowerPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
@@ -317,5 +337,6 @@ runTests().catch((err) => {
   console.error('Extension connection test runner failed:', err)
   process.exit(1)
 })
+
 
 

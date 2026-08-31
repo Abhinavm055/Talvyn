@@ -119,7 +119,7 @@ function renderLoading() {
         onerror="this.onerror=null;this.src='${fallbackUrl}';"
         style="width:48px;height:48px;border-radius:12px;box-shadow:0 4px 12px rgba(99,102,241,0.25);margin-bottom:16px;object-fit:contain;"
       />
-      <div style="font-weight:700;font-size:15px;color:#0f172a;margin-bottom:4px;">Talvyn Browser Extension</div>
+      <div style="font-weight:700;font-size:15px;color:#0f172a;margin-bottom:4px;">Talvyn Extension</div>
       <div style="font-size:12px;color:#64748b;margin-bottom:18px;">Checking connection status...</div>
       <div style="width:24px;height:24px;border:2.5px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
       <style>
@@ -148,7 +148,7 @@ function renderDisconnected() {
               style="width:34px;height:34px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);flex-shrink:0;object-fit:contain;"
             />
             <div>
-              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Browser Extension</div>
+              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Extension</div>
               <div style="font-size:11px;color:#64748b;">From Potential to Offer.</div>
             </div>
           </div>
@@ -229,7 +229,7 @@ function renderExpired() {
               style="width:34px;height:34px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);flex-shrink:0;object-fit:contain;"
             />
             <div>
-              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Browser Extension</div>
+              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Extension</div>
               <div style="font-size:11px;color:#64748b;">From Potential to Offer.</div>
             </div>
           </div>
@@ -313,8 +313,12 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
               onerror="this.onerror=null;this.src='${fallbackUrl}';"
               style="width:30px;height:30px;border-radius:8px;box-shadow:0 2px 4px rgba(99,102,241,0.2);flex-shrink:0;object-fit:contain;"
             />
-            <div style="font-weight:700;font-size:13px;color:#0f172a;">Talvyn Browser Extension</div>
+            <div>
+              <div style="font-weight:700;font-size:13px;color:#0f172a;">Talvyn Extension</div>
+              <div style="font-size:10px;color:#64748b;">From Potential to Offer.</div>
+            </div>
           </div>
+
 
           <div style="
             display:inline-flex;align-items:center;gap:5px;
