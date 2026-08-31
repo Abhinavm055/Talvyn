@@ -95,16 +95,11 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
       const cropBoxSize = 220 // Displayed crop box dimension in px
       const scale = (img.naturalWidth / img.width) / zoom
 
-      // Center offset
-      const cx = img.width / 2 + pan.x
-      const cy = img.height / 2 + pan.y
-
       const sourceWidth = cropBoxSize * scale
       const sourceHeight = cropBoxSize * scale
       const sourceX = (img.naturalWidth / 2) - (sourceWidth / 2) - (pan.x * (img.naturalWidth / (img.width * zoom)))
       const sourceY = (img.naturalHeight / 2) - (sourceHeight / 2) - (pan.y * (img.naturalHeight / (img.height * zoom)))
 
-      // Draw onto canvas
       ctx.drawImage(
         img,
         Math.max(0, sourceX),
@@ -145,14 +140,12 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Crop Profile Photo">
       <div className="space-y-5">
-        {/* Error Alert */}
         {error && (
           <div className="p-3 text-xs bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded-xl border border-red-200 dark:border-red-900">
             {error}
           </div>
         )}
 
-        {/* Cropper Viewport */}
         <div
           ref={containerRef}
           onMouseDown={handleMouseDown}
@@ -167,6 +160,7 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
                 ref={imageRef}
                 src={imageSrc}
                 alt="Crop Target"
+                crossOrigin="anonymous"
                 draggable={false}
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -174,10 +168,10 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
                   maxHeight: '100%',
                   objectFit: 'contain',
                 }}
+                onError={() => setError('Unable to load this profile photo for cropping. Please choose the photo again.')}
                 className="transition-transform duration-75 pointer-events-none"
               />
 
-              {/* Dark Overlay with 1:1 Circular Cutout */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                 <div className="w-[220px] h-[220px] rounded-full border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]" />
               </div>
@@ -212,7 +206,6 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
           className="hidden"
         />
 
-        {/* Controls */}
         {imageSrc && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -242,7 +235,6 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
