@@ -33,6 +33,8 @@ import {
   shutdownExtensionRuntime,
 } from '../utils/extensionContext'
 
+import { normalizeJob } from './jobNormalizer'
+
 let currentSingleJob: ExtractedJob | null = null
 let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
@@ -227,20 +229,24 @@ async function analyzeAndRenderPage(): Promise<void> {
         onSaveJob: async (analyzed: AnalyzedJob) => {
           const token = await getToken()
           if (!token) {
-            alert('Please sign in to Talvyn via the extension popup to save jobs.')
+            alert('Please connect your Talvyn account via the extension popup to save jobs.')
             throw new Error('Not authenticated')
           }
-          await jobsService.save({
-            title: analyzed.job.title,
-            company: analyzed.job.company,
-            jobUrl: analyzed.job.jobUrl,
-            sourceWebsite: analyzed.job.sourceWebsite,
-            location: analyzed.job.location,
-            salary: analyzed.job.salary,
-            description: analyzed.job.description,
+          const normResult = normalizeJob(analyzed.job, profile)
+          const normalized = normResult.normalized
+          console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
+          const saved = await jobsService.save({
+            title: normalized.title,
+            company: normalized.company,
+            jobUrl: normalized.jobUrl,
+            sourceWebsite: normalized.sourceWebsite,
+            location: normalized.location || undefined,
+            salary: normalized.salary || undefined,
+            description: normalized.description || undefined,
+            jobType: normalized.jobType,
             status: 'SAVED',
           })
-          console.log('[Talvyn] Saved job from discovery panel:', analyzed.job.title)
+          console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
         },
         onDismiss: () => {
           isDiscoveryPanelVisible = false
@@ -280,10 +286,14 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
   const token = await getToken()
   const profile = await getUserPreferences()
 
-  // 1. Deterministic Opportunity Classification (Phase 2E)
+  // 1. Normalize job and evaluate match score with profile
+  const normResult = normalizeJob(job, profile)
+  console.log(`[Talvyn] JOB_NORMALIZED: ${normResult.normalized.title} (Match: ${normResult.matchScore}%, Completeness: ${normResult.completeness}%)`)
+
+  // 2. Deterministic Opportunity Classification (Phase 2E)
   const opp = opportunityClassifier.classify(job.title, job.description, job.jobType)
 
-  // 2. Fetch resumes for Application Readiness calculation
+  // 3. Fetch resumes for Application Readiness calculation
   let resumes: Resume[] = []
   if (token) {
     try {
@@ -295,22 +305,27 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
   const readiness = readinessScorer.calculateReadiness(profile, resumes)
 
   if (!token) {
-    injectPanel(job, () => {}, () => { isSinglePanelVisible = false }, {
+    injectPanel(normResult.normalized, () => {}, () => { isSinglePanelVisible = false }, {
       opportunityType: opp.type,
       readiness,
       deadline: opp.deadline,
+      normalization: normResult,
+      isConnected: false,
     })
-    updatePanelState({ type: 'logged-out', opportunityType: opp.type })
+    updatePanelState({ type: 'logged-out', opportunityType: opp.type, job: normResult.normalized, normalization: normResult })
     return
   }
 
   try {
     const check = await jobsService.checkDuplicate(job.jobUrl)
     if (check.exists && check.job) {
-      injectPanel(job, handleSingleSave, () => { isSinglePanelVisible = false }, {
+      console.log(`[Talvyn] JOB_ALREADY_SAVED: ${check.job.id} (${check.job.title})`)
+      injectPanel(normResult.normalized, handleSingleSave, () => { isSinglePanelVisible = false }, {
         opportunityType: opp.type,
         readiness,
         deadline: opp.deadline,
+        normalization: normResult,
+        isConnected: true,
       })
 
       const status = check.job.status
@@ -322,6 +337,8 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
           opportunityType: opp.type,
           readiness,
           deadline: opp.deadline,
+          job: normResult.normalized,
+          normalization: normResult,
         })
       } else if (status === 'IN_PROGRESS') {
         updatePanelState({
@@ -331,6 +348,8 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
           opportunityType: opp.type,
           readiness,
           deadline: opp.deadline,
+          job: normResult.normalized,
+          normalization: normResult,
         })
       } else {
         updatePanelState({
@@ -340,6 +359,8 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
           opportunityType: opp.type,
           readiness,
           deadline: opp.deadline,
+          job: normResult.normalized,
+          normalization: normResult,
         })
       }
       return
@@ -348,39 +369,80 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     /* proceed */
   }
 
-  injectPanel(job, handleSingleSave, () => { isSinglePanelVisible = false }, {
+  injectPanel(normResult.normalized, handleSingleSave, () => { isSinglePanelVisible = false }, {
     opportunityType: opp.type,
     readiness,
     deadline: opp.deadline,
+    normalization: normResult,
+    isConnected: true,
   })
 }
 
 async function handleSingleSave(): Promise<void> {
   if (!currentSingleJob) return
   updatePanelState({ type: 'loading' })
-  console.log(`[Talvyn] JOB_SAVE_STARTED: ${currentSingleJob.title}`)
 
-  const opp = opportunityClassifier.classify(currentSingleJob.title, currentSingleJob.description, currentSingleJob.jobType)
+  const profile = await getUserPreferences()
+  const normResult = normalizeJob(currentSingleJob, profile)
+  const normalized = normResult.normalized
+
+  console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
+
+  const opp = opportunityClassifier.classify(normalized.title, normalized.description || '', normalized.jobType)
 
   try {
     const saved = await jobsService.save({
-      title: currentSingleJob.title,
-      company: currentSingleJob.company,
-      jobUrl: currentSingleJob.jobUrl,
-      sourceWebsite: currentSingleJob.sourceWebsite,
-      location: currentSingleJob.location,
-      salary: currentSingleJob.salary,
-      description: currentSingleJob.description,
+      title: normalized.title,
+      company: normalized.company,
+      jobUrl: normalized.jobUrl,
+      sourceWebsite: normalized.sourceWebsite,
+      location: normalized.location || undefined,
+      salary: normalized.salary || undefined,
+      description: normalized.description || undefined,
       jobType: opp.type,
       status: 'SAVED',
     })
-    updatePanelState({ type: 'saved', opportunityType: opp.type })
-    console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Type: ${opp.type})`)
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : 'Failed to save. Please try again.'
-    console.error(`[Talvyn:TALVYN_BACKEND] JOB_SAVE_FAILED: ${message}`)
-    updatePanelState({ type: 'error', message })
+    updatePanelState({
+      type: 'saved',
+      opportunityType: opp.type,
+      job: normalized,
+      normalization: normResult,
+    })
+    console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
+  } catch (err: any) {
+    const status = err?.status
+    let userMessage = 'Failed to save. Please try again.'
+
+    if (status === 401) {
+      userMessage = 'Your Talvyn session expired. Please reconnect your account.'
+    } else if (status === 403) {
+      userMessage = "You don't have permission to save this job."
+    } else if (status === 409 || err?.message?.includes('already saved')) {
+      console.log('[Talvyn] JOB_ALREADY_SAVED:', normalized.title)
+      updatePanelState({
+        type: 'duplicate',
+        existingStatus: 'SAVED',
+        job: normalized,
+        normalization: normResult,
+      })
+      return
+    } else if (status === 422) {
+      userMessage = err?.message || 'Missing required job information.'
+    } else if (status === 500) {
+      userMessage = "Talvyn couldn't save this job. Try again."
+    } else if (status === 0 || !status) {
+      userMessage = 'Connection problem. Your job will retry when online.'
+    } else if (err?.message) {
+      userMessage = err.message
+    }
+
+    console.error(`[Talvyn:TALVYN_BACKEND] JOB_SAVE_FAILED: (Status ${status || 0}) ${userMessage}`)
+    updatePanelState({
+      type: 'error',
+      message: userMessage,
+      job: normalized,
+      normalization: normResult,
+    })
   }
 }
 

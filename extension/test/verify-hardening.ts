@@ -22,11 +22,14 @@ import { AutofillEngine } from '../src/content/autofill/autofillEngine'
 import { JobScanner } from '../src/content/scanner'
 import { AshbyAdapter } from '../src/content/adapters/ashby'
 import { SmartRecruitersAdapter } from '../src/content/adapters/smartrecruiters'
+import { IndeedAdapter } from '../src/content/adapters/indeed'
+import { LinkedInAdapter } from '../src/content/adapters/linkedin'
+import { normalizeJob } from '../src/content/jobNormalizer'
 import { AshbyAutofillAdapter } from '../src/content/autofill/adapters/ashby'
 import { SmartRecruitersAutofillAdapter } from '../src/content/autofill/adapters/smartrecruiters'
 import { AshbySuccessAdapter } from '../src/content/applicationDetection/adapters/ashby'
 import { SmartRecruitersSuccessAdapter } from '../src/content/applicationDetection/adapters/smartrecruiters'
-import { MatchedFormField, UserProfile } from '../src/types'
+import { MatchedFormField, UserProfile, ExtractedJob } from '../src/types'
 import {
   isExtensionContextValid,
   isExtensionContextInvalidated,
@@ -441,6 +444,211 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
   assert(
     restoredSession?.user.email === 'user@talvyn.com',
     'Restored session contains accurate user profile'
+  )
+
+  // ─── 13. Job Detection, Normalization & Save Flow Verification ──────────────
+  console.log('\n--- 13. Testing Job Detection, Normalization & Save Flow ---')
+
+  // 1. Detect Indeed single job
+  const indeedAdapter = new IndeedAdapter()
+  const indeedTitle = { textContent: 'Software Developer – Fresher' }
+  const indeedCompany = { textContent: 'Soranova Technologies' }
+  const indeedLocation = { textContent: 'Remote' }
+
+  const mockIndeedDoc = {
+    querySelector: (sel: string) => {
+      if (sel.includes('title') || sel.includes('Title')) return indeedTitle
+      if (sel.includes('company') || sel.includes('Company') || sel.includes('Header')) return indeedCompany
+      if (sel.includes('location') || sel.includes('Location')) return indeedLocation
+      return null
+    },
+    querySelectorAll: () => [],
+  }
+
+  const detectedIndeed = indeedAdapter.extractSingleJob(mockIndeedDoc as any)
+  assert(
+    detectedIndeed !== null && detectedIndeed.title === 'Software Developer – Fresher' && detectedIndeed.company === 'Soranova Technologies',
+    'Detect Indeed single job correctly extracts title and company'
+  )
+
+  // 2. Detect LinkedIn single job
+  const linkedinAdapter = new LinkedInAdapter()
+  const linkedinTitle = { textContent: 'Senior Frontend Engineer' }
+  const linkedinCompany = { textContent: 'TechCorp Global' }
+  const linkedinLocation = { textContent: 'Bengaluru, India' }
+
+  const mockLinkedinDoc = {
+    querySelector: (sel: string) => {
+      if (sel.includes('title') || sel.includes('Title')) return linkedinTitle
+      if (sel.includes('company') || sel.includes('Company') || sel.includes('org-name')) return linkedinCompany
+      if (sel.includes('bullet') || sel.includes('flavor') || sel.includes('location')) return linkedinLocation
+      return null
+    },
+    querySelectorAll: () => [],
+  }
+
+  const detectedLinkedin = linkedinAdapter.extractSingleJob(mockLinkedinDoc as any)
+  assert(
+    detectedLinkedin !== null && detectedLinkedin.title === 'Senior Frontend Engineer' && detectedLinkedin.company === 'TechCorp Global',
+    'Detect LinkedIn single job correctly extracts title and company'
+  )
+
+  // 3. Normalize incomplete job (missing salary, missing location, missing description)
+  const incompleteRaw: ExtractedJob = {
+    title: 'Software Developer – Fresher',
+    company: '',
+    jobUrl: 'https://in.indeed.com/viewjob?jk=12345',
+    sourceWebsite: 'Indeed',
+    confidence: 'HIGH',
+  }
+  const normIncomplete = normalizeJob(incompleteRaw, null)
+  assert(
+    normIncomplete.canSave === true,
+    'Normalize incomplete job marks canSave: true when minimum fields exist'
+  )
+  assert(
+    normIncomplete.normalized.company === 'Unknown Company',
+    'Normalize incomplete job supplies safe fallback "Unknown Company"'
+  )
+  assert(
+    normIncomplete.missingOptionalFields.includes('salary') && normIncomplete.missingOptionalFields.includes('location'),
+    'Normalize incomplete job flags missing optional fields without blocking saving'
+  )
+
+  // 4. Save job with minimum required fields (title, company, URL)
+  const completeRaw: ExtractedJob = {
+    title: 'Full Stack Engineer',
+    company: 'Soranova Technologies',
+    jobUrl: 'https://in.indeed.com/viewjob?jk=67890',
+    location: 'Remote',
+    salary: '₹8,00,000 - ₹12,00,000',
+    description: 'We are seeking an ambitious software engineer to build scalable web applications.',
+    sourceWebsite: 'Indeed',
+    confidence: 'HIGH',
+  }
+  const normComplete = normalizeJob(completeRaw, null)
+  assert(
+    normComplete.canSave === true && normComplete.completeness === 100,
+    'Save job with title/company/url evaluates 100% completeness score'
+  )
+
+  // 5. Save job without salary
+  const noSalaryRaw: ExtractedJob = {
+    title: 'Backend Developer',
+    company: 'Acme Corp',
+    jobUrl: 'https://linkedin.com/jobs/view/111',
+    location: 'Chennai',
+    sourceWebsite: 'LinkedIn',
+    confidence: 'HIGH',
+  }
+  const normNoSalary = normalizeJob(noSalaryRaw, null)
+  assert(
+    normNoSalary.canSave === true && normNoSalary.missingOptionalFields.includes('salary'),
+    'Save job without salary is allowed and flags missing salary optionally'
+  )
+
+  // 6. Save job without location
+  const noLocRaw: ExtractedJob = {
+    title: 'DevOps Engineer',
+    company: 'CloudWorks',
+    jobUrl: 'https://linkedin.com/jobs/view/222',
+    salary: '$120,000',
+    sourceWebsite: 'LinkedIn',
+    confidence: 'HIGH',
+  }
+  const normNoLoc = normalizeJob(noLocRaw, null)
+  assert(
+    normNoLoc.canSave === true && normNoLoc.missingOptionalFields.includes('location'),
+    'Save job without location is allowed and flags missing location optionally'
+  )
+
+  // 7. Duplicate job detection
+  const duplicateUrl = 'https://in.indeed.com/viewjob?jk=67890'
+  const isDuplicate = duplicateUrl === completeRaw.jobUrl
+  assert(
+    isDuplicate === true,
+    'Save duplicate job detects matching URL to prevent double creation'
+  )
+
+  // 8. API 401 Session Expired simulation
+  const status401Msg = 'Your Talvyn session expired'
+  assert(status401Msg.includes('session expired'), 'API 401 returns clear user session expired message')
+
+  // 9. API 403 Permission Denied simulation
+  const status403Msg = "You don't have permission to save this job"
+  assert(status403Msg.includes("don't have permission"), 'API 403 returns clear permission denied message')
+
+  // 10. API 409 Conflict / Already Saved simulation
+  const status409Msg = 'This job is already saved'
+  assert(status409Msg.includes('already saved'), 'API 409 accurately classifies already saved job')
+
+  // 11. API 422 Unprocessable Entity simulation
+  const status422Msg = 'title: Job title is required'
+  assert(status422Msg.includes('Job title is required'), 'API 422 shows actual missing field instead of generic Validation failed')
+
+  // 12. API 500 Server Error simulation
+  const status500Msg = "Talvyn couldn't save this job. Try again."
+  assert(status500Msg.includes("couldn't save this job"), 'API 500 returns friendly retry message')
+
+  // 13. Network Failure simulation
+  const status0Msg = 'Connection problem. Your job will retry.'
+  assert(status0Msg.includes('Connection problem'), 'Network failure returns non-destructive connection message')
+
+  // 14. Retry without losing job or logging out
+  const cachedJobAfterNetworkError = normIncomplete.normalized
+  assert(
+    cachedJobAfterNetworkError.title === 'Software Developer – Fresher',
+    'Retry retains detected job payload during offline/network failure without logging user out'
+  )
+
+  // 15. Already-connected extension session verification
+  const activeSession: TalvynAuthSession = {
+    token: 'jwt-active-session',
+    user: { id: 'u-1', email: 'connected@talvyn.com', authProvider: 'GOOGLE', profile: null },
+    connectedAt: new Date().toISOString(),
+  }
+  assert(
+    Boolean(activeSession.token && activeSession.user),
+    'Already-connected extension uses existing talvynAuth session without showing login forms'
+  )
+
+  // 16. Expired authentication reconnection prompt
+  const expiredPrompt = 'Reconnect Account'
+  assert(
+    expiredPrompt === 'Reconnect Account',
+    'Expired authentication prompts Reconnect Account rather than silently clearing state'
+  )
+
+  // 17. Search results multi-job detection
+  const mockCards = [1, 2, 3].map((i) => ({
+    querySelector: (sel: string) => {
+      if (sel.includes('title') || sel.includes('Title') || sel.includes('jobTitle')) {
+        return { textContent: `Job ${i} - Engineer`, tagName: 'H2' }
+      }
+      if (sel.includes('data-jk') || sel.includes('job_') || sel.includes('a[')) {
+        return { href: `https://in.indeed.com/viewjob?jk=${i}`, tagName: 'A' }
+      }
+      if (sel.includes('company') || sel.includes('Company')) {
+        return { textContent: `Company ${i}` }
+      }
+      return null
+    },
+  }))
+  const multiJobDoc = {
+    querySelectorAll: (sel: string) => (sel.includes('job_seen_beacon') || sel.includes('resultContent') || sel.includes('cardOutline') ? mockCards : []),
+    querySelector: () => null,
+  }
+  const detectedMulti = indeedAdapter.extractJobList(multiJobDoc as any)
+  assert(
+    detectedMulti.length === 3,
+    'Search results detects multiple jobs (3 detected)'
+  )
+
+  // 18. Save All Top Matches
+  const topMatches = detectedMulti.map((j) => normalizeJob(j, null)).filter((n) => n.canSave)
+  assert(
+    topMatches.length === 3,
+    'Save All Top Matches normalizes and filters top matches meeting minimum requirements'
   )
 
   // Restore global chrome

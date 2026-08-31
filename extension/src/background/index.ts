@@ -128,11 +128,43 @@ async function handleInternalMessage(msg: any): Promise<any> {
           /* non-JSON error body */
         }
 
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
+          return {
+            success: false,
+            status: 401,
+            error: 'Your Talvyn session expired',
+            body: errorBody,
+          }
+        }
+        if (response.status === 403) {
+          return {
+            success: false,
+            status: 403,
+            error: "You don't have permission to save this job",
+            body: errorBody,
+          }
+        }
+        if (response.status === 409) {
+          return {
+            success: false,
+            status: 409,
+            error: 'This job is already saved',
+            body: errorBody,
+          }
+        }
+        if (response.status === 422) {
+          return {
+            success: false,
+            status: 422,
+            error: errorBody.error || 'Missing required job information',
+            body: errorBody,
+          }
+        }
+        if (response.status >= 500) {
           return {
             success: false,
             status: response.status,
-            error: 'Your Talvyn session has expired. Reconnect your account.',
+            error: "Talvyn couldn't save this job. Try again.",
             body: errorBody,
           }
         }
@@ -140,7 +172,7 @@ async function handleInternalMessage(msg: any): Promise<any> {
         return {
           success: false,
           status: response.status,
-          error: errorBody.error || "Couldn't save this job. Please try again.",
+          error: errorBody.error || "Talvyn couldn't save this job. Try again.",
           body: errorBody,
         }
       }
@@ -156,7 +188,7 @@ async function handleInternalMessage(msg: any): Promise<any> {
       return {
         success: false,
         status: 0,
-        error: "Couldn't communicate with Talvyn backend. Please check your connection and try again.",
+        error: 'Connection problem. Your job will retry.',
       }
     }
   }
@@ -169,7 +201,7 @@ async function handleInternalMessage(msg: any): Promise<any> {
         return {
           success: false,
           status: 401,
-          error: 'Your Talvyn session has expired. Reconnect your account.',
+          error: 'Your Talvyn session expired',
         }
       }
 
@@ -187,10 +219,16 @@ async function handleInternalMessage(msg: any): Promise<any> {
       if (!res.ok) {
         let errBody: any = {}
         try { errBody = await res.json() } catch {}
+        if (res.status === 401) return { success: false, status: 401, error: 'Your Talvyn session expired', body: errBody }
+        if (res.status === 403) return { success: false, status: 403, error: "You don't have permission to save this job", body: errBody }
+        if (res.status === 409) return { success: false, status: 409, error: 'This job is already saved', body: errBody, job: errBody.job }
+        if (res.status === 422) return { success: false, status: 422, error: errBody.error || 'Missing required job information', body: errBody }
+        if (res.status >= 500) return { success: false, status: res.status, error: "Talvyn couldn't save this job. Try again.", body: errBody }
         return {
           success: false,
           status: res.status,
-          error: errBody.error || "Couldn't save this job. Please try again.",
+          error: errBody.error || "Talvyn couldn't save this job. Try again.",
+          body: errBody,
         }
       }
 
@@ -389,5 +427,4 @@ chrome.runtime.onMessageExternal.addListener(
 )
 
 export {}
-
 

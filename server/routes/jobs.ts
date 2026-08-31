@@ -10,19 +10,19 @@ const router = Router()
 router.use(authenticate)
 
 const JOB_STATUSES = ['SAVED','INTERESTED','IN_PROGRESS','APPLIED','ASSESSMENT','INTERVIEW','OFFER','ACCEPTED','REJECTED','WITHDRAWN','EXPIRED'] as const
-const JOB_TYPES = ['FULL_TIME','PART_TIME','CONTRACT','FREELANCE','INTERNSHIP','TEMPORARY','GRADUATE_PROGRAM','FELLOWSHIP','COMPETITION','TALENT_OPPORTUNITY','OTHER'] as const
+const JOB_TYPES = ['JOB','FULL_TIME','PART_TIME','CONTRACT','FREELANCE','INTERNSHIP','TEMPORARY','GRADUATE_PROGRAM','FELLOWSHIP','COMPETITION','TALENT_OPPORTUNITY','OTHER'] as const
 
 const jobSchema = z.object({
   title: z.string().min(1, 'Job title is required'),
-  company: z.string().min(1, 'Company name is required'),
-  jobUrl: z.string().optional().or(z.literal('')),
-  sourceWebsite: z.string().optional(),
-  location: z.string().optional(),
-  jobType: z.enum(JOB_TYPES).optional(),
-  salary: z.string().optional(),
-  description: z.string().optional(),
-  status: z.enum(JOB_STATUSES).optional(),
-  dateSaved: z.string().optional(),
+  company: z.string().min(1, 'Company name is required').default('Unknown Company'),
+  jobUrl: z.string().optional().nullable(),
+  sourceWebsite: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  jobType: z.string().optional().nullable(),
+  salary: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  status: z.enum(JOB_STATUSES).optional().nullable(),
+  dateSaved: z.string().optional().nullable(),
   dateApplied: z.string().optional().nullable(),
 })
 
@@ -88,22 +88,45 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const parsed = jobSchema.safeParse(req.body)
     if (!parsed.success) {
-      res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() })
+      const fieldErrors = parsed.error.flatten().fieldErrors
+      const firstError =
+        Object.entries(fieldErrors)
+          .map(([field, errs]) => `${field}: ${(errs || []).join(', ')}`)
+          .join('; ') || 'Validation failed'
+      res.status(422).json({ error: firstError, details: parsed.error.flatten() })
       return
+    }
+
+    // Check duplicate by URL if jobUrl is provided
+    if (parsed.data.jobUrl) {
+      const existing = await prisma.job.findFirst({
+        where: { userId: req.userId, jobUrl: parsed.data.jobUrl },
+      })
+      if (existing) {
+        res.status(409).json({ error: 'This job is already saved', job: existing, id: existing.id })
+        return
+      }
     }
 
     const job = await prisma.job.create({
       data: {
-        ...parsed.data,
+        title: parsed.data.title,
+        company: parsed.data.company || 'Unknown Company',
         jobUrl: parsed.data.jobUrl || null,
+        sourceWebsite: parsed.data.sourceWebsite || null,
+        location: parsed.data.location || null,
+        jobType: parsed.data.jobType || 'FULL_TIME',
+        salary: parsed.data.salary || null,
+        description: parsed.data.description || null,
+        status: (parsed.data.status as JobStatus) || 'SAVED',
         dateApplied: parsed.data.dateApplied ? new Date(parsed.data.dateApplied) : null,
         userId: req.userId!,
       },
     })
     res.status(201).json(job)
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Failed to create job' })
+    console.error('[Talvyn] Failed to create job:', err)
+    res.status(500).json({ error: "Talvyn couldn't save this job. Try again." })
   }
 })
 

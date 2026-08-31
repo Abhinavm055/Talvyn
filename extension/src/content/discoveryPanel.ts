@@ -141,12 +141,23 @@ export class DiscoveryPanelManager {
         <!-- Filter Tabs -->
         <div style="
           display:flex;padding:8px 12px;gap:4px;background:#ffffff;
-          border-bottom:1px solid #f1f5f9;overflow-x:auto;flex-shrink:0;
+          border-bottom:1px solid #f1f5f9;overflow-x:auto;flex-shrink:0;align-items:center;justify-content:space-between;
         ">
-          ${this.renderFilterTab('ALL', `All (${summary.totalDetected})`)}
-          ${this.renderFilterTab('HIGHLY_RELEVANT', `Top (${topCount})`)}
-          ${this.renderFilterTab('RELEVANT', `Relevant (${summary.relevantCount})`)}
-          ${this.renderFilterTab('LOW_RELEVANCE', `Low (${summary.lowRelevanceCount})`)}
+          <div style="display:flex;gap:4px;overflow-x:auto;">
+            ${this.renderFilterTab('ALL', `All (${summary.totalDetected})`)}
+            ${this.renderFilterTab('HIGHLY_RELEVANT', `Top (${topCount})`)}
+            ${this.renderFilterTab('RELEVANT', `Relevant (${summary.relevantCount})`)}
+            ${this.renderFilterTab('LOW_RELEVANCE', `Low (${summary.lowRelevanceCount})`)}
+          </div>
+          ${topCount > 0 ? `
+            <button id="talvyn-save-all-top-btn" style="
+              padding:4px 10px;background:#4f46e5;color:white;border:none;border-radius:12px;
+              font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:4px;
+              box-shadow:0 1px 4px rgba(79,70,229,0.3);transition:background 0.15s;
+            ">
+              Save All Top Matches (${topCount})
+            </button>
+          ` : ''}
         </div>
 
         <!-- Scrollable Job List -->
@@ -315,6 +326,44 @@ export class DiscoveryPanelManager {
           if (this.summary && this.callbacks) this.render(this.summary, this.callbacks)
         }
       })
+    })
+
+    // Save all top matches button
+    panel.querySelector('#talvyn-save-all-top-btn')?.addEventListener('click', async (e) => {
+      const topBtn = e.currentTarget as HTMLButtonElement
+      if (!this.summary || !this.callbacks) return
+
+      const topJobs = this.summary.analyzedJobs.filter(
+        (j) => (j.category === 'EXCELLENT' || j.category === 'HIGHLY_RELEVANT') && !j.isSaved
+      )
+      if (topJobs.length === 0) return
+
+      topBtn.disabled = true
+      topBtn.textContent = 'Saving Top Matches...'
+
+      for (const analyzed of topJobs) {
+        const cardBtn = panel.querySelector(`.talvyn-save-card-btn[data-url="${this.escapeHtml(analyzed.job.jobUrl)}"]`) as HTMLButtonElement | null
+        if (cardBtn) {
+          cardBtn.disabled = true
+          cardBtn.textContent = 'Saving…'
+        }
+        try {
+          await this.callbacks.onSaveJob(analyzed, cardBtn || document.createElement('button'))
+          analyzed.isSaved = true
+          if (cardBtn) {
+            cardBtn.textContent = 'Saved ✓'
+            cardBtn.style.background = '#10b981'
+          }
+        } catch {
+          if (cardBtn) {
+            cardBtn.disabled = false
+            cardBtn.textContent = 'Save Job'
+          }
+        }
+      }
+
+      topBtn.textContent = '✓ Top Matches Saved'
+      topBtn.style.background = '#059669'
     })
 
     // Save job buttons

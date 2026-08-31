@@ -47,7 +47,7 @@ export class LinkedInAdapter implements SiteAdapter {
       )
 
       const title = titleEl?.textContent?.trim()
-      const jobUrl = linkEl?.href || window.location.href
+      const jobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
 
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)
@@ -89,7 +89,7 @@ export class LinkedInAdapter implements SiteAdapter {
       company,
       location,
       description,
-      jobUrl: window.location.href,
+      jobUrl: typeof window !== 'undefined' ? window.location.href : '',
       sourceWebsite: 'LinkedIn',
       confidence: 'HIGH',
     }

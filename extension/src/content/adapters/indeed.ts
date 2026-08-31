@@ -126,7 +126,7 @@ export class IndeedAdapter implements SiteAdapter {
       location,
       salary,
       description,
-      jobUrl: window.location.href,
+      jobUrl: typeof window !== 'undefined' ? window.location.href : '',
       sourceWebsite: 'Indeed',
       confidence: 'HIGH',
     }
