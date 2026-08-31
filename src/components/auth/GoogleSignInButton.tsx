@@ -116,9 +116,10 @@ export function GoogleSignInButton({
             size: 'large',
             text: mode === 'signup' ? 'signup_with' : 'continue_with',
             shape: 'rectangular',
-            width: '100%',
+            width: 320,
           })
         }
+
       } catch (err) {
         console.warn('[Talvyn] Failed to initialize Google Sign-In:', err)
       }
