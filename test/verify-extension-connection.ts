@@ -326,6 +326,38 @@ async function runTests() {
     assert(stats.size > 1000, `Package archive has valid non-empty payload (${(stats.size / 1024).toFixed(1)} KB)`)
   }
 
+  // ─── 10. Background Message Bridge & Content Script CORS Protection ──────
+  console.log('\n--- 10. Testing Background Service Worker Bridge & CORS Elimination ---')
+
+
+  const apiClientPath = path.resolve(process.cwd(), 'extension', 'src', 'services', 'apiClient.ts')
+  const apiClientCode = fs.readFileSync(apiClientPath, 'utf8')
+
+  assert(
+    apiClientCode.includes('isContentScript') &&
+    apiClientCode.includes('requestViaBackground') &&
+    apiClientCode.includes('chrome.runtime.sendMessage'),
+    'Content script API client routes requests through background worker bridge to eliminate CORS'
+  )
+
+  const backgroundPath = path.resolve(process.cwd(), 'extension', 'src', 'background', 'index.ts')
+  const backgroundCode = fs.readFileSync(backgroundPath, 'utf8')
+
+  assert(
+    backgroundCode.includes('TALVYN_API_REQUEST') &&
+    backgroundCode.includes('TALVYN_SAVE_JOB') &&
+    backgroundCode.includes('TALVYN_CHECK_DUPLICATE'),
+    'Background service worker implements internal API message routing for content scripts'
+  )
+
+  const indeedAdapterPath = path.resolve(process.cwd(), 'extension', 'src', 'content', 'adapters', 'indeed.ts')
+  const indeedAdapterCode = fs.readFileSync(indeedAdapterPath, 'utf8')
+
+  assert(
+    indeedAdapterCode.includes('extractCompanyFromJsonLd') &&
+    indeedAdapterCode.includes('Unknown Company'),
+    'Indeed adapter implements robust company extraction with JSON-LD and clean Unknown Company fallback'
+  )
 
   console.log('\n=================================================================')
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)
@@ -338,6 +370,7 @@ runTests().catch((err) => {
   console.error('Extension connection test runner failed:', err)
   process.exit(1)
 })
+
 
 
 

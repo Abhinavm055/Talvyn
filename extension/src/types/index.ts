@@ -388,13 +388,32 @@ export type MessageType =
   | 'DUPLICATE_RESULT'
   | 'GET_PROFILE'
   | 'PROFILE_DATA'
+  | 'TALVYN_API_REQUEST'
+  | 'TALVYN_SAVE_JOB'
+  | 'TALVYN_CHECK_DUPLICATE'
+  | 'TALVYN_UPDATE_JOB_STATUS'
+  | 'TALVYN_TRACK_APPLIED'
+  | 'TALVYN_UNDO_APPLIED'
+  | 'TALVYN_GET_PROFILE'
+  | 'TALVYN_GET_RESUMES'
+  | 'TALVYN_GET_TIMELINE'
+  | 'TALVYN_ADD_TIMELINE_EVENT'
   | 'ERROR'
 
 export interface ExtensionMessage<T = unknown> {
-  type: MessageType
+  type: MessageType | string
   payload?: T
   error?: string
+  method?: string
+  path?: string
+  body?: unknown
+  headers?: Record<string, string>
+  status?: number
+  success?: boolean
+  data?: unknown
+  job?: Job
 }
+
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 

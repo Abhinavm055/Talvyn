@@ -113,6 +113,30 @@ function extractFromJsonLd(): Partial<ExtractedJob> | null {
   return null
 }
 
+function extractJsonLdCompany(doc: Document = document): string | undefined {
+  try {
+    const scripts = doc.querySelectorAll('script[type="application/ld+json"]')
+    for (const script of Array.from(scripts)) {
+      const text = script.textContent
+      if (!text) continue
+      const data = JSON.parse(text)
+      const org =
+        data?.hiringOrganization?.name ||
+        data?.hiringOrganization?.legalName ||
+        data?.author?.name ||
+        (Array.isArray(data?.['@graph']) &&
+          data['@graph'].find((item: any) => item?.['@type'] === 'JobPosting')?.hiringOrganization?.name)
+      if (org && typeof org === 'string' && org.trim().length > 0) {
+        return org.trim()
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return undefined
+}
+
+
 // ─── Meta tag extraction ──────────────────────────────────────────────────────
 function extractFromMeta(): Partial<ExtractedJob> {
   const get = (name: string) =>
@@ -141,14 +165,17 @@ function extractFromDom(): Partial<ExtractedJob> {
   // Indeed-specific
   if (window.location.hostname.includes('indeed.com')) {
     result.title =
-      document.querySelector('[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title')?.textContent?.trim()
+      document.querySelector('[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"]')?.textContent?.trim()
     result.company =
-      document.querySelector('[data-testid="inlineHeader-companyName"], .icl-u-lg-mr--sm')?.textContent?.trim()
+      document.querySelector('[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, .icl-u-lg-mr--sm, [class*="companyName"]')?.textContent?.trim() ||
+      extractJsonLdCompany(document) ||
+      'Unknown Company'
     result.location =
-      document.querySelector('[data-testid="job-location"]')?.textContent?.trim()
+      document.querySelector('[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation')?.textContent?.trim()
     result.salary =
-      document.querySelector('[data-testid="attribute_snippet_testid"]')?.textContent?.trim()
+      document.querySelector('[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType, [class*="salary-snippet"]')?.textContent?.trim()
   }
+
 
   // Greenhouse
   if (window.location.hostname.includes('greenhouse.io') || window.location.hostname.includes('boards.greenhouse.io')) {

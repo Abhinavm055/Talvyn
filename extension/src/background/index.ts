@@ -78,31 +78,178 @@ function setBadge(state: 'on' | 'off'): void {
 // ─── Internal Message Router (Popup & Content Scripts) ────────────────────────
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
-    handleMessage(message)
+  (message: any, _sender, sendResponse) => {
+    handleInternalMessage(message)
       .then(sendResponse)
-      .catch((err) => sendResponse({ type: 'ERROR', error: String(err) }))
+      .catch((err) => sendResponse({ success: false, error: String(err?.message || err) }))
     return true
   }
 )
 
-async function handleMessage(msg: ExtensionMessage): Promise<ExtensionMessage> {
-  switch (msg.type) {
-    case 'GET_AUTH': {
-      const session = await getAuthSession()
-      return {
-        type: 'AUTH_STATE',
-        payload: {
-          isAuthenticated: Boolean(session?.token),
-          user: session?.user || null,
-        },
-      }
+async function handleInternalMessage(msg: any): Promise<any> {
+  if (!msg || typeof msg !== 'object') {
+    return { success: false, error: 'Invalid message payload' }
+  }
+
+  // 1. TALVYN_API_REQUEST — Generic background proxy for content script API requests
+  if (msg.type === 'TALVYN_API_REQUEST') {
+    const session = await getAuthSession()
+    const token = session?.token
+    const method = (msg.method || 'GET').toUpperCase()
+    const path = msg.path || ''
+    const url = `${CONFIG.API_BASE}${path}`
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(msg.headers || {}),
     }
 
-    default:
-      return { type: 'ERROR', error: `Unknown message type: ${msg.type}` }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    try {
+      const fetchOptions: RequestInit = {
+        method,
+        headers,
+      }
+
+      if (msg.body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+        fetchOptions.body = typeof msg.body === 'string' ? msg.body : JSON.stringify(msg.body)
+      }
+
+      const response = await fetch(url, fetchOptions)
+
+      if (!response.ok) {
+        let errorBody: any = {}
+        try {
+          errorBody = await response.json()
+        } catch {
+          /* non-JSON error body */
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          return {
+            success: false,
+            status: response.status,
+            error: 'Your Talvyn session has expired. Reconnect your account.',
+            body: errorBody,
+          }
+        }
+
+        return {
+          success: false,
+          status: response.status,
+          error: errorBody.error || "Couldn't save this job. Please try again.",
+          body: errorBody,
+        }
+      }
+
+      if (response.status === 204) {
+        return { success: true, status: 204, data: undefined }
+      }
+
+      const data = await response.json()
+      return { success: true, status: response.status, data }
+    } catch (err: any) {
+      console.error('[Talvyn] Background API proxy error:', err?.message || err)
+      return {
+        success: false,
+        status: 0,
+        error: "Couldn't communicate with Talvyn backend. Please check your connection and try again.",
+      }
+    }
   }
+
+  // 2. TALVYN_SAVE_JOB / SAVE_JOB
+  if (msg.type === 'TALVYN_SAVE_JOB' || msg.type === 'SAVE_JOB') {
+    try {
+      const session = await getAuthSession()
+      if (!session?.token) {
+        return {
+          success: false,
+          status: 401,
+          error: 'Your Talvyn session has expired. Reconnect your account.',
+        }
+      }
+
+      const payload = msg.payload || msg.job
+      const url = `${CONFIG.API_BASE}/api/jobs`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        let errBody: any = {}
+        try { errBody = await res.json() } catch {}
+        return {
+          success: false,
+          status: res.status,
+          error: errBody.error || "Couldn't save this job. Please try again.",
+        }
+      }
+
+      const savedJob = await res.json()
+      return { success: true, data: savedJob, job: savedJob }
+    } catch (err: any) {
+      console.error('[Talvyn] Save job error in background worker:', err?.message || err)
+      return {
+        success: false,
+        status: 500,
+        error: "Couldn't save this job. Please try again.",
+      }
+    }
+  }
+
+  // 3. TALVYN_CHECK_DUPLICATE / CHECK_DUPLICATE
+  if (msg.type === 'TALVYN_CHECK_DUPLICATE' || msg.type === 'CHECK_DUPLICATE') {
+    try {
+      const session = await getAuthSession()
+      if (!session?.token) {
+        return { success: true, data: { exists: false, job: null } }
+      }
+
+      const targetUrl = msg.payload?.url || msg.url
+      const url = `${CONFIG.API_BASE}/api/jobs/check-url?url=${encodeURIComponent(targetUrl)}`
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`,
+        },
+      })
+
+      if (!res.ok) {
+        return { success: true, data: { exists: false, job: null } }
+      }
+
+      const data = await res.json()
+      return { success: true, data, payload: data }
+    } catch {
+      return { success: true, data: { exists: false, job: null } }
+    }
+  }
+
+  // 4. GET_AUTH
+  if (msg.type === 'GET_AUTH') {
+    const session = await getAuthSession()
+    return {
+      type: 'AUTH_STATE',
+      payload: {
+        isAuthenticated: Boolean(session?.token),
+        user: session?.user || null,
+      },
+    }
+  }
+
+  return { success: false, error: `Unknown internal message type: ${msg.type}` }
 }
+
 
 // ─── External Web App Messaging (Externally Connectable) ──────────────────────
 
