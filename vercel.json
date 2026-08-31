@@ -6,7 +6,7 @@
       "dest": "/downloads/$1",
       "headers": {
         "Content-Type": "application/zip",
-        "Content-Disposition": "attachment; filename=\"Talvyn v1.zip\"",
+        "Content-Disposition": "attachment; filename=\"talvyn v1.zip\"",
         "Cache-Control": "public, max-age=0, must-revalidate"
       }
     },
@@ -29,9 +29,18 @@
       "dest": "/favicon.svg"
     },
     {
+      "src": "/logo-talvyn.svg",
+      "dest": "/logo-talvyn.svg"
+    },
+    {
+      "src": "/logo-talvyn.png",
+      "dest": "/logo-talvyn.png"
+    },
+    {
       "src": "/logotalvyn.png",
       "dest": "/logotalvyn.png"
     },
+
     {
       "src": "/(.*)",
       "dest": "/index.html",

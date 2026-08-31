@@ -275,14 +275,11 @@ async function runTests() {
   // ─── 9. Package ZIP Artifact Integrity & Manifest Validation ─────────────
   console.log('\n--- 9. Testing Extension Production Package Artifact & Manifest ---')
 
-  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'Talvyn v1.zip')
-  const packageZipLowerPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
+  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
   const distManifestPath = path.resolve(process.cwd(), 'extension', 'dist', 'manifest.json')
   const srcManifestPath = path.resolve(process.cwd(), 'extension', 'src', 'manifest.ts')
   const srcContentPath = path.resolve(process.cwd(), 'extension', 'src', 'content', 'index.ts')
-
-  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'Talvyn v1.zip')
-  const publicZipLowerPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn v1.zip')
+  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn v1.zip')
 
   const srcContentCode = fs.readFileSync(srcContentPath, 'utf8')
   assert(
@@ -309,13 +306,13 @@ async function runTests() {
   )
 
   assert(
-    fs.existsSync(packageZipPath) && fs.existsSync(packageZipLowerPath),
-    'Distribution packages Talvyn v1.zip and talvyn v1.zip exist in extension/dist-package'
+    fs.existsSync(packageZipPath),
+    'Distribution package talvyn v1.zip exists in extension/dist-package'
   )
 
   assert(
-    fs.existsSync(publicZipPath) && fs.existsSync(publicZipLowerPath),
-    'Public download packages exist in public/downloads for static hosting on Vercel'
+    fs.existsSync(publicZipPath),
+    'Public download package talvyn v1.zip exists in public/downloads for static hosting on Vercel'
   )
 
   const distLogoPath = path.resolve(process.cwd(), 'extension', 'dist', 'icons', 'logotalvyn.png')
@@ -328,6 +325,7 @@ async function runTests() {
     const stats = fs.statSync(packageZipPath)
     assert(stats.size > 1000, `Package archive has valid non-empty payload (${(stats.size / 1024).toFixed(1)} KB)`)
   }
+
 
   console.log('\n=================================================================')
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)

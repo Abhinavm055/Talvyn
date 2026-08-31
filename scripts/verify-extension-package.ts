@@ -15,11 +15,9 @@ import fs from 'fs'
 import path from 'path'
 
 const ROOT_DIR = path.resolve(__dirname, '..')
-const DIST_PACKAGE_ZIP = path.join(ROOT_DIR, 'extension', 'dist-package', 'Talvyn v1.zip')
-const DIST_PACKAGE_ZIP_LOWER = path.join(ROOT_DIR, 'extension', 'dist-package', 'talvyn v1.zip')
-const PUBLIC_ZIP = path.join(ROOT_DIR, 'public', 'downloads', 'Talvyn v1.zip')
-const PUBLIC_ZIP_LOWER = path.join(ROOT_DIR, 'public', 'downloads', 'talvyn v1.zip')
-const DIST_ZIP = path.join(ROOT_DIR, 'dist', 'downloads', 'Talvyn v1.zip')
+const DIST_PACKAGE_ZIP = path.join(ROOT_DIR, 'extension', 'dist-package', 'talvyn v1.zip')
+const PUBLIC_ZIP = path.join(ROOT_DIR, 'public', 'downloads', 'talvyn v1.zip')
+const DIST_ZIP = path.join(ROOT_DIR, 'dist', 'downloads', 'talvyn v1.zip')
 
 let passedChecks = 0
 let failedChecks = 0
@@ -93,6 +91,12 @@ function verifyZipFile(filePath: string, label: string) {
   assert(entries.some((e) => e.includes('icon16.png') || e.includes('icon48.png') || e.includes('logotalvyn.png')), `Archive contains PNG icons`)
   assert(entries.some((e) => e.includes('popup')), `Archive contains popup UI`)
   assert(entries.some((e) => e.includes('assets/')), `Archive contains transpiled script bundles`)
+
+  // Security checks: no secrets or private keys inside package
+  assert(!entries.some((e) => e.includes('.env')), `Archive contains no .env files`)
+  assert(!entries.some((e) => e.includes('DATABASE_URL')), `Archive contains no database secrets`)
+  assert(!entries.some((e) => e.includes('JWT_SECRET')), `Archive contains no JWT secrets`)
+  assert(!entries.some((e) => e.includes('GOOGLE_CLIENT_SECRET')), `Archive contains no Google client secret`)
 }
 
 function run() {
@@ -100,19 +104,18 @@ function run() {
   console.log('TALVYN: CHROME EXTENSION PACKAGE VERIFICATION')
   console.log('===========================================================')
 
-  // 1. Verify extension/dist-package ZIP (both casings)
-  verifyZipFile(DIST_PACKAGE_ZIP, 'Packaging Output (Talvyn v1.zip)')
-  verifyZipFile(DIST_PACKAGE_ZIP_LOWER, 'Packaging Output (talvyn v1.zip)')
+  // 1. Verify extension/dist-package ZIP
+  verifyZipFile(DIST_PACKAGE_ZIP, 'Packaging Output (talvyn v1.zip)')
 
   // 2. Verify public/downloads ZIP
-  verifyZipFile(PUBLIC_ZIP, 'Public Static Download Asset (Talvyn v1.zip)')
-  verifyZipFile(PUBLIC_ZIP_LOWER, 'Public Static Download Asset (talvyn v1.zip)')
+  verifyZipFile(PUBLIC_ZIP, 'Public Static Download Asset (talvyn v1.zip)')
 
   // 3. Verify dist/downloads ZIP if dist directory has been built
   const distDir = path.join(ROOT_DIR, 'dist')
   if (fs.existsSync(distDir)) {
     verifyZipFile(DIST_ZIP, 'Vercel Deployment Asset (dist/downloads)')
   }
+
 
   console.log('\n===========================================================')
   console.log(`TOTAL CHECKS: ${passedChecks + failedChecks} | PASSED: ${passedChecks} | FAILED: ${failedChecks}`)

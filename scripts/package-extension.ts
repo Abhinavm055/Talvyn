@@ -256,21 +256,14 @@ function packageExtension() {
       // Copy to public/downloads for static hosting on Vercel
       fs.copyFileSync(OUT_ZIP, PUBLIC_ZIP)
 
-      // Also create lowercase alias 'talvyn v1.zip' for exact matching
-      const outZipLower = path.join(OUT_DIR, 'talvyn v1.zip')
-      const publicZipLower = path.join(PUBLIC_DOWNLOADS_DIR, 'talvyn v1.zip')
-      fs.copyFileSync(OUT_ZIP, outZipLower)
-      fs.copyFileSync(OUT_ZIP, publicZipLower)
-
       // If dist/downloads exists, copy there too
       const distDownloadsDir = path.join(ROOT_DIR, 'dist', 'downloads')
       if (fs.existsSync(distDownloadsDir)) {
-        fs.copyFileSync(OUT_ZIP, path.join(distDownloadsDir, 'Talvyn v1.zip'))
         fs.copyFileSync(OUT_ZIP, path.join(distDownloadsDir, 'talvyn v1.zip'))
       }
 
       const stats = fs.statSync(OUT_ZIP)
-      console.log(`\n✓ Successfully created production ZIP: talvyn v1.zip / Talvyn v1.zip`)
+      console.log(`\n✓ Successfully created production ZIP: talvyn v1.zip`)
       console.log(`  File size: ${(stats.size / 1024).toFixed(1)} KB`)
       console.log(`  Artifact 1: ${OUT_ZIP}`)
       console.log(`  Artifact 2: ${PUBLIC_ZIP}\n`)
@@ -282,6 +275,7 @@ function packageExtension() {
     process.exit(1)
   }
 }
+
 
 packageExtension()
 
