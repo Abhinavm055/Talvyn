@@ -31,6 +31,17 @@ let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// Announce extension presence to Talvyn web app for automatic discovery
+try {
+  if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+    document.documentElement.setAttribute('data-talvyn-extension-id', chrome.runtime.id)
+    window.dispatchEvent(new CustomEvent('talvyn:extension-ready', { detail: { extensionId: chrome.runtime.id } }))
+  }
+} catch {
+  /* ignore */
+}
+
+
 const DEFAULT_GUEST_PROFILE: UserProfile = {
   id: 'guest',
   userId: 'guest',

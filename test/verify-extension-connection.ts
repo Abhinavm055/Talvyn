@@ -265,9 +265,12 @@ async function runTests() {
   const indexHtmlPath = path.resolve(process.cwd(), 'index.html')
   const indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8')
   assert(
-    indexHtmlContent.includes('favicon.svg') || indexHtmlContent.includes('logotalvyn.png'),
+    indexHtmlContent.includes('logo-talvyn.svg') ||
+    indexHtmlContent.includes('favicon.svg') ||
+    indexHtmlContent.includes('logotalvyn.png'),
     'Website index.html references the official Talvyn favicon / logo asset'
   )
+
 
   // ─── 9. Package ZIP Artifact Integrity & Manifest Validation ─────────────
   console.log('\n--- 9. Testing Extension Production Package Artifact & Manifest ---')

@@ -16,17 +16,32 @@ export default function ExtensionConnect() {
   const navigate = useNavigate()
   const { user, token, isAuthenticated } = useAuthStore()
 
-  // Dynamic extension ID passed from extension popup or detected
+  // Dynamic extension ID passed from extension popup or detected from page context
   const queryExtId = searchParams.get('extId') || searchParams.get('extensionId') || ''
-  const [extensionId, setExtensionId] = useState<string>(queryExtId)
+  const domExtId = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-talvyn-extension-id') || '' : ''
+  const [extensionId, setExtensionId] = useState<string>(queryExtId || domExtId)
   const [status, setStatus] = useState<'idle' | 'connecting' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string>('')
 
   useEffect(() => {
     if (queryExtId) {
       setExtensionId(queryExtId)
+      return
     }
+    const detected = document.documentElement.getAttribute('data-talvyn-extension-id')
+    if (detected) {
+      setExtensionId(detected)
+    }
+
+    const onReady = (e: any) => {
+      if (e.detail?.extensionId) {
+        setExtensionId(e.detail.extensionId)
+      }
+    }
+    window.addEventListener('talvyn:extension-ready', onReady)
+    return () => window.removeEventListener('talvyn:extension-ready', onReady)
   }, [queryExtId])
+
 
   // If not logged in, automatically redirect to login with return path
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Download,
   ExternalLink,
@@ -13,8 +14,10 @@ import {
   Zap,
   ShieldCheck,
   KanbanSquare,
+  ArrowRight,
 } from 'lucide-react'
 import { Card } from '../../components/ui/Card'
+import { useAuthStore } from '../../store/authStore'
 
 // SVG browser badges
 function ChromeIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -64,6 +67,7 @@ function EdgeIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 export default function Extensions() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const { user, isAuthenticated } = useAuthStore()
 
   // Direct static download link served by Vercel deployment
   const downloadUrl = '/downloads/talvyn%20v1.zip'
@@ -77,6 +81,7 @@ export default function Extensions() {
   const handleOpenExtensions = () => {
     window.open('chrome://extensions', '_blank')
   }
+
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -146,6 +151,14 @@ export default function Extensions() {
                   </div>
                 </a>
 
+                <Link
+                  to="/extension/connect"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold text-xs sm:text-sm border border-indigo-200 dark:border-indigo-800 transition-colors shadow-2xs"
+                >
+                  <Puzzle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Connect Extension</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-indigo-500" />
+                </Link>
 
                 <button
                   type="button"
@@ -158,9 +171,10 @@ export default function Extensions() {
               </div>
 
               <div className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-                ZIP download • No npm or coding required
+                ZIP download • Instant 1-click connection for authenticated users
               </div>
             </div>
+
           </div>
         </div>
       </Card>
