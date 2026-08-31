@@ -1,5 +1,10 @@
 import { CONFIG } from './config'
 import { StorageData, AuthUser } from '../types'
+import {
+  isExtensionContextValid,
+  isExtensionContextInvalidated,
+  shutdownExtensionRuntime,
+} from './extensionContext'
 
 /**
  * Authoritative Talvyn Extension Authentication Session Contract
@@ -19,8 +24,13 @@ export const STORAGE_KEYS = {
 
 /**
  * Retrieves authoritative session from chrome.storage.local.
+ * Safe against extension context invalidation.
  */
 export async function getAuthSession(): Promise<TalvynAuthSession | null> {
+  if (!isExtensionContextValid()) {
+    return null
+  }
+
   try {
     if (typeof chrome === 'undefined' || !chrome.storage?.local) {
       return null
@@ -47,6 +57,10 @@ export async function getAuthSession(): Promise<TalvynAuthSession | null> {
     }
     return null
   } catch (err) {
+    if (isExtensionContextInvalidated(err)) {
+      shutdownExtensionRuntime()
+      return null
+    }
     console.error('[Talvyn] Failed to read from chrome.storage.local:', err)
     return null
   }
@@ -54,8 +68,13 @@ export async function getAuthSession(): Promise<TalvynAuthSession | null> {
 
 /**
  * Sets authoritative session in chrome.storage.local.
+ * Safe against extension context invalidation.
  */
 export async function setAuthSession(session: TalvynAuthSession): Promise<void> {
+  if (!isExtensionContextValid()) {
+    return
+  }
+
   try {
     if (typeof chrome === 'undefined' || !chrome.storage?.local) return
     await chrome.storage.local.set({
@@ -64,6 +83,10 @@ export async function setAuthSession(session: TalvynAuthSession): Promise<void> 
       [STORAGE_KEYS.USER]: session.user,
     })
   } catch (err) {
+    if (isExtensionContextInvalidated(err)) {
+      shutdownExtensionRuntime()
+      return
+    }
     console.error('[Talvyn] Failed to write to chrome.storage.local:', err)
     throw err
   }
@@ -92,7 +115,14 @@ export async function getUser(): Promise<AuthUser | null> {
 export async function setUser(user: AuthUser): Promise<void> {
   const session = await getAuthSession()
   if (!session?.token) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.USER]: user })
+    if (!isExtensionContextValid()) return
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEYS.USER]: user })
+    } catch (err) {
+      if (isExtensionContextInvalidated(err)) {
+        shutdownExtensionRuntime()
+      }
+    }
     return
   }
   await setAuthSession({
@@ -103,6 +133,10 @@ export async function setUser(user: AuthUser): Promise<void> {
 }
 
 export async function clearAuth(): Promise<void> {
+  if (!isExtensionContextValid()) {
+    return
+  }
+
   try {
     if (typeof chrome === 'undefined' || !chrome.storage?.local) return
     await chrome.storage.local.remove([
@@ -111,6 +145,10 @@ export async function clearAuth(): Promise<void> {
       STORAGE_KEYS.USER,
     ])
   } catch (err) {
+    if (isExtensionContextInvalidated(err)) {
+      shutdownExtensionRuntime()
+      return
+    }
     console.error('[Talvyn] Failed to clear chrome.storage.local:', err)
   }
 }
@@ -118,12 +156,19 @@ export async function clearAuth(): Promise<void> {
 export async function getStorageData(): Promise<StorageData> {
   const session = await getAuthSession()
   let lastDetectedJob = null
-  try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      const res = await chrome.storage.local.get(STORAGE_KEYS.LAST_JOB)
-      lastDetectedJob = res[STORAGE_KEYS.LAST_JOB] ?? null
+
+  if (isExtensionContextValid()) {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const res = await chrome.storage.local.get(STORAGE_KEYS.LAST_JOB)
+        lastDetectedJob = res[STORAGE_KEYS.LAST_JOB] ?? null
+      }
+    } catch (err) {
+      if (isExtensionContextInvalidated(err)) {
+        shutdownExtensionRuntime()
+      }
     }
-  } catch {}
+  }
 
   return {
     token: session?.token ?? null,

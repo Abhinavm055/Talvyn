@@ -14,6 +14,7 @@ import {
   clearAuth,
   TalvynAuthSession,
 } from '../utils/storage'
+import { isExtensionContextInvalidated } from '../utils/extensionContext'
 import { authService } from '../services/authService'
 import { jobsService } from '../services/jobsService'
 import { CONFIG } from '../utils/config'
@@ -91,6 +92,13 @@ async function init() {
     currentState = 'connected'
     renderConnected(freshUser)
   } catch (err: any) {
+    if (isExtensionContextInvalidated(err)) {
+      // Context invalidated during popup lifecycle — retain session without clearing
+      currentState = 'connected'
+      renderConnected(session.user, { isOffline: true })
+      return
+    }
+
     if (err?.status === 401 || err?.status === 403) {
       console.log('[Talvyn] SESSION_EXPIRED')
       await clearAuth()

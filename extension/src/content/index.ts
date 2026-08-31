@@ -17,6 +17,7 @@ import { autofillCoordinator } from './autofill/autofillCoordinator'
 import { assistantCoordinator } from './applicationAssistant/assistantCoordinator'
 import { applicationSuccessDetector } from './applicationDetection/successDetector'
 import { applicationSessionManager } from './applicationDetection/applicationSession'
+import { successNotificationManager } from './applicationDetection/successNotification'
 import { navigationObserver } from './navigationObserver'
 import { opportunityClassifier } from '../opportunityDetection/opportunityClassifier'
 import { readinessScorer } from '../services/readinessScorer'
@@ -25,11 +26,30 @@ import { getToken, getUser, setToken, setUser, clearAuth } from '../utils/storag
 import { jobsService } from '../services/jobsService'
 import { profileService } from '../services/profileService'
 import { ExtractedJob, UserProfile, AnalyzedJob, Resume } from '../types'
+import {
+  isRuntimeActive,
+  setRuntimeReady,
+  onExtensionShutdown,
+  shutdownExtensionRuntime,
+} from '../utils/extensionContext'
 
 let currentSingleJob: ExtractedJob | null = null
 let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Register shutdown cleanup handler for terminal invalidation
+onExtensionShutdown(() => {
+  removePanel()
+  discoveryPanelManager.remove()
+  autofillCoordinator.dismiss()
+  assistantCoordinator.dismiss()
+  try {
+    successNotificationManager.remove()
+  } catch {}
+  isSinglePanelVisible = false
+  isDiscoveryPanelVisible = false
+})
 
 // Announce extension presence to Talvyn web app for automatic discovery
 try {
@@ -109,6 +129,8 @@ function isTalvynAppUrl(url: string): boolean {
 }
 
 async function analyzeAndRenderPage(): Promise<void> {
+  if (!isRuntimeActive()) return
+
   const url = window.location.href
   const doc = document
 
@@ -123,7 +145,22 @@ async function analyzeAndRenderPage(): Promise<void> {
     return
   }
 
+  // Pre-classify page: if classified as OTHER, perform minimal work and exit early
+  const { classification, adapterName } = jobScanner.classifyPage(url, doc)
+
+  if (classification === 'OTHER') {
+    removePanel()
+    discoveryPanelManager.remove()
+    autofillCoordinator.dismiss()
+    assistantCoordinator.dismiss()
+    isSinglePanelVisible = false
+    isDiscoveryPanelVisible = false
+    return
+  }
+
+  if (!isRuntimeActive()) return
   const profile = await getUserPreferences()
+  if (!isRuntimeActive()) return
 
   // 1. PRIORITY 1: Application Success Confirmation Check (Phase 2D)
   const successResult = await applicationSuccessDetector.checkApplicationSuccess(url, doc)
@@ -175,7 +212,6 @@ async function analyzeAndRenderPage(): Promise<void> {
   }
 
   // 3. PRIORITY 3: Multi-Job Listing Page (Phase 2B Smart Analyzer)
-  const { classification, adapterName } = jobScanner.classifyPage(url, doc)
   console.log(`[Talvyn] Page classified as: ${classification} (Adapter: ${adapterName})`)
 
   if (classification === 'JOB_LIST') {
@@ -351,6 +387,8 @@ async function handleSingleSave(): Promise<void> {
 // ─── Hardened Startup & SPA Navigation Observer (Phase 2F) ─────────────────
 
 async function init() {
+  if (!isRuntimeActive()) return
+
   try {
     document.documentElement.setAttribute('data-talvyn-extension-installed', 'true')
   } catch {
@@ -361,18 +399,25 @@ async function init() {
     await new Promise<void>((res) => document.addEventListener('DOMContentLoaded', () => res()))
   }
 
+  if (!isRuntimeActive()) return
   await new Promise<void>((res) => setTimeout(res, 500))
+  if (!isRuntimeActive()) return
+
+  // Mark runtime as READY
+  setRuntimeReady()
 
   // Initial page evaluation
   await safeAnalyzeAndRender()
 
   // Initialize hardened SPA navigation & History API observer
   navigationObserver.init(async (_newUrl) => {
+    if (!isRuntimeActive()) return
     applicationSuccessDetector.resetPageState()
     jobScanner.clearCache()
     removePanel()
     discoveryPanelManager.remove()
     autofillCoordinator.dismiss()
+    assistantCoordinator.dismiss()
     isSinglePanelVisible = false
     isDiscoveryPanelVisible = false
 
@@ -381,14 +426,21 @@ async function init() {
 }
 
 async function safeAnalyzeAndRender(): Promise<void> {
+  if (!isRuntimeActive()) return
   try {
     await analyzeAndRenderPage()
   } catch (err) {
-    console.error('[Talvyn] Safe execution error during page analysis:', err)
+    if (isExtensionContextValid()) {
+      console.error('[Talvyn] Safe execution error during page analysis:', err)
+    }
   }
 }
 
-init().catch((err) => console.error('[Talvyn] Init failed:', err))
+init().catch((err) => {
+  if (isExtensionContextValid()) {
+    console.error('[Talvyn] Init failed:', err)
+  }
+})
 
 export {}
 

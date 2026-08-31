@@ -5,10 +5,11 @@
  * 1. History API Patching (pushState / replaceState) + popstate / hashchange listeners.
  * 2. Stable page fingerprinting to avoid redundant re-scans on unchanged DOMs.
  * 3. Debounced dynamic modal & form injection detection without continuous polling.
- * 4. Error isolation to ensure host pages are never crashed.
+ * 4. Safe runtime-lifecycle checks to stop immediately on extension context invalidation.
  */
 
 import { logger } from '../utils/logger'
+import { isRuntimeActive, onExtensionShutdown } from '../utils/extensionContext'
 
 export type NavigationCallback = (url: string) => void
 
@@ -19,14 +20,23 @@ export class NavigationObserver {
   private callbacks: NavigationCallback[] = []
   private mutationObserver: MutationObserver | null = null
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private popstateListener: (() => void) | null = null
+  private hashchangeListener: (() => void) | null = null
+  private originalPushState: typeof history.pushState | null = null
+  private originalReplaceState: typeof history.replaceState | null = null
+  private unregisterShutdown: (() => void) | null = null
 
   /**
    * Initializes SPA navigation hooks.
    */
   init(onNavigate: NavigationCallback): void {
+    if (!isRuntimeActive()) return
     if (this.isInitialized) return
     this.isInitialized = true
     this.callbacks.push(onNavigate)
+
+    // Register with centralized extension shutdown manager
+    this.unregisterShutdown = onExtensionShutdown(() => this.cleanup())
 
     if (typeof window === 'undefined') return
 
@@ -36,8 +46,11 @@ export class NavigationObserver {
     this.patchHistoryAPI()
 
     // 2. Listen to standard browser navigation events
-    window.addEventListener('popstate', () => this.handleUrlChange('popstate'))
-    window.addEventListener('hashchange', () => this.handleUrlChange('hashchange'))
+    this.popstateListener = () => this.handleUrlChange('popstate')
+    this.hashchangeListener = () => this.handleUrlChange('hashchange')
+
+    window.addEventListener('popstate', this.popstateListener)
+    window.addEventListener('hashchange', this.hashchangeListener)
 
     // 3. Setup Debounced Mutation Observer for dynamic SPA modals & infinite scroll
     this.setupMutationObserver()
@@ -67,18 +80,20 @@ export class NavigationObserver {
 
   private patchHistoryAPI(): void {
     try {
-      const originalPushState = history.pushState
-      const originalReplaceState = history.replaceState
+      this.originalPushState = history.pushState
+      this.originalReplaceState = history.replaceState
+      const originalPush = this.originalPushState
+      const originalReplace = this.originalReplaceState
       const self = this
 
       history.pushState = function (...args) {
-        const result = originalPushState.apply(this, args)
+        const result = originalPush.apply(this, args)
         self.handleUrlChange('pushState')
         return result
       }
 
       history.replaceState = function (...args) {
-        const result = originalReplaceState.apply(this, args)
+        const result = originalReplace.apply(this, args)
         self.handleUrlChange('replaceState')
         return result
       }
@@ -88,6 +103,10 @@ export class NavigationObserver {
   }
 
   private handleUrlChange(source: string): void {
+    if (!isRuntimeActive()) {
+      this.cleanup()
+      return
+    }
     if (typeof window === 'undefined') return
     const currentUrl = window.location.href
     if (currentUrl !== this.lastUrl) {
@@ -101,6 +120,10 @@ export class NavigationObserver {
     if (typeof document === 'undefined' || !document.body) return
 
     this.mutationObserver = new MutationObserver(() => {
+      if (!isRuntimeActive()) {
+        this.cleanup()
+        return
+      }
       if (typeof window === 'undefined') return
 
       // If URL changed in the meantime
@@ -112,6 +135,10 @@ export class NavigationObserver {
       // Debounce DOM re-evaluation
       if (this.debounceTimer) clearTimeout(this.debounceTimer)
       this.debounceTimer = setTimeout(() => {
+        if (!isRuntimeActive()) {
+          this.cleanup()
+          return
+        }
         if (this.hasStateChanged(window.location.href, document)) {
           logger.debug('DOM state mutation detected with changed fingerprint.')
           this.triggerCallbacks(window.location.href)
@@ -126,6 +153,10 @@ export class NavigationObserver {
   }
 
   private triggerCallbacks(url: string): void {
+    if (!isRuntimeActive()) {
+      this.cleanup()
+      return
+    }
     for (const cb of this.callbacks) {
       try {
         cb(url)
@@ -136,11 +167,42 @@ export class NavigationObserver {
   }
 
   cleanup(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer)
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+    }
+
     if (this.mutationObserver) {
       this.mutationObserver.disconnect()
       this.mutationObserver = null
     }
+
+    if (typeof window !== 'undefined') {
+      if (this.popstateListener) {
+        window.removeEventListener('popstate', this.popstateListener)
+        this.popstateListener = null
+      }
+      if (this.hashchangeListener) {
+        window.removeEventListener('hashchange', this.hashchangeListener)
+        this.hashchangeListener = null
+      }
+
+      // Restore original History API functions if they were patched
+      if (this.originalPushState && history.pushState) {
+        history.pushState = this.originalPushState
+        this.originalPushState = null
+      }
+      if (this.originalReplaceState && history.replaceState) {
+        history.replaceState = this.originalReplaceState
+        this.originalReplaceState = null
+      }
+    }
+
+    if (this.unregisterShutdown) {
+      this.unregisterShutdown()
+      this.unregisterShutdown = null
+    }
+
     this.callbacks = []
     this.isInitialized = false
   }

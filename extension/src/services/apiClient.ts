@@ -1,5 +1,10 @@
 import { CONFIG } from '../utils/config'
 import { getToken } from '../utils/storage'
+import {
+  isExtensionContextValid,
+  isExtensionContextInvalidated,
+  shutdownExtensionRuntime,
+} from '../utils/extensionContext'
 
 /**
  * Base HTTP client for the Talvyn API.
@@ -40,6 +45,13 @@ function requestViaBackground<T>(
   options: RequestInit = {}
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    if (!isExtensionContextValid()) {
+      shutdownExtensionRuntime()
+      return reject(
+        new ApiError(0, { error: 'Extension context invalidated' }, 'Extension context invalidated')
+      )
+    }
+
     try {
       chrome.runtime.sendMessage(
         {
@@ -50,16 +62,37 @@ function requestViaBackground<T>(
           headers: options.headers as Record<string, string>,
         },
         (response) => {
-          if (chrome.runtime.lastError) {
+          const lastErr = chrome.runtime?.lastError
+          if (lastErr) {
+            if (isExtensionContextInvalidated(lastErr)) {
+              shutdownExtensionRuntime()
+              return reject(
+                new ApiError(
+                  0,
+                  { error: 'Extension context invalidated' },
+                  'Extension context invalidated'
+                )
+              )
+            }
             return reject(
               new Error(
-                chrome.runtime.lastError.message ||
+                lastErr.message ||
                   "Couldn't communicate with Talvyn background worker"
               )
             )
           }
 
           if (!response) {
+            if (!isExtensionContextValid()) {
+              shutdownExtensionRuntime()
+              return reject(
+                new ApiError(
+                  0,
+                  { error: 'Extension context invalidated' },
+                  'Extension context invalidated'
+                )
+              )
+            }
             return reject(
               new Error('No response received from Talvyn background worker')
             )
@@ -85,6 +118,16 @@ function requestViaBackground<T>(
         }
       )
     } catch (err) {
+      if (isExtensionContextInvalidated(err)) {
+        shutdownExtensionRuntime()
+        return reject(
+          new ApiError(
+            0,
+            { error: 'Extension context invalidated' },
+            'Extension context invalidated'
+          )
+        )
+      }
       reject(err instanceof Error ? err : new Error(String(err)))
     }
   })

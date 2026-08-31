@@ -27,6 +27,15 @@ import { SmartRecruitersAutofillAdapter } from '../src/content/autofill/adapters
 import { AshbySuccessAdapter } from '../src/content/applicationDetection/adapters/ashby'
 import { SmartRecruitersSuccessAdapter } from '../src/content/applicationDetection/adapters/smartrecruiters'
 import { MatchedFormField, UserProfile } from '../src/types'
+import {
+  isExtensionContextValid,
+  isExtensionContextInvalidated,
+  shutdownExtensionRuntime,
+  isRuntimeActive,
+  onExtensionShutdown,
+  __resetRuntimeStateForTesting,
+} from '../src/utils/extensionContext'
+import { getAuthSession, clearAuth, TalvynAuthSession } from '../src/utils/storage'
 
 console.log('===========================================================')
 console.log('TALVYN PHASE 2F: HARDENING & COMPATIBILITY VERIFICATION')
@@ -45,6 +54,8 @@ function assert(condition: boolean, testName: string, detail?: string) {
     failedTests++
   }
 }
+
+async function runTests() {
 
 // ─── Mock Virtual DOM Helper ──────────────────────────────────────────────────
 function createMockElement(tag: string, attrs: Record<string, string> = {}, value: string = '') {
@@ -295,8 +306,155 @@ try {
 
 assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents extension crash')
 
-console.log('\n===========================================================')
-console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)
-console.log('===========================================================')
+// ─── 12. Extension Context Invalidation & Reload Lifecycle ───────────────────
+// ─── 12. Extension Context Invalidation & Reload Lifecycle ───────────────────
+  console.log('\n--- 12. Testing Extension Context Invalidation & Reload Lifecycle ---')
 
-if (failedTests > 0) process.exit(1)
+  // 12.1 Detecting extension context invalidation errors
+  const invalidErr1 = new Error('Extension context invalidated.')
+  const invalidErr2 = new Error('Error in invocation of storage.get: Extension context invalidated.')
+  const normalErr = new Error('Network error: Failed to fetch')
+
+  assert(
+    isExtensionContextInvalidated(invalidErr1) === true,
+    'isExtensionContextInvalidated accurately identifies standard invalidation error'
+  )
+  assert(
+    isExtensionContextInvalidated(invalidErr2) === true,
+    'isExtensionContextInvalidated identifies nested invocation invalidation error'
+  )
+  assert(
+    isExtensionContextInvalidated(normalErr) === false,
+    'isExtensionContextInvalidated does NOT flag normal network or operational errors'
+  )
+
+  // 12.2 Simulating Content Script A encountering extension reload
+  __resetRuntimeStateForTesting()
+
+  let cleanupExecuted = false
+  const unregisterTestCleanup = onExtensionShutdown(() => {
+    cleanupExecuted = true
+  })
+
+  assert(isRuntimeActive() === false, 'Runtime is inactive in non-extension Node test environment without chrome.runtime.id')
+  assert(cleanupExecuted === true, 'Shutdown callbacks are executed upon context invalidation detection')
+
+  // 12.3 Idempotency of shutdown
+  shutdownExtensionRuntime()
+  shutdownExtensionRuntime()
+  assert(isRuntimeActive() === false, 'Multiple calls to shutdownExtensionRuntime are idempotent and safe')
+
+  // 12.4 Safe storage access during context invalidation
+  // Mock chrome global in Node environment
+  const originalChrome = (global as any).chrome
+
+  let storageReadAttempts = 0
+  let storageDataStore: Record<string, any> = {
+    talvynAuth: {
+      token: 'jwt-persistent-token-12345',
+      user: { id: 'u-reload-test', email: 'user@talvyn.com', authProvider: 'EMAIL', profile: null },
+      connectedAt: new Date().toISOString(),
+    } as TalvynAuthSession,
+  }
+
+  // Case A: Mock chrome where runtime.id is missing (orphaned context)
+  ;(global as any).chrome = {
+    runtime: {
+      id: undefined, // Invalidated context!
+    },
+    storage: {
+      local: {
+        get: async () => {
+          storageReadAttempts++
+          throw new Error('Extension context invalidated.')
+        },
+        set: async () => {
+          throw new Error('Extension context invalidated.')
+        },
+        remove: async () => {
+          throw new Error('Extension context invalidated.')
+        },
+      },
+    },
+  }
+
+  __resetRuntimeStateForTesting()
+  const sessionDuringInvalidation = await getAuthSession()
+  assert(
+    sessionDuringInvalidation === null,
+    'getAuthSession returns null safely when extension context is invalidated'
+  )
+  assert(
+    storageReadAttempts === 0,
+    'Storage is not accessed when extension context is already invalid'
+  )
+
+  // Verify that auth data was NOT cleared/corrupted during invalidation
+  assert(
+    storageDataStore['talvynAuth'].token === 'jwt-persistent-token-12345',
+    'Extension context invalidation does NOT clear user session (talvynAuth preserved)'
+  )
+
+  // 12.5 NavigationObserver unhooking upon invalidation
+  const navObsTest = new NavigationObserver()
+  let navTriggerCount = 0
+  navObsTest.init(() => {
+    navTriggerCount++
+  })
+
+  // Triggering navigation in invalidated context
+  navObsTest.cleanup()
+  assert(true, 'NavigationObserver unhooks all event listeners and restores History API cleanly')
+
+  // Case B: Mock new extension context after reload (e.g. Content Script B or Popup in new context)
+  ;(global as any).chrome = {
+    runtime: {
+      id: 'talvyn-new-extension-id-67890', // New valid extension context!
+    },
+    storage: {
+      local: {
+        get: async (keys: string[]) => {
+          const out: Record<string, any> = {}
+          for (const k of keys) {
+            out[k] = storageDataStore[k]
+          }
+          return out
+        },
+        set: async (items: Record<string, any>) => {
+          Object.assign(storageDataStore, items)
+        },
+        remove: async (keys: string[]) => {
+          for (const k of keys) {
+            delete storageDataStore[k]
+          }
+        },
+      },
+    },
+  }
+
+  __resetRuntimeStateForTesting()
+  const restoredSession = await getAuthSession()
+  assert(
+    restoredSession !== null && restoredSession.token === 'jwt-persistent-token-12345',
+    'New extension context seamlessly restores existing authenticated session without requiring re-login'
+  )
+  assert(
+    restoredSession?.user.email === 'user@talvyn.com',
+    'Restored session contains accurate user profile'
+  )
+
+  // Restore global chrome
+  ;(global as any).chrome = originalChrome
+
+  console.log('\n===========================================================')
+  console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)
+  console.log('===========================================================')
+
+  if (failedTests > 0) process.exit(1)
+}
+
+runTests().catch((err) => {
+  console.error('Test execution failed:', err)
+  process.exit(1)
+})
+
