@@ -386,37 +386,39 @@ async function handleSingleSave(): Promise<void> {
   const normResult = normalizeJob(currentSingleJob, profile)
   const normalized = normResult.normalized
 
+  const payload = {
+    title: normalized.title,
+    company: normalized.company,
+    jobUrl: normalized.jobUrl,
+    sourceWebsite: normalized.sourceWebsite,
+    location: normalized.location || undefined,
+    salary: normalized.salary || undefined,
+    description: normalized.description || undefined,
+    jobType: normalized.jobType,
+    status: 'SAVED' as const,
+  }
+
+  console.log('[Talvyn] JOB_NORMALIZED:', JSON.stringify(payload, null, 2))
   console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
 
-  const opp = opportunityClassifier.classify(normalized.title, normalized.description || '', normalized.jobType)
-
   try {
-    const saved = await jobsService.save({
-      title: normalized.title,
-      company: normalized.company,
-      jobUrl: normalized.jobUrl,
-      sourceWebsite: normalized.sourceWebsite,
-      location: normalized.location || undefined,
-      salary: normalized.salary || undefined,
-      description: normalized.description || undefined,
-      jobType: opp.type,
-      status: 'SAVED',
-    })
+    const saved = await jobsService.save(payload)
+    console.log(`[Talvyn] JOB_SAVE_RESPONSE: Success (Status 201, ID: ${saved.id})`)
+    console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
     updatePanelState({
       type: 'saved',
-      opportunityType: opp.type,
+      opportunityType: normalized.jobType,
       job: normalized,
       normalization: normResult,
     })
-    console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
   } catch (err: any) {
     const status = err?.status
     let userMessage = 'Failed to save. Please try again.'
 
     if (status === 401) {
-      userMessage = 'Your Talvyn session expired. Please reconnect your account.'
+      userMessage = 'Your Talvyn session expired'
     } else if (status === 403) {
-      userMessage = "You don't have permission to save this job."
+      userMessage = "You don't have permission to save this job"
     } else if (status === 409 || err?.message?.includes('already saved')) {
       console.log('[Talvyn] JOB_ALREADY_SAVED:', normalized.title)
       updatePanelState({
@@ -426,17 +428,18 @@ async function handleSingleSave(): Promise<void> {
         normalization: normResult,
       })
       return
-    } else if (status === 422) {
-      userMessage = err?.message || 'Missing required job information.'
+    } else if (status === 422 || status === 400) {
+      const fieldDetail = err?.body?.error || err?.message || 'Invalid job data'
+      userMessage = `Save failed: ${fieldDetail}`
     } else if (status === 500) {
       userMessage = "Talvyn couldn't save this job. Try again."
     } else if (status === 0 || !status) {
-      userMessage = 'Connection problem. Your job will retry when online.'
+      userMessage = 'Connection problem. Try again.'
     } else if (err?.message) {
       userMessage = err.message
     }
 
-    console.error(`[Talvyn:TALVYN_BACKEND] JOB_SAVE_FAILED: (Status ${status || 0}) ${userMessage}`)
+    console.error(`[Talvyn] JOB_SAVE_FAILED: (Status ${status || 0}) ${userMessage}`)
     updatePanelState({
       type: 'error',
       message: userMessage,

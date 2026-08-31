@@ -6,6 +6,7 @@ import { GreenhouseAdapter } from './greenhouse'
 import { LeverAdapter } from './lever'
 import { AshbyAdapter } from './ashby'
 import { SmartRecruitersAdapter } from './smartrecruiters'
+import { UnstopAdapter } from './unstop'
 
 export class AdapterRegistry {
   private adapters: SiteAdapter[] = []
@@ -17,6 +18,7 @@ export class AdapterRegistry {
     this.adapters = [
       new LinkedInAdapter(),
       new IndeedAdapter(),
+      new UnstopAdapter(),
       new GreenhouseAdapter(),
       new LeverAdapter(),
       new AshbyAdapter(),

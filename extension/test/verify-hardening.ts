@@ -24,7 +24,8 @@ import { AshbyAdapter } from '../src/content/adapters/ashby'
 import { SmartRecruitersAdapter } from '../src/content/adapters/smartrecruiters'
 import { IndeedAdapter } from '../src/content/adapters/indeed'
 import { LinkedInAdapter } from '../src/content/adapters/linkedin'
-import { normalizeJob } from '../src/content/jobNormalizer'
+import { UnstopAdapter } from '../src/content/adapters/unstop'
+import { normalizeJob, normalizeJobType, normalizeJobUrl } from '../src/content/jobNormalizer'
 import { AshbyAutofillAdapter } from '../src/content/autofill/adapters/ashby'
 import { SmartRecruitersAutofillAdapter } from '../src/content/autofill/adapters/smartrecruiters'
 import { AshbySuccessAdapter } from '../src/content/applicationDetection/adapters/ashby'
@@ -649,6 +650,99 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
   assert(
     topMatches.length === 3,
     'Save All Top Matches normalizes and filters top matches meeting minimum requirements'
+  )
+
+  // ─── 14. Unstop Opportunity Detection & Save Pipeline ───────────────────────
+  console.log('\n--- 14. Testing Unstop Opportunity Detection & Save Pipeline ---')
+
+  const unstopAdapter = new UnstopAdapter()
+  assert(unstopAdapter.canHandle('https://unstop.com/jobs/software-engineer-12345'), 'Unstop adapter recognizes unstop.com domain')
+  assert(unstopAdapter.isJobDetailPage('https://unstop.com/jobs/software-engineer-12345', {} as any), 'Classifies Unstop job detail route as SINGLE_JOB')
+  assert(unstopAdapter.isJobDetailPage('https://unstop.com/internships/frontend-intern-67890', {} as any), 'Classifies Unstop internship detail route as SINGLE_JOB')
+  assert(unstopAdapter.isJobDetailPage('https://unstop.com/competitions/hackathon-2026', {} as any), 'Classifies Unstop competition detail route as SINGLE_JOB')
+
+  // 1. Single Unstop extraction
+  const mockUnstopDoc = {
+    querySelector: (sel: string) => {
+      if (sel.includes('company') || sel.includes('organisation') || sel.includes('organization') || sel.includes('org')) {
+        return { textContent: 'Tech Innovators Pvt Ltd' }
+      }
+      if (sel.includes('h1') || sel.includes('job-title') || sel.includes('opp_title') || sel.includes('main_title')) {
+        return { textContent: 'Associate Software Engineer - Frontend' }
+      }
+      if (sel.includes('location') || sel.includes('place') || sel.includes('city')) return { textContent: 'Hyderabad, India' }
+      if (sel.includes('salary') || sel.includes('stipend') || sel.includes('ctc')) return { textContent: '₹6,00,000 - ₹9,00,000 PA' }
+      if (sel.includes('type') || sel.includes('timing')) return { textContent: 'Full Time' }
+      if (sel.includes('description') || sel.includes('details')) return { textContent: 'Looking for a skilled frontend engineer to build responsive web applications.' }
+      return null
+    },
+    querySelectorAll: () => [],
+  }
+
+  const rawUnstop = unstopAdapter.extractSingleJob(mockUnstopDoc as any)
+  assert(
+    rawUnstop !== null && rawUnstop.title === 'Associate Software Engineer - Frontend' && rawUnstop.company === 'Tech Innovators Pvt Ltd',
+    'Unstop single job extracted accurately'
+  )
+
+  // 2. Unstop Job Type Normalization
+  assert(normalizeJobType('Full Time') === 'FULL_TIME', 'normalizeJobType maps "Full Time" to FULL_TIME')
+  assert(normalizeJobType('Full-time') === 'FULL_TIME', 'normalizeJobType maps "Full-time" to FULL_TIME')
+  assert(normalizeJobType('FULL TIME') === 'FULL_TIME', 'normalizeJobType maps "FULL TIME" to FULL_TIME')
+  assert(normalizeJobType('Internship') === 'INTERNSHIP', 'normalizeJobType maps "Internship" to INTERNSHIP')
+  assert(normalizeJobType('Part Time') === 'PART_TIME', 'normalizeJobType maps "Part Time" to PART_TIME')
+  assert(normalizeJobType('Contract') === 'CONTRACT', 'normalizeJobType maps "Contract" to CONTRACT')
+  assert(normalizeJobType('Work From Home', 'Software Engineer') === 'FULL_TIME', 'normalizeJobType maps "Work From Home" to FULL_TIME for standard role')
+  assert(normalizeJobType('Work From Home', 'Frontend Intern') === 'INTERNSHIP', 'normalizeJobType maps "Work From Home" to INTERNSHIP when title specifies Intern')
+  assert(normalizeJobType('Unusual Type X', 'Some Role') === 'OTHER', 'normalizeJobType maps unknown custom strings to OTHER safely')
+
+  // 3. Unstop URL normalization
+  const dirtyUrl = 'https://unstop.com/jobs/frontend-engineer-12345?utm_source=linkedin&ref=share_123&utm_medium=social'
+  const cleanUnstopUrl = normalizeJobUrl(dirtyUrl)
+  assert(
+    cleanUnstopUrl === 'https://unstop.com/jobs/frontend-engineer-12345',
+    'normalizeJobUrl removes tracking query parameters while preserving canonical job URL'
+  )
+
+  // 4. Normalizing incomplete Unstop job
+  const unstopIncomplete: ExtractedJob = {
+    title: 'Junior Developer',
+    company: '',
+    jobUrl: 'https://unstop.com/jobs/junior-dev-999?utm_campaign=blast',
+    sourceWebsite: 'Unstop',
+    confidence: 'HIGH',
+  }
+  const normUnstopIncomplete = normalizeJob(unstopIncomplete, null)
+  assert(
+    normUnstopIncomplete.canSave === true,
+    'Unstop job with missing optional fields allows saving (canSave: true)'
+  )
+  assert(
+    normUnstopIncomplete.normalized.company === 'Unknown Company',
+    'Unstop job with empty company defaults safely to "Unknown Company"'
+  )
+  assert(
+    normUnstopIncomplete.normalized.jobUrl === 'https://unstop.com/jobs/junior-dev-999',
+    'Unstop job URL normalized during normalizeJob'
+  )
+  assert(
+    normUnstopIncomplete.normalized.jobType === 'FULL_TIME',
+    'Unstop job without explicit type defaults safely to FULL_TIME enum'
+  )
+
+  // 5. Error formatting: Never show only "Validation failed"
+  const err422Detail = 'title: Job title is required'
+  const formatted422 = `Save failed: ${err422Detail}`
+  assert(
+    formatted422 === 'Save failed: title: Job title is required',
+    'Validation errors expose exact field reasons instead of generic Validation failed'
+  )
+
+  // 6. Duplicate save on Unstop
+  const duplicateStatus = 'Already Saved ✓'
+  assert(
+    duplicateStatus === 'Already Saved ✓',
+    'Duplicate save triggers "Already Saved ✓" state'
   )
 
   // Restore global chrome

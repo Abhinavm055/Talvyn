@@ -92,8 +92,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       const firstError =
         Object.entries(fieldErrors)
           .map(([field, errs]) => `${field}: ${(errs || []).join(', ')}`)
-          .join('; ') || 'Validation failed'
-      res.status(422).json({ error: firstError, details: parsed.error.flatten() })
+          .join('; ') || 'Invalid job data'
+      res.status(422).json({ success: false, error: firstError, details: parsed.error.flatten() })
       return
     }
 
@@ -103,7 +103,12 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         where: { userId: req.userId, jobUrl: parsed.data.jobUrl },
       })
       if (existing) {
-        res.status(409).json({ error: 'This job is already saved', job: existing, id: existing.id })
+        res.status(409).json({
+          success: false,
+          error: 'This job is already saved',
+          job: existing,
+          id: existing.id,
+        })
         return
       }
     }
@@ -123,10 +128,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         userId: req.userId!,
       },
     })
-    res.status(201).json(job)
+    res.status(201).json({ success: true, ...job, job, id: job.id })
   } catch (err) {
     console.error('[Talvyn] Failed to create job:', err)
-    res.status(500).json({ error: "Talvyn couldn't save this job. Try again." })
+    res.status(500).json({ success: false, error: "Talvyn couldn't save this job. Try again." })
   }
 })
 
