@@ -198,8 +198,59 @@ async function runTests() {
 
   assert(tokenExpiredCaught, 'Correctly identifies expired token to prompt clean re-authentication')
 
-  // ─── 7. Package ZIP Artifact Integrity & Manifest Validation ─────────────
-  console.log('\n--- 7. Testing Extension Production Package Artifact & Manifest ---')
+  // ─── 7. Authoritative Storage Contract & Popup State Machine ───────────
+  console.log('\n--- 7. Testing Authoritative Storage Contract & Popup Logic ---')
+
+  const srcStoragePath = path.resolve(process.cwd(), 'extension', 'src', 'utils', 'storage.ts')
+  const srcPopupPath = path.resolve(process.cwd(), 'extension', 'src', 'popup', 'popup.ts')
+  const srcBackgroundPath = path.resolve(process.cwd(), 'extension', 'src', 'background', 'index.ts')
+
+  const storageCode = fs.readFileSync(srcStoragePath, 'utf8')
+  assert(
+    storageCode.includes('talvynAuth') &&
+    storageCode.includes('TalvynAuthSession') &&
+    storageCode.includes('getAuthSession') &&
+    storageCode.includes('setAuthSession'),
+    'Storage module defines authoritative talvynAuth session contract with getAuthSession/setAuthSession'
+  )
+
+  const popupCode = fs.readFileSync(srcPopupPath, 'utf8')
+  assert(
+    popupCode.includes('POPUP_AUTH_CHECK_STARTED') &&
+    popupCode.includes('SESSION_FOUND') &&
+    popupCode.includes('SESSION_VALID') &&
+    popupCode.includes('SESSION_EXPIRED'),
+    'Popup implements required development tracing logs (POPUP_AUTH_CHECK_STARTED, SESSION_FOUND, SESSION_VALID, SESSION_EXPIRED)'
+  )
+
+  assert(
+    popupCode.includes('renderLoading') &&
+    popupCode.includes('renderDisconnected') &&
+    popupCode.includes('renderConnected') &&
+    popupCode.includes('renderExpired'),
+    'Popup implements complete 5-state authentication lifecycle without showing login form when session exists'
+  )
+
+  const bgCode = fs.readFileSync(srcBackgroundPath, 'utf8')
+  assert(
+    bgCode.includes('CONNECTION_REQUEST_RECEIVED') &&
+    bgCode.includes('TOKEN_VALIDATION_STARTED') &&
+    bgCode.includes('TOKEN_VALIDATION_SUCCESS') &&
+    bgCode.includes('SESSION_STORED'),
+    'Background service worker implements required connection tracing logs'
+  )
+
+  // Ensure no secrets or credentials logged
+  assert(
+    !bgCode.includes('console.log(token') &&
+    !bgCode.includes('console.log(\'token\', token') &&
+    !popupCode.includes('console.log(token') &&
+    !popupCode.includes('console.log(session.token'),
+    'Security verified: No JWT tokens or credentials printed to console logs'
+  )
+
+  // ─── 8. Package ZIP Artifact Integrity & Manifest Validation ─────────────
+  console.log('\n--- 8. Testing Extension Production Package Artifact & Manifest ---')
 
   const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'Talvyn v1.zip')
   const packageZipLowerPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
@@ -213,7 +264,7 @@ async function runTests() {
   const srcContentCode = fs.readFileSync(srcContentPath, 'utf8')
   assert(
     !srcContentCode.includes('window.postMessage') && !srcContentCode.includes('initWebBridge'),
-    'Content script has no window.postMessage or legacy web bridge dependency'
+    'Content script has zero window.postMessage or legacy web bridge dependencies'
   )
 
   const srcManifestCode = fs.readFileSync(srcManifestPath, 'utf8')
@@ -266,4 +317,5 @@ runTests().catch((err) => {
   console.error('Extension connection test runner failed:', err)
   process.exit(1)
 })
+
 

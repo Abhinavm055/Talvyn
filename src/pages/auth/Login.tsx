@@ -25,7 +25,15 @@ export default function Login() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
-  const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo')
+  const rawRedirect = searchParams.get('redirect') || searchParams.get('returnTo')
+  let redirectParam = rawRedirect
+  if (redirectParam) {
+    try {
+      if (redirectParam.startsWith('%2F') || redirectParam.startsWith('%2f')) {
+        redirectParam = decodeURIComponent(redirectParam)
+      }
+    } catch {}
+  }
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -42,6 +50,7 @@ export default function Login() {
       navigate('/onboarding')
     }
   }
+
 
   const onSubmit = async (data: FormData) => {
     setError('')

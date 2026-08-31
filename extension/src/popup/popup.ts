@@ -1,16 +1,27 @@
 /**
  * Talvyn Browser Extension Popup
  *
+ * Implements a strict authentication state machine:
+ * loading -> (chrome.storage.local check) -> connected | disconnected | expired
+ *
  * Provides real-time connection status with the user's Talvyn backend,
- * live health verification, user authentication, and quick dashboard navigation.
+ * live health verification, user session display, and quick dashboard navigation.
  */
 
-import { getToken, getUser, setToken, setUser, clearAuth } from '../utils/storage'
+import {
+  getAuthSession,
+  setAuthSession,
+  clearAuth,
+  TalvynAuthSession,
+} from '../utils/storage'
 import { authService } from '../services/authService'
 import { jobsService } from '../services/jobsService'
 import { CONFIG } from '../utils/config'
 import { AuthUser, Job } from '../types'
 
+type PopupState = 'loading' | 'disconnected' | 'connecting' | 'connected' | 'expired'
+
+let currentState: PopupState = 'loading'
 const app = document.getElementById('app')!
 
 function getLogoUrl(): string {
@@ -35,22 +46,6 @@ function getFallbackIconUrl(): string {
   return '/icons/icon48.png'
 }
 
-async function checkApiHealth(): Promise<boolean> {
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 4000)
-    const res = await fetch(`${CONFIG.API_BASE}/api/health`, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    })
-    clearTimeout(timeoutId)
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
 function openConnectTab(): void {
   const extId = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : ''
   const connectUrl = extId
@@ -68,29 +63,75 @@ function openConnectTab(): void {
   window.open(connectUrl, '_blank')
 }
 
-async function init() {
-  const token = await getToken()
-  const user = await getUser()
+// ─── Initializer & State Machine ──────────────────────────────────────────────
 
-  if (!token || !user) {
-    renderLogin()
+async function init() {
+  console.log('[Talvyn] POPUP_AUTH_CHECK_STARTED')
+  renderLoading()
+
+  const session = await getAuthSession()
+
+  if (!session || !session.token) {
+    currentState = 'disconnected'
+    renderDisconnected()
     return
   }
 
-  // Validate token with live backend
+  console.log('[Talvyn] SESSION_FOUND')
+
+  // Live token verification against backend
   try {
     const freshUser = await authService.me()
-    await setUser(freshUser)
-    renderDashboard(freshUser)
-  } catch {
-    await clearAuth()
-    renderLogin(true) // show session expired notice
+    console.log('[Talvyn] SESSION_VALID')
+    await setAuthSession({
+      token: session.token,
+      user: freshUser,
+      connectedAt: session.connectedAt || new Date().toISOString(),
+    })
+    currentState = 'connected'
+    renderConnected(freshUser)
+  } catch (err: any) {
+    if (err?.status === 401 || err?.status === 403) {
+      console.log('[Talvyn] SESSION_EXPIRED')
+      await clearAuth()
+      currentState = 'expired'
+      renderExpired()
+    } else {
+      // Network error / cold start — retain session and render with cached profile
+      console.warn('[Talvyn] Backend offline/cold start during popup auth check, retaining session:', err?.message || err)
+      currentState = 'connected'
+      renderConnected(session.user, { isOffline: true })
+    }
   }
 }
 
-// ─── Login View ────────────────────────────────────────────────────────────────
+// ─── Loading View ─────────────────────────────────────────────────────────────
 
-function renderLogin(isSessionExpired = false) {
+function renderLoading() {
+  const logoUrl = getLogoUrl()
+  const fallbackUrl = getFallbackIconUrl()
+
+  app.innerHTML = `
+    <div style="padding:24px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#0f172a;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+      <img
+        src="${logoUrl}"
+        alt="Talvyn"
+        onerror="this.onerror=null;this.src='${fallbackUrl}';"
+        style="width:48px;height:48px;border-radius:12px;box-shadow:0 4px 12px rgba(99,102,241,0.25);margin-bottom:16px;object-fit:contain;"
+      />
+      <div style="font-weight:700;font-size:15px;color:#0f172a;margin-bottom:4px;">Talvyn Browser Extension</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:18px;">Checking connection status...</div>
+      <div style="width:24px;height:24px;border:2.5px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+      <style>
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      </style>
+    </div>
+  `
+}
+
+// ─── Disconnected View ────────────────────────────────────────────────────────
+
+function renderDisconnected() {
   const logoUrl = getLogoUrl()
   const fallbackUrl = getFallbackIconUrl()
 
@@ -98,7 +139,7 @@ function renderLogin(isSessionExpired = false) {
     <div style="padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#0f172a;min-height:360px;display:flex;flex-direction:column;justify-content:space-between;">
       <div>
         <!-- Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div style="display:flex;align-items:center;gap:10px;">
             <img
               src="${logoUrl}"
@@ -112,7 +153,7 @@ function renderLogin(isSessionExpired = false) {
             </div>
           </div>
 
-          <div id="connection-badge" style="
+          <div style="
             display:inline-flex;align-items:center;gap:5px;
             padding:3px 8px;border-radius:999px;background:#f1f5f9;
             color:#64748b;font-size:10px;font-weight:600;
@@ -122,31 +163,25 @@ function renderLogin(isSessionExpired = false) {
           </div>
         </div>
 
-        ${
-          isSessionExpired
-            ? `
-          <div style="
-            margin-bottom:12px;padding:8px 12px;background:#fffbeb;
-            border:1px solid #fef3c7;border-radius:8px;font-size:11px;color:#b45309;
-            display:flex;align-items:center;gap:6px;
-          ">
-            <span>⚠️</span>
-            <span>Your session expired. Please reconnect your account.</span>
+        <!-- Hero Card -->
+        <div style="
+          padding:14px;background:linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+          border:1px solid #e0e7ff;border-radius:12px;margin-bottom:16px;text-align:center;
+        ">
+          <div style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:4px;">
+            Connect your Talvyn Account
           </div>
-        `
-            : `
-          <div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.4;">
-            Connect your Talvyn account to save jobs, autofill applications, and sync career progress seamlessly.
+          <div style="font-size:11.5px;color:#475569;line-height:1.45;">
+            Authorize the extension to capture jobs with 1 click, autofill applications, and track opportunities seamlessly.
           </div>
-        `
-        }
+        </div>
 
         <!-- Primary Connect Action Button -->
         <button type="button" id="connect-account-btn" style="
-          width:100%;padding:11px 14px;background:linear-gradient(to right, #4f46e5, #6366f1);color:white;
+          width:100%;padding:12px 14px;background:linear-gradient(to right, #4f46e5, #6366f1);color:white;
           border:none;border-radius:10px;font-size:13px;font-weight:700;
           display:flex;align-items:center;justify-content:center;gap:8px;
-          cursor:pointer;margin-bottom:12px;box-shadow:0 3px 8px rgba(79,70,229,0.3);transition:all 0.15s;
+          cursor:pointer;margin-bottom:14px;box-shadow:0 3px 8px rgba(79,70,229,0.3);transition:all 0.15s;
         ">
           <svg style="width:16px;height:16px;flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -154,49 +189,14 @@ function renderLogin(isSessionExpired = false) {
           <span>Connect your Talvyn account</span>
         </button>
 
-        <div style="
-          display:flex;align-items:center;text-align:center;margin:12px 0 10px;
-          font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:0.5px;
-        ">
-          <div style="flex:1;border-bottom:1px solid #e2e8f0;"></div>
-          <span style="padding:0 8px;">OR SIGN IN DIRECTLY</span>
-          <div style="flex:1;border-bottom:1px solid #e2e8f0;"></div>
+        <div style="font-size:11px;color:#64748b;text-align:center;line-height:1.4;">
+          Clicking above will open the Talvyn web app in a browser tab to safely verify your session.
         </div>
-
-        <!-- Form -->
-        <form id="login-form">
-          <div style="margin-bottom:8px;">
-            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px;">Email</label>
-            <input id="email-input" type="email" placeholder="you@example.com" required style="
-              width:100%;padding:7px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
-              font-size:12px;outline:none;background:white;color:#0f172a;box-sizing:border-box;
-            " />
-          </div>
-          <div style="margin-bottom:10px;">
-            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px;">Password</label>
-            <input id="password-input" type="password" placeholder="••••••••" required style="
-              width:100%;padding:7px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
-              font-size:12px;outline:none;background:white;color:#0f172a;box-sizing:border-box;
-            " />
-          </div>
-
-          <div id="login-error" style="
-            display:none;margin-bottom:10px;padding:7px 10px;
-            background:#fef2f2;border:1px solid #fecaca;border-radius:8px;
-            font-size:11px;color:#dc2626;
-          "></div>
-
-          <button type="submit" id="login-btn" style="
-            width:100%;padding:8px;background:#f8fafc;color:#1e293b;
-            border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;
-            cursor:pointer;transition:all 0.15s;
-          ">Sign In with Password</button>
-        </form>
       </div>
 
       <!-- Footer Action -->
       <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:10px;color:#64748b;">Not registered yet?</span>
+        <span style="font-size:10px;color:#64748b;">Don't have an account?</span>
         <a href="${CONFIG.DASHBOARD_URL}/signup" target="_blank" style="
           font-size:10px;color:#4f46e5;text-decoration:none;font-weight:600;
         ">Create Free Account →</a>
@@ -204,236 +204,268 @@ function renderLogin(isSessionExpired = false) {
     </div>
   `
 
-  // Connect Account Button
   const connectBtn = document.getElementById('connect-account-btn')
   connectBtn?.addEventListener('click', () => {
     openConnectTab()
   })
-
-  // Asynchronously verify backend health and update status badge
-  checkApiHealth().then((isHealthy) => {
-    const badge = document.getElementById('connection-badge')
-    if (!badge) return
-    if (isHealthy) {
-      badge.style.background = '#f1f5f9'
-      badge.style.color = '#475569'
-      badge.innerHTML = `
-        <span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
-        Ready to Connect
-      `
-    } else {
-      badge.style.background = '#fee2e2'
-      badge.style.color = '#991b1b'
-      badge.innerHTML = `
-        <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;display:inline-block;"></span>
-        Backend Offline
-      `
-    }
-  })
-
-  const form = document.getElementById('login-form') as HTMLFormElement
-  const emailInput = document.getElementById('email-input') as HTMLInputElement
-  const passwordInput = document.getElementById('password-input') as HTMLInputElement
-  const loginBtn = document.getElementById('login-btn') as HTMLButtonElement
-  const errorEl = document.getElementById('login-error') as HTMLElement
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault()
-    errorEl.style.display = 'none'
-    loginBtn.textContent = 'Signing in…'
-    loginBtn.disabled = true
-
-    try {
-      const response = await authService.login(emailInput.value.trim(), passwordInput.value)
-      await setToken(response.token)
-      await setUser(response.user)
-      renderDashboard(response.user)
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Invalid email or password'
-      errorEl.textContent = message
-      errorEl.style.display = 'block'
-      loginBtn.textContent = 'Sign In with Password'
-      loginBtn.disabled = false
-    }
-  })
 }
 
-// ─── Authenticated Dashboard View ─────────────────────────────────────────────
+// ─── Expired View ─────────────────────────────────────────────────────────────
 
-
-async function renderDashboard(user: AuthUser) {
-  const displayName =
-    user.profile?.preferredName ||
-    user.profile?.givenName ||
-    user.email.split('@')[0]
-
+function renderExpired() {
   const logoUrl = getLogoUrl()
   const fallbackUrl = getFallbackIconUrl()
 
   app.innerHTML = `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;min-height:360px;display:flex;flex-direction:column;justify-content:space-between;">
+    <div style="padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#0f172a;min-height:360px;display:flex;flex-direction:column;justify-content:space-between;">
       <div>
-        <!-- Top bar -->
-        <div style="
-          padding:12px 16px;background:linear-gradient(to right, #4338ca, #6366f1);display:flex;
-          align-items:center;justify-content:space-between;
-        ">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div style="display:flex;align-items:center;gap:10px;">
             <img
               src="${logoUrl}"
               alt="Talvyn"
               onerror="this.onerror=null;this.src='${fallbackUrl}';"
-              style="width:28px;height:28px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.2);flex-shrink:0;background:white;padding:2px;object-fit:contain;"
+              style="width:34px;height:34px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);flex-shrink:0;object-fit:contain;"
             />
             <div>
-              <div style="font-weight:700;font-size:13px;color:white;letter-spacing:-0.1px;">Talvyn</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.9);">${escapeHtml(displayName)}</div>
+              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Browser Extension</div>
+              <div style="font-size:11px;color:#64748b;">From Potential to Offer.</div>
             </div>
           </div>
 
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="
-              display:inline-flex;align-items:center;gap:4px;
-              padding:2px 7px;border-radius:999px;background:rgba(16,185,129,0.25);
-              color:#d1fae5;font-size:10px;font-weight:600;
-            ">
-              <span style="width:5px;height:5px;border-radius:50%;background:#34d399;display:inline-block;"></span>
-              Connected
-            </span>
-            <button id="logout-btn" style="
-              background:rgba(255,255,255,0.2);border:none;color:white;
-              padding:4px 8px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;
-            " title="Disconnect account">Disconnect</button>
+          <div style="
+            display:inline-flex;align-items:center;gap:5px;
+            padding:3px 8px;border-radius:999px;background:#fef3c7;
+            color:#b45309;font-size:10px;font-weight:600;
+          ">
+            <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
+            Expired
           </div>
         </div>
 
-        <!-- Quick actions -->
-        <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;background:#f8fafc;">
-          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            Quick Links
-          </div>
-          <div style="display:flex;gap:6px;">
-            <a href="${CONFIG.DASHBOARD_URL}/dashboard" target="_blank" style="
-              flex:1;padding:6px 8px;background:white;color:#4338ca;border:1px solid #e0e7ff;
-              border-radius:8px;font-size:11px;font-weight:600;
-              text-align:center;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,0.03);
-            ">Dashboard</a>
-            <a href="${CONFIG.DASHBOARD_URL}/jobs" target="_blank" style="
-              flex:1;padding:6px 8px;background:white;color:#15803d;border:1px solid #dcfce7;
-              border-radius:8px;font-size:11px;font-weight:600;
-              text-align:center;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,0.03);
-            ">My Jobs</a>
-            <a href="${CONFIG.DASHBOARD_URL}/tracker" target="_blank" style="
-              flex:1;padding:6px 8px;background:white;color:#c2410c;border:1px solid #ffedd5;
-              border-radius:8px;font-size:11px;font-weight:600;
-              text-align:center;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,0.03);
-            ">Tracker</a>
+        <!-- Expired Notice Box -->
+        <div style="
+          margin-bottom:14px;padding:12px;background:#fffbeb;
+          border:1px solid #fef3c7;border-radius:10px;font-size:11.5px;color:#b45309;
+          display:flex;align-items:flex-start;gap:8px;line-height:1.45;
+        ">
+          <span style="font-size:14px;">⚠️</span>
+          <div>
+            <div style="font-weight:700;margin-bottom:2px;">Session Expired</div>
+            Your Talvyn account session timed out. Please reconnect your account to continue capturing jobs and autofilling applications.
           </div>
         </div>
 
-        <!-- Recent jobs -->
-        <div style="padding:10px 14px;">
-          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            Recent Saved Jobs
-          </div>
-          <div id="recent-jobs-list">
-            <div style="color:#94a3b8;font-size:12px;padding:8px 0;">Loading recent jobs…</div>
-          </div>
-        </div>
+        <!-- Reconnect Action Button -->
+        <button type="button" id="reconnect-account-btn" style="
+          width:100%;padding:12px 14px;background:linear-gradient(to right, #4f46e5, #6366f1);color:white;
+          border:none;border-radius:10px;font-size:13px;font-weight:700;
+          display:flex;align-items:center;justify-content:center;gap:8px;
+          cursor:pointer;margin-bottom:14px;box-shadow:0 3px 8px rgba(79,70,229,0.3);transition:all 0.15s;
+        ">
+          <svg style="width:16px;height:16px;flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span>Reconnect Account</span>
+        </button>
       </div>
 
-      <!-- Footer / Account Info -->
-      <div style="padding:10px 14px;border-top:1px solid #f1f5f9;background:#fafafa;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:10px;color:#64748b;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          ${escapeHtml(user.email)}
-        </span>
-        <a href="${CONFIG.DASHBOARD_URL}/extensions" target="_blank" style="
+      <!-- Footer Action -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:10px;color:#64748b;">Need help?</span>
+        <a href="${CONFIG.DASHBOARD_URL}" target="_blank" style="
           font-size:10px;color:#4f46e5;text-decoration:none;font-weight:600;
-        ">Settings →</a>
+        ">Open Dashboard →</a>
       </div>
     </div>
   `
 
-  // Wire logout
-  document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    await clearAuth()
-    renderLogin()
+  const reconnectBtn = document.getElementById('reconnect-account-btn')
+  reconnectBtn?.addEventListener('click', () => {
+    openConnectTab()
   })
-
-
-  // Load recent jobs
-  await loadRecentJobs()
 }
 
-async function loadRecentJobs(): Promise<void> {
-  const listEl = document.getElementById('recent-jobs-list')
-  if (!listEl) return
+// ─── Connected Dashboard View ─────────────────────────────────────────────────
+
+function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) {
+  const logoUrl = getLogoUrl()
+  const fallbackUrl = getFallbackIconUrl()
+
+  const displayName =
+    user.profile?.preferredName ||
+    user.profile?.givenName ||
+    user.profile?.legalFullName ||
+    user.email.split('@')[0]
+
+  const avatarUrl = user.profile?.avatarUrl
+
+  app.innerHTML = `
+    <div style="padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#0f172a;min-height:360px;display:flex;flex-direction:column;justify-content:space-between;">
+      <div>
+        <!-- Top Bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <img
+              src="${logoUrl}"
+              alt="Talvyn"
+              onerror="this.onerror=null;this.src='${fallbackUrl}';"
+              style="width:30px;height:30px;border-radius:8px;box-shadow:0 2px 4px rgba(99,102,241,0.2);flex-shrink:0;object-fit:contain;"
+            />
+            <div style="font-weight:700;font-size:13px;color:#0f172a;">Talvyn Browser Extension</div>
+          </div>
+
+          <div style="
+            display:inline-flex;align-items:center;gap:5px;
+            padding:3px 8px;border-radius:999px;background:${options.isOffline ? '#fef3c7' : '#ecfdf5'};
+            color:${options.isOffline ? '#b45309' : '#059669'};font-size:10px;font-weight:700;
+          ">
+            <span style="width:6px;height:6px;border-radius:50%;background:${options.isOffline ? '#f59e0b' : '#10b981'};display:inline-block;"></span>
+            ${options.isOffline ? 'Offline' : '✓ Connected'}
+          </div>
+        </div>
+
+        <!-- User Profile Card -->
+        <div style="
+          display:flex;align-items:center;gap:10px;padding:10px 12px;
+          background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px;
+        ">
+          ${
+            avatarUrl
+              ? `<img src="${avatarUrl}" alt="${displayName}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1px solid #cbd5e1;flex-shrink:0;" />`
+              : `<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg, #6366f1, #8b5cf6);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${displayName[0]?.toUpperCase()}</div>`
+          }
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:700;font-size:12.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${displayName}</div>
+            <div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${user.email}</div>
+          </div>
+        </div>
+
+        <!-- Navigation Links Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <button type="button" id="open-dashboard-btn" style="
+            padding:9px 10px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
+            border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:5px;transition:all 0.15s;
+          ">
+            <span>Dashboard</span>
+            <svg style="width:12px;height:12px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+          </button>
+
+          <button type="button" id="open-tracker-btn" style="
+            padding:9px 10px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;
+            border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:5px;transition:all 0.15s;
+          ">
+            <span>Tracker</span>
+            <svg style="width:12px;height:12px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+          </button>
+        </div>
+
+        <!-- Recent Saved Jobs Section -->
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+            Recent Saved Jobs
+          </div>
+          <div id="recent-jobs" style="min-height:70px;">
+            <div style="font-size:11px;color:#94a3b8;text-align:center;padding:16px 0;">Loading jobs...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer / Disconnect -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+        <button type="button" id="disconnect-btn" style="
+          background:none;border:none;color:#94a3b8;font-size:11px;cursor:pointer;padding:0;
+          font-weight:500;transition:color 0.15s;
+        ">
+          Disconnect Account
+        </button>
+
+        <a href="${CONFIG.DASHBOARD_URL}/extensions" target="_blank" style="
+          font-size:11px;color:#6366f1;text-decoration:none;font-weight:600;
+        ">
+          Extension Settings →
+        </a>
+      </div>
+    </div>
+  `
+
+  document.getElementById('open-dashboard-btn')?.addEventListener('click', () => {
+    window.open(`${CONFIG.DASHBOARD_URL}/dashboard`, '_blank')
+  })
+
+  document.getElementById('open-tracker-btn')?.addEventListener('click', () => {
+    window.open(`${CONFIG.DASHBOARD_URL}/tracker`, '_blank')
+  })
+
+  const disconnectBtn = document.getElementById('disconnect-btn')
+  disconnectBtn?.addEventListener('click', async () => {
+    if (confirm('Disconnect extension from your Talvyn account?')) {
+      await clearAuth()
+      currentState = 'disconnected'
+      renderDisconnected()
+    }
+  })
+
+  // Load recent jobs
+  loadRecentJobs()
+}
+
+async function loadRecentJobs() {
+  const container = document.getElementById('recent-jobs')
+  if (!container) return
 
   try {
-    const { jobs } = await jobsService.getRecent(5)
-    if (jobs.length === 0) {
-      listEl.innerHTML = `
-        <div style="color:#94a3b8;font-size:11px;padding:8px 0;text-align:center;">
-          No jobs saved yet.<br/>
-          <span style="color:#64748b;font-size:10px;">Browse LinkedIn, Indeed, or Ashby to auto-save!</span>
+    const jobs = await jobsService.getJobs()
+    if (!jobs || jobs.length === 0) {
+      container.innerHTML = `
+        <div style="padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;text-align:center;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:2px;">No jobs saved yet</div>
+          <div style="font-size:10px;color:#94a3b8;">Browse any job board to capture listings with 1 click.</div>
         </div>
       `
       return
     }
 
-    listEl.innerHTML = jobs.map((job) => renderJobItem(job)).join('')
-  } catch {
-    listEl.innerHTML = `<div style="color:#dc2626;font-size:11px;">Failed to load recent jobs.</div>`
-  }
-}
-
-function renderJobItem(job: Job): string {
-  const STATUS_COLORS: Record<string, string> = {
-    SAVED: '#64748b',
-    INTERESTED: '#7c3aed',
-    APPLIED: '#2563eb',
-    ASSESSMENT: '#9333ea',
-    INTERVIEW: '#d97706',
-    OFFER: '#059669',
-    ACCEPTED: '#059669',
-    REJECTED: '#dc2626',
-    WITHDRAWN: '#94a3b8',
-    EXPIRED: '#94a3b8',
-  }
-  const color = STATUS_COLORS[job.status] || '#64748b'
-
-  return `
-    <a href="${CONFIG.DASHBOARD_URL}/jobs/${job.id}" target="_blank" style="
-      display:flex;align-items:center;gap:8px;padding:6px 0;
-      border-bottom:1px solid #f8fafc;text-decoration:none;
-    ">
-      <div style="
-        width:24px;height:24px;background:#f1f5f9;border-radius:6px;
-        display:flex;align-items:center;justify-content:center;
-        font-size:11px;font-weight:700;color:#475569;flex-shrink:0;
-      ">${escapeHtml(job.company.charAt(0).toUpperCase())}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:11px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          ${escapeHtml(job.title)}
+    const recent = jobs.slice(0, 3)
+    container.innerHTML = recent
+      .map(
+        (job: Job) => `
+        <div style="
+          display:flex;align-items:center;justify-content:space-between;
+          padding:7px 10px;background:#f8fafc;border:1px solid #f1f5f9;border-radius:8px;margin-bottom:4px;
+        ">
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;font-size:11.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${job.title}
+            </div>
+            <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${job.company}
+            </div>
+          </div>
+          <span style="
+            font-size:9.5px;padding:2px 6px;border-radius:999px;font-weight:600;text-transform:capitalize;
+            background:${job.status === 'APPLIED' ? '#e0f2fe' : '#f1f5f9'};
+            color:${job.status === 'APPLIED' ? '#0369a1' : '#475569'};
+          ">
+            ${job.status.toLowerCase()}
+          </span>
         </div>
-        <div style="font-size:10px;color:#94a3b8;">${escapeHtml(job.company)}</div>
+      `
+      )
+      .join('')
+  } catch {
+    container.innerHTML = `
+      <div style="font-size:11px;color:#94a3b8;text-align:center;padding:12px 0;">
+        Saved jobs will appear here
       </div>
-      <span style="
-        font-size:9px;font-weight:700;color:${color};
-        background:${color}15;padding:2px 5px;border-radius:4px;
-        flex-shrink:0;white-space:nowrap;
-      ">${job.status}</span>
-    </a>
-  `
+    `
+  }
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+// ─── Entry Point ──────────────────────────────────────────────────────────────
 
 init().catch(console.error)
+

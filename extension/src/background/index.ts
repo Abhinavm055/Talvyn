@@ -2,13 +2,20 @@
  * Talvyn Extension – Background Service Worker (Manifest V3)
  *
  * Responsibilities:
- * - Validate stored token on startup / install
- * - Route messages between popup and content scripts
- * - Handle authentication state changes
+ * - Validate stored session on startup / install
+ * - Route external messages from Talvyn web app via externally_connectable
+ * - Authoritative token verification against live backend (/api/auth/me)
+ * - Persist session to chrome.storage.local (talvynAuth)
  * - Set extension badge to reflect auth state
  */
 
-import { getToken, getUser, setToken, setUser, clearAuth } from '../utils/storage'
+import {
+  getAuthSession,
+  setAuthSession,
+  clearAuth,
+  getToken,
+  getUser,
+} from '../utils/storage'
 import { authService } from '../services/authService'
 import { CONFIG } from '../utils/config'
 import { ExtensionMessage } from '../types'
@@ -31,20 +38,29 @@ chrome.runtime.onStartup.addListener(async () => {
 // ─── Token Validation ─────────────────────────────────────────────────────────
 
 async function validateStoredToken(): Promise<void> {
-  const token = await getToken()
-  if (!token) {
+  const session = await getAuthSession()
+  if (!session?.token) {
     setBadge('off')
     return
   }
   try {
     const user = await authService.me()
-    await setUser(user)
+    await setAuthSession({
+      token: session.token,
+      user,
+      connectedAt: session.connectedAt || new Date().toISOString(),
+    })
     setBadge('on')
     console.log('[Talvyn] Token valid, logged in as', user.email)
-  } catch (err) {
-    console.warn('[Talvyn] Stored token invalid, clearing auth')
-    await clearAuth()
-    setBadge('off')
+  } catch (err: any) {
+    // Only clear if 401 or 403 unauthorized
+    if (err?.status === 401 || err?.status === 403) {
+      console.warn('[Talvyn] Stored token expired/invalid, clearing auth')
+      await clearAuth()
+      setBadge('off')
+    } else {
+      console.warn('[Talvyn] Token validation check failed due to network/cold start, retaining session:', err?.message || err)
+    }
   }
 }
 
@@ -66,7 +82,6 @@ chrome.runtime.onMessage.addListener(
     handleMessage(message)
       .then(sendResponse)
       .catch((err) => sendResponse({ type: 'ERROR', error: String(err) }))
-    // Return true to keep the message channel open for async response
     return true
   }
 )
@@ -74,11 +89,13 @@ chrome.runtime.onMessage.addListener(
 async function handleMessage(msg: ExtensionMessage): Promise<ExtensionMessage> {
   switch (msg.type) {
     case 'GET_AUTH': {
-      const token = await getToken()
-      const user = await getUser()
+      const session = await getAuthSession()
       return {
         type: 'AUTH_STATE',
-        payload: { isAuthenticated: !!token && !!user, user },
+        payload: {
+          isAuthenticated: Boolean(session?.token),
+          user: session?.user || null,
+        },
       }
     }
 
@@ -125,14 +142,13 @@ chrome.runtime.onMessageExternal.addListener(
     // 1. Status Ping / Discovery
     if (message.type === 'TALVYN_PING_EXTENSION') {
       (async () => {
-        const token = await getToken()
-        const user = await getUser()
+        const session = await getAuthSession()
         sendResponse({
           success: true,
           installed: true,
           version: '1.0.0',
-          connected: Boolean(token),
-          email: user?.email || null,
+          connected: Boolean(session?.token),
+          email: session?.user?.email || null,
         })
       })()
       return true
@@ -140,6 +156,7 @@ chrome.runtime.onMessageExternal.addListener(
 
     // 2. Connect Account with Token Verification
     if (message.type === 'TALVYN_CONNECT_EXTENSION') {
+      console.log('[Talvyn] CONNECTION_REQUEST_RECEIVED')
       const { token, user } = message
       if (!token) {
         sendResponse({ success: false, error: 'Missing token in connection request' })
@@ -148,6 +165,7 @@ chrome.runtime.onMessageExternal.addListener(
 
       (async () => {
         try {
+          console.log('[Talvyn] TOKEN_VALIDATION_STARTED')
           // Live verification against backend before marking connected
           const verifyResponse = await fetch(`${CONFIG.API_BASE}/api/auth/me`, {
             method: 'GET',
@@ -158,13 +176,23 @@ chrome.runtime.onMessageExternal.addListener(
           })
 
           if (!verifyResponse.ok) {
+            console.warn('[Talvyn] Token verification rejected by backend with status:', verifyResponse.status)
             sendResponse({ success: false, error: 'Token verification failed with backend' })
             return
           }
 
           const verifiedUser = await verifyResponse.json()
-          await setToken(token)
-          await setUser(verifiedUser || user)
+          console.log('[Talvyn] TOKEN_VALIDATION_SUCCESS')
+
+          const authSession = {
+            token,
+            user: verifiedUser || user,
+            connectedAt: new Date().toISOString(),
+          }
+
+          await setAuthSession(authSession)
+          console.log('[Talvyn] SESSION_STORED')
+
           setBadge('on')
           console.log('[Talvyn] Successfully connected Talvyn account for:', verifiedUser?.email || user?.email)
 
@@ -174,7 +202,7 @@ chrome.runtime.onMessageExternal.addListener(
             message: 'Extension connected successfully',
           })
         } catch (err: any) {
-          console.error('[Talvyn] Connection verification error:', err)
+          console.error('[Talvyn] Connection verification error:', err?.message || err)
           sendResponse({
             success: false,
             error: err instanceof Error ? err.message : 'Token verification failed',
@@ -198,12 +226,11 @@ chrome.runtime.onMessageExternal.addListener(
     // 4. Get Status
     if (message.type === 'TALVYN_GET_STATUS') {
       (async () => {
-        const token = await getToken()
-        const user = await getUser()
+        const session = await getAuthSession()
         sendResponse({
           success: true,
-          connected: Boolean(token),
-          user: user || null,
+          connected: Boolean(session?.token),
+          user: session?.user || null,
         })
       })()
       return true
@@ -215,4 +242,5 @@ chrome.runtime.onMessageExternal.addListener(
 )
 
 export {}
+
 

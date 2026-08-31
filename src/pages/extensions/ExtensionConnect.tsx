@@ -28,30 +28,30 @@ export default function ExtensionConnect() {
     }
   }, [queryExtId])
 
-  // If not logged in, redirect to login with return path
+  // If not logged in, automatically redirect to login with return path
+  useEffect(() => {
+    if (!isAuthenticated || !token || !user) {
+      const returnUrl = encodeURIComponent(location.pathname + location.search)
+      navigate(`/login?redirect=${returnUrl}`, { replace: true })
+    }
+  }, [isAuthenticated, token, user, location, navigate])
+
+  // Auto-initiate connection when authenticated and extensionId is present
+  useEffect(() => {
+    if (isAuthenticated && token && user && extensionId && status === 'idle') {
+      handleConnect()
+    }
+  }, [isAuthenticated, token, user, extensionId, status])
+
   if (!isAuthenticated || !token || !user) {
-    const returnUrl = encodeURIComponent(location.pathname + location.search)
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#0B0C10] flex items-center justify-center p-4">
-        <Card padding="lg" className="max-w-md w-full text-center space-y-6 bg-white dark:bg-[#11121A] border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-2xs">
-            <Puzzle className="w-8 h-8" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-              Sign In to Connect Extension
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Please sign in to your Talvyn account to authorize the browser extension.
-            </p>
-          </div>
-          <Button
-            onClick={() => navigate(`/login?redirect=${returnUrl}`)}
-            className="w-full"
-          >
-            Sign In to Continue
-          </Button>
-        </Card>
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Redirecting to sign in...
+          </p>
+        </div>
       </div>
     )
   }
@@ -71,7 +71,7 @@ export default function ExtensionConnect() {
     if (!extensionId) {
       setStatus('error')
       setErrorMessage(
-        'Extension ID was not detected. Please click "Connect your Talvyn account" directly from the extension popup.'
+        'Talvyn Browser Extension not detected. Please open the Talvyn Browser Extension from your browser toolbar and click "Connect your Talvyn account".'
       )
       return
     }
@@ -90,8 +90,7 @@ export default function ExtensionConnect() {
             console.error('[Talvyn Connect] Chrome runtime error:', lastError)
             setStatus('error')
             setErrorMessage(
-              lastError.message ||
-                'Could not establish connection with the Talvyn Browser Extension. Please verify the extension is installed and enabled.'
+              'Talvyn Browser Extension not detected. Please make sure the extension is installed and enabled, then try again.'
             )
             return
           }
@@ -107,9 +106,10 @@ export default function ExtensionConnect() {
     } catch (err: any) {
       console.error('[Talvyn Connect] Exception during connection:', err)
       setStatus('error')
-      setErrorMessage(err.message || 'An unexpected error occurred while connecting.')
+      setErrorMessage(err?.message || 'An unexpected error occurred while connecting.')
     }
   }
+
 
   const handleCloseTab = () => {
     try {
