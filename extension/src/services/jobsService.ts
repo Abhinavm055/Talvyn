@@ -28,6 +28,18 @@ export const jobsService = {
     api.get<{ jobs: Job[]; total: number }>(`/api/jobs?limit=${limit}`),
 
   /**
+   * Get list of jobs directly for the popup.
+   */
+  getJobs: async (limit = 5): Promise<Job[]> => {
+    try {
+      const res = await api.get<{ jobs: Job[]; total: number }>(`/api/jobs?limit=${limit}`)
+      return res?.jobs || []
+    } catch {
+      return []
+    }
+  },
+
+  /**
    * Update job status (e.g. mark as Interested from the extension).
    */
   updateStatus: (id: string, status: string): Promise<Job> =>

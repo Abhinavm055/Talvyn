@@ -36,6 +36,7 @@ try {
   if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
     document.documentElement.setAttribute('data-talvyn-extension-id', chrome.runtime.id)
     window.dispatchEvent(new CustomEvent('talvyn:extension-ready', { detail: { extensionId: chrome.runtime.id } }))
+    console.log('[Talvyn] EXTENSION_READY')
   }
 } catch {
   /* ignore */
@@ -225,6 +226,7 @@ async function analyzeAndRenderPage(): Promise<void> {
     currentSingleJob = jobScanner.scanSingleJob(url, doc) || detectJob()
     if (!currentSingleJob) return
 
+    console.log(`[Talvyn] JOB_DETECTED: ${currentSingleJob.title} at ${currentSingleJob.company}`)
     isSinglePanelVisible = true
     await showSinglePanel(currentSingleJob)
     return
@@ -320,6 +322,7 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
 async function handleSingleSave(): Promise<void> {
   if (!currentSingleJob) return
   updatePanelState({ type: 'loading' })
+  console.log(`[Talvyn] JOB_SAVE_STARTED: ${currentSingleJob.title}`)
 
   const opp = opportunityClassifier.classify(currentSingleJob.title, currentSingleJob.description, currentSingleJob.jobType)
 
@@ -336,10 +339,11 @@ async function handleSingleSave(): Promise<void> {
       status: 'SAVED',
     })
     updatePanelState({ type: 'saved', opportunityType: opp.type })
-    console.log('[Talvyn] Opportunity saved:', saved.id, 'Type:', opp.type)
+    console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Type: ${opp.type})`)
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : 'Failed to save. Please try again.'
+    console.error(`[Talvyn:TALVYN_BACKEND] JOB_SAVE_FAILED: ${message}`)
     updatePanelState({ type: 'error', message })
   }
 }
