@@ -60,10 +60,10 @@ export default function ExtensionConnect() {
 
   if (!isAuthenticated || !token || !user) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0B0C10] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#F7F8FC] dark:bg-[#080A12] flex items-center justify-center p-4">
         <div className="text-center space-y-4">
           <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-slate-500 dark:text-[#A8B0C2]">
             Redirecting to sign in...
           </p>
         </div>
@@ -141,23 +141,23 @@ export default function ExtensionConnect() {
     user.email.split('@')[0]
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B0C10] flex flex-col justify-center items-center p-4 sm:p-6 animate-in fade-in duration-300">
+    <div className="min-h-screen bg-[#F7F8FC] dark:bg-[#080A12] flex flex-col justify-center items-center p-4 sm:p-6 animate-in fade-in duration-300">
       {/* Brand Header */}
       <div className="mb-6 text-center">
         <Link to="/" className="inline-flex items-center gap-2.5">
           <img
             src="/logotalvyn.png"
             alt="Talvyn Logo"
-            className="w-10 h-10 rounded-xl object-contain shadow-xs bg-white dark:bg-slate-800 p-1"
+            className="w-10 h-10 rounded-xl object-contain shadow-xs bg-white dark:bg-[#111522] border border-[#E2E5EC] dark:border-[#252B3A] p-1"
           />
-          <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+          <span className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] tracking-tight">
             Talvyn
           </span>
         </Link>
       </div>
 
       {/* Main Connection Card */}
-      <Card padding="lg" className="max-w-lg w-full bg-white dark:bg-[#11121A] border-slate-200 dark:border-slate-800 shadow-md">
+      <Card padding="lg" className="max-w-lg w-full bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A] shadow-modal dark:shadow-modal-dark">
         {status === 'success' ? (
           <div className="text-center py-4 space-y-6">
             <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-sm">
@@ -165,17 +165,17 @@ export default function ExtensionConnect() {
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#F5F7FF]">
                 Extension Connected!
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-[#A8B0C2] max-w-sm mx-auto leading-relaxed">
                 Your Talvyn Browser Extension is now connected to{' '}
-                <strong className="text-slate-900 dark:text-slate-200 font-semibold">{user.email}</strong>.
+                <strong className="text-slate-900 dark:text-[#F5F7FF] font-semibold">{user.email}</strong>.
                 You can save jobs and autofill applications directly from any website.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#151A29] border border-slate-100 dark:border-[#252B3A] text-xs text-slate-500 dark:text-[#A8B0C2] flex items-center justify-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>Session stored securely in your browser extension storage.</span>
             </div>
@@ -200,31 +200,31 @@ export default function ExtensionConnect() {
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-2xs">
                 <Puzzle className="w-6 h-6" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] tracking-tight">
                 Connect Talvyn Browser Extension
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm mx-auto">
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-[#A8B0C2] leading-relaxed max-w-sm mx-auto">
                 Authorize the Talvyn Browser Extension to synchronize saved jobs, profile data, and track applications with your account.
               </p>
             </div>
 
             {/* Current Account Profile Box */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-4">
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#151A29] border border-slate-200/80 dark:border-[#252B3A] flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
                   {user.email.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#F5F7FF] truncate">
                     {displayName}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  <div className="text-[11px] text-slate-500 dark:text-[#A8B0C2] truncate">
                     {user.email}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold shrink-0 border border-emerald-200/60 dark:border-emerald-800/40">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold shrink-0 border border-emerald-200/60 dark:border-emerald-800/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 Signed In
               </div>
@@ -258,15 +258,15 @@ export default function ExtensionConnect() {
                 variant="outline"
                 onClick={() => navigate('/dashboard')}
                 disabled={status === 'connecting'}
-                className="w-full text-slate-600 dark:text-slate-300"
+                className="w-full text-slate-600 dark:text-[#A8B0C2]"
               >
                 Cancel
               </Button>
             </div>
 
             {/* Footer Trust Badge */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-400 dark:text-slate-500">
-              <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+            <div className="pt-2 border-t border-[#E2E5EC] dark:border-[#252B3A] flex items-center justify-center gap-2 text-[11px] text-slate-400 dark:text-[#737D94]">
+              <ShieldCheck className="w-3.5 h-3.5 text-slate-400 dark:text-[#737D94]" />
               <span>Manifest V3 • Direct Secure Messaging</span>
             </div>
           </div>

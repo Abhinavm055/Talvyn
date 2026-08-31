@@ -133,16 +133,16 @@ export default function JobForm() {
   const mutationError = mutation.error as { response?: { data?: { error?: string } } } | null
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-6 md:p-8 max-w-3xl mx-auto">
       <Link
         to={isEditing ? `/jobs/${id}` : '/jobs'}
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[#A8B0C2] hover:text-slate-800 dark:hover:text-[#F5F7FF] mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         {isEditing ? 'Back to Job' : 'My Jobs'}
       </Link>
 
-      <h1 className="text-2xl font-bold text-slate-900 mb-8">
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] mb-8">
         {isEditing ? 'Edit Job' : 'Add Job Manually'}
       </h1>
 
@@ -212,22 +212,22 @@ export default function JobForm() {
           />
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Job Description</label>
+            <label className="text-xs sm:text-sm font-medium text-[#11131A] dark:text-[#F5F7FF]">Job Description</label>
             <textarea
               {...register('description')}
               rows={8}
               placeholder="Paste the job description here…"
-              className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 resize-y focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent hover:border-slate-300 transition-colors"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-[#D9DDE7] dark:border-[#252B3A] bg-white dark:bg-[#111522] text-[#11131A] dark:text-[#F5F7FF] placeholder:text-[#858DA0] dark:placeholder-[#737D94] resize-y focus:outline-none focus:ring-2 focus:ring-primary-500 focus:dark:ring-[#7C3AED] focus:border-transparent hover:border-[#BFC6D4] dark:hover:border-[#353D50] transition-colors"
             />
           </div>
 
           {mutationError && (
-            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
+            <div className="p-3.5 bg-red-50 dark:bg-red-950/50 border border-red-200/70 dark:border-red-800/60 rounded-xl text-sm text-red-600 dark:text-red-300">
               {mutationError.response?.data?.error || 'Something went wrong. Please try again.'}
             </div>
           )}
 
-          <div className="flex items-center gap-3 justify-end pt-2">
+          <div className="flex items-center gap-3 justify-end pt-2 border-t border-[#E2E5EC] dark:border-[#252B3A]">
             <Button
               type="button"
               variant="outline"

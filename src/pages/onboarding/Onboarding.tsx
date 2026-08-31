@@ -127,7 +127,7 @@ export default function Onboarding() {
   const handleSkip = () => navigate('/dashboard')
 
   return (
-    <div className="min-h-screen bg-surface-50 flex items-start justify-center pt-12 px-4 pb-16">
+    <div className="min-h-screen bg-surface-50 dark:bg-[#080A12] flex items-start justify-center pt-12 px-4 pb-16">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-10">
@@ -135,10 +135,10 @@ export default function Onboarding() {
             <div className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center">
               <span className="text-white text-sm font-bold">T</span>
             </div>
-            <span className="text-lg font-bold text-slate-900">Talvyn</span>
+            <span className="text-lg font-bold text-slate-900 dark:text-[#F5F7FF]">Talvyn</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Set up your profile</h1>
-          <p className="text-slate-500 text-sm">Complete your profile to get the most out of Talvyn. You can edit it anytime.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] mb-2">Set up your profile</h1>
+          <p className="text-slate-500 dark:text-[#A8B0C2] text-sm">Complete your profile to get the most out of Talvyn. You can edit it anytime.</p>
         </div>
 
         {/* Steps */}
@@ -149,25 +149,25 @@ export default function Onboarding() {
                 className={cn(
                   'w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all',
                   i < step && 'bg-primary-600 text-white',
-                  i === step && 'bg-primary-600 text-white ring-4 ring-primary-100',
-                  i > step && 'bg-white border-2 border-slate-200 text-slate-400'
+                  i === step && 'bg-primary-600 text-white ring-4 ring-primary-100 dark:ring-violet-950/60',
+                  i > step && 'bg-white dark:bg-[#151A29] border-2 border-slate-200 dark:border-[#252B3A] text-slate-400 dark:text-[#737D94]'
                 )}
               >
                 {i < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
               </div>
-              <span className={cn('text-xs font-medium', i === step ? 'text-primary-700' : 'text-slate-400')}>{s}</span>
+              <span className={cn('text-xs font-medium', i === step ? 'text-primary-700 dark:text-violet-400' : 'text-slate-400 dark:text-[#737D94]')}>{s}</span>
             </div>
           ))}
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-8">
+          <div className="bg-white dark:bg-[#111522] rounded-2xl border border-slate-100 dark:border-[#252B3A] shadow-card dark:shadow-card-dark p-8">
 
             {/* Step 0: Personal */}
             {step === 0 && (
               <div className="space-y-5">
-                <h2 className="text-lg font-semibold text-slate-900 mb-6">Personal Information</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-[#F5F7FF] mb-6">Personal Information</h2>
                 <div className="grid grid-cols-2 gap-4">
                   <Input label="Legal Full Name" placeholder="Full legal name" {...register('legalFullName')} />
                   <Input label="Preferred Name" placeholder="What do people call you?" {...register('preferredName')} />

@@ -190,16 +190,16 @@ export function SmartMultiSelect({
 
   return (
     <div ref={containerRef} className={cn('relative flex flex-col gap-1.5 w-full', className)}>
-      {label && <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-[#A1A1AA]">{label}</label>}
+      {label && <label className="text-xs sm:text-sm font-medium text-[#11131A] dark:text-[#F5F7FF]">{label}</label>}
 
       <div
         className={cn(
-          'flex flex-wrap items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border bg-white dark:bg-[#161725]',
-          'hover:border-slate-300 dark:hover:bg-[#1C1C2B]',
-          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent',
+          'flex flex-wrap items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border bg-white dark:bg-[#111522]',
+          'hover:border-[#BFC6D4] dark:hover:border-[#353D50] dark:hover:bg-[#151A29]',
+          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent dark:focus-within:bg-[#111522]',
           'transition-all duration-150',
-          disabled ? 'opacity-60 bg-slate-50 dark:bg-[#13141f] cursor-not-allowed' : 'cursor-text',
-          error ? 'border-red-400' : 'border-slate-200 dark:border-[#1E1E2A]'
+          disabled ? 'opacity-60 bg-[#F7F8FC] dark:bg-[#0D101A] cursor-not-allowed' : 'cursor-text',
+          error ? 'border-red-400' : 'border-[#D9DDE7] dark:border-[#252B3A]'
         )}
         onClick={() => {
           if (!disabled) {
@@ -212,7 +212,7 @@ export function SmartMultiSelect({
         {safeValue.map((tag, i) => (
           <span
             key={`${tag}-${i}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-violet-950/70 text-primary-700 dark:text-violet-300 border border-primary-100/60 dark:border-violet-800/60 rounded-lg text-xs font-medium shrink-0 animate-in fade-in duration-100"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-violet-950/70 text-primary-700 dark:text-violet-300 border border-primary-200/60 dark:border-violet-800/60 rounded-lg text-xs font-medium shrink-0 animate-in fade-in duration-100"
           >
             {tag}
             {!disabled && (
@@ -245,7 +245,7 @@ export function SmartMultiSelect({
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
             placeholder={safeValue.length === 0 ? placeholder : 'Type to add more...'}
-            className="w-full text-sm outline-none bg-transparent text-slate-900 dark:text-[#E5E7EB] placeholder:text-slate-400 dark:placeholder-[#71717A]"
+            className="w-full text-sm outline-none bg-transparent text-[#11131A] dark:text-[#F5F7FF] placeholder:text-[#858DA0] dark:placeholder-[#737D94]"
           />
         </div>
 
@@ -256,14 +256,14 @@ export function SmartMultiSelect({
       {isOpen && !disabled && (
         <div
           className={cn(
-            'absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#161725] rounded-xl border border-slate-200 dark:border-[#1E1E2A] shadow-xl z-50 overflow-hidden',
+            'absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#151A29] rounded-xl border border-[#E2E5EC] dark:border-[#252B3A] shadow-xl z-50 overflow-hidden',
             'animate-in fade-in duration-100 max-h-64 flex flex-col'
           )}
         >
           <ul
             ref={listboxRef}
             role="listbox"
-            className="overflow-y-auto py-1.5 divide-y divide-slate-50 dark:divide-[#1E1E2A]/50 text-sm focus:outline-none"
+            className="overflow-y-auto py-1.5 divide-y divide-[#F1F3F8] dark:divide-[#252B3A]/60 text-sm focus:outline-none"
           >
             {items.map((opt, idx) => {
               const isSelected = safeValue.some((v) => v.toLowerCase() === opt.value.toLowerCase())
@@ -287,17 +287,17 @@ export function SmartMultiSelect({
                   className={cn(
                     'px-3.5 py-2 flex items-center justify-between cursor-pointer transition-colors',
                     isHighlighted
-                      ? 'bg-primary-50 dark:bg-[#1C1C2B] text-primary-900 dark:text-white'
-                      : 'text-slate-700 dark:text-[#E5E7EB] hover:bg-slate-50 dark:hover:bg-[#1C1C2B]',
-                    isSelected && 'font-semibold text-primary-700 dark:text-violet-400'
+                      ? 'bg-primary-50 dark:bg-[#1E2538] text-primary-900 dark:text-[#F5F7FF]'
+                      : 'text-slate-700 dark:text-[#A8B0C2] hover:bg-slate-50 dark:hover:bg-[#1E2538] hover:text-slate-900 dark:hover:text-[#F5F7FF]',
+                    isSelected && 'font-semibold text-primary-700 dark:text-violet-300'
                   )}
                 >
                   <div className="flex flex-col pr-2">
                     <span className="truncate">{opt.label}</span>
-                    {opt.sublabel && <span className="text-xs text-slate-400 dark:text-slate-500">{opt.sublabel}</span>}
+                    {opt.sublabel && <span className="text-xs text-[#858DA0] dark:text-[#737D94]">{opt.sublabel}</span>}
                   </div>
                   {opt.category && (
-                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-2 shrink-0">
+                    <span className="text-[10px] uppercase font-bold text-[#858DA0] dark:text-[#A8B0C2] bg-slate-100 dark:bg-[#111522] px-1.5 py-0.5 rounded ml-2 shrink-0">
                       {opt.category}
                     </span>
                   )}
@@ -316,14 +316,14 @@ export function SmartMultiSelect({
                   addTag(query.trim())
                 }}
                 className={cn(
-                  'px-3.5 py-2 flex items-center justify-between cursor-pointer border-t border-slate-100 dark:border-[#1E1E2A] transition-colors',
+                  'px-3.5 py-2 flex items-center justify-between cursor-pointer border-t border-[#E2E5EC] dark:border-[#252B3A] transition-colors',
                   highlightedIndex === items.length
-                    ? 'bg-indigo-50 dark:bg-[#1C1C2B] text-indigo-900 dark:text-white'
-                    : 'bg-slate-50/70 dark:bg-[#13141f] text-slate-700 dark:text-[#E5E7EB] hover:bg-indigo-50/50 dark:hover:bg-[#1C1C2B]'
+                    ? 'bg-indigo-50 dark:bg-[#1E2538] text-indigo-900 dark:text-[#F5F7FF]'
+                    : 'bg-slate-50/70 dark:bg-[#111522] text-slate-700 dark:text-[#A8B0C2] hover:bg-indigo-50/50 dark:hover:bg-[#1E2538]'
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-primary-600 dark:text-violet-400 bg-primary-100 dark:bg-violet-950/60 px-1.5 py-0.5 rounded">Add Custom</span>
+                  <span className="text-xs font-semibold text-primary-600 dark:text-violet-300 bg-primary-100 dark:bg-violet-950/60 px-1.5 py-0.5 rounded">Add Custom</span>
                   <span>&ldquo;{query.trim()}&rdquo;</span>
                 </div>
                 <Plus className="w-4 h-4 text-primary-600 dark:text-violet-400 shrink-0 ml-2" />
@@ -331,7 +331,7 @@ export function SmartMultiSelect({
             )}
 
             {items.length === 0 && !showCustomOption && (
-              <li className="px-4 py-3 text-center text-slate-400 text-xs">
+              <li className="px-4 py-3 text-center text-[#858DA0] dark:text-[#737D94] text-xs">
                 No matching suggestions. Press Enter to add custom item.
               </li>
             )}
@@ -340,7 +340,7 @@ export function SmartMultiSelect({
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
-      {hint && !error && <p className="text-xs text-slate-400">{hint}</p>}
+      {hint && !error && <p className="text-xs text-[#858DA0] dark:text-[#737D94]">{hint}</p>}
     </div>
   )
 }

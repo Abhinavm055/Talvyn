@@ -96,20 +96,20 @@ export function TagInput({
 
   return (
     <div className={cn('flex flex-col gap-1.5 w-full', className)}>
-      {label && <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-[#A1A1AA]">{label}</label>}
+      {label && <label className="text-xs sm:text-sm font-medium text-[#11131A] dark:text-[#F5F7FF]">{label}</label>}
       <div
         className={cn(
-          'flex flex-wrap gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border bg-white dark:bg-[#161725]',
-          'hover:border-slate-300 dark:hover:bg-[#1C1C2B]',
-          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent',
+          'flex flex-wrap gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border bg-white dark:bg-[#111522]',
+          'hover:border-[#BFC6D4] dark:hover:border-[#353D50] dark:hover:bg-[#151A29]',
+          'focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-500 focus-within:dark:ring-[#7C3AED] focus-within:border-transparent dark:focus-within:bg-[#111522]',
           'transition-all duration-150',
-          error ? 'border-red-400' : 'border-slate-200 dark:border-[#1E1E2A]'
+          error ? 'border-red-400' : 'border-[#D9DDE7] dark:border-[#252B3A]'
         )}
       >
         {safeValue.map((tag, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-violet-950/70 text-primary-700 dark:text-violet-300 border border-primary-100/60 dark:border-violet-800/60 rounded-lg text-xs font-medium"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-violet-950/70 text-primary-700 dark:text-violet-300 border border-primary-200/60 dark:border-violet-800/60 rounded-lg text-xs font-medium"
           >
             {tag}
             <button
@@ -128,11 +128,11 @@ export function TagInput({
           onKeyDown={handleKeyDown}
           onBlur={() => inputValue && addTag(inputValue)}
           placeholder={safeValue.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[120px] text-sm outline-none bg-transparent text-slate-900 dark:text-[#E5E7EB] placeholder:text-slate-400 dark:placeholder-[#71717A]"
+          className="flex-1 min-w-[120px] text-sm outline-none bg-transparent text-[#11131A] dark:text-[#F5F7FF] placeholder:text-[#858DA0] dark:placeholder-[#737D94]"
         />
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
-      <p className="text-xs text-slate-400 dark:text-slate-500">Press Enter or comma to add</p>
+      <p className="text-xs text-[#858DA0] dark:text-[#737D94]">Press Enter or comma to add</p>
     </div>
   )
 }

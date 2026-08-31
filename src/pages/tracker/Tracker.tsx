@@ -25,14 +25,14 @@ import { StatusBadge } from '../../components/ui/StatusBadge'
 import { Button } from '../../components/ui/Button'
 import { timeAgo } from '../../lib/utils'
 
-const COLUMNS: { id: JobStatus; label: string; color: string }[] = [
-  { id: 'SAVED',       label: 'Saved',       color: 'bg-slate-100' },
-  { id: 'IN_PROGRESS', label: 'In Progress', color: 'bg-blue-50' },
-  { id: 'APPLIED',     label: 'Applied',     color: 'bg-indigo-50' },
-  { id: 'ASSESSMENT',  label: 'Assessment',  color: 'bg-purple-50' },
-  { id: 'INTERVIEW',   label: 'Interview',   color: 'bg-amber-50' },
-  { id: 'OFFER',       label: 'Offer',       color: 'bg-emerald-50' },
-  { id: 'REJECTED',    label: 'Rejected',    color: 'bg-red-50' },
+const COLUMNS: { id: JobStatus; label: string; headerClass: string; badgeClass: string }[] = [
+  { id: 'SAVED',       label: 'Saved',       headerClass: 'bg-slate-100 dark:bg-[#151A29] text-slate-800 dark:text-[#F5F7FF] border border-slate-200/70 dark:border-[#252B3A]', badgeClass: 'bg-white dark:bg-[#111522] text-slate-700 dark:text-[#A8B0C2]' },
+  { id: 'IN_PROGRESS', label: 'In Progress', headerClass: 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200/70 dark:border-blue-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-blue-700 dark:text-blue-300' },
+  { id: 'APPLIED',     label: 'Applied',     headerClass: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-200/70 dark:border-indigo-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-indigo-700 dark:text-indigo-300' },
+  { id: 'ASSESSMENT',  label: 'Assessment',  headerClass: 'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-200 border border-purple-200/70 dark:border-purple-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-purple-700 dark:text-purple-300' },
+  { id: 'INTERVIEW',   label: 'Interview',   headerClass: 'bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200/70 dark:border-amber-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-amber-800 dark:text-amber-300' },
+  { id: 'OFFER',       label: 'Offer',       headerClass: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border border-emerald-200/70 dark:border-emerald-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-emerald-800 dark:text-emerald-300' },
+  { id: 'REJECTED',    label: 'Rejected',    headerClass: 'bg-red-50 dark:bg-red-950/60 text-red-900 dark:text-red-200 border border-red-200/70 dark:border-red-800/60', badgeClass: 'bg-white dark:bg-[#111522] text-red-700 dark:text-red-300' },
 ]
 
 function KanbanCard({
@@ -53,36 +53,36 @@ function KanbanCard({
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`bg-white rounded-xl border border-slate-100 shadow-card p-3.5 cursor-grab active:cursor-grabbing select-none hover:shadow-card-hover transition-all ${isDragging ? 'opacity-40' : ''}`}
+      className={`bg-white dark:bg-[#111522] rounded-xl border border-[#E2E5EC] dark:border-[#252B3A] shadow-card dark:shadow-card-dark p-3.5 cursor-grab active:cursor-grabbing select-none hover:shadow-card-hover dark:hover:border-[#353D50] transition-all ${isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-          <span className="text-slate-500 text-xs font-semibold">
+        <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-[#151A29] border border-slate-200/50 dark:border-[#252B3A] flex items-center justify-center shrink-0">
+          <span className="text-slate-600 dark:text-[#A8B0C2] text-xs font-semibold">
             {job.company.charAt(0)}
           </span>
         </div>
         <StatusBadge status={job.status} />
       </div>
-      <p className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2 mb-1">
+      <p className="text-sm font-semibold text-slate-900 dark:text-[#F5F7FF] leading-snug line-clamp-2 mb-1">
         {job.title}
       </p>
-      <p className="text-xs text-slate-500 flex items-center gap-1">
-        <Building2 className="w-3 h-3" />
+      <p className="text-xs text-slate-600 dark:text-[#A8B0C2] flex items-center gap-1">
+        <Building2 className="w-3 h-3 text-[#858DA0] dark:text-[#737D94]" />
         {job.company}
       </p>
       {job.location && (
-        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-          <MapPin className="w-3 h-3" />
+        <p className="text-xs text-slate-500 dark:text-[#737D94] flex items-center gap-1 mt-0.5">
+          <MapPin className="w-3 h-3 text-[#858DA0] dark:text-[#737D94]" />
           {job.location}
         </p>
       )}
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-50">
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F1F3F8] dark:border-[#252B3A]/60">
         {job.jobType ? (
-          <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+          <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#151A29] text-slate-600 dark:text-[#A8B0C2]">
             {job.jobType.replace(/_/g, ' ')}
           </span>
         ) : <span />}
-        <span className="text-xs text-slate-300">{timeAgo(job.createdAt)}</span>
+        <span className="text-xs text-slate-400 dark:text-[#737D94]">{timeAgo(job.createdAt)}</span>
       </div>
     </div>
   )
@@ -178,11 +178,11 @@ export default function Tracker() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-6 md:p-8 max-w-full">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Application Tracker</h1>
-          <p className="text-slate-500 text-sm mt-1">Drag jobs between columns to update their status</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF]">Application Tracker</h1>
+          <p className="text-slate-500 dark:text-[#A8B0C2] text-sm mt-1">Drag jobs between columns to update their status</p>
         </div>
         <Button icon={<Plus />} onClick={() => navigate('/jobs/new')}>
           Add Job
@@ -192,7 +192,7 @@ export default function Tracker() {
       {isLoading ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {COLUMNS.map((col) => (
-            <div key={col.id} className="w-72 shrink-0 h-96 bg-slate-50 rounded-2xl animate-pulse" />
+            <div key={col.id} className="w-72 shrink-0 h-96 bg-white dark:bg-[#111522] border border-[#E2E5EC] dark:border-[#252B3A] rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : (
@@ -213,10 +213,10 @@ export default function Tracker() {
                   className="w-72 shrink-0 flex flex-col"
                 >
                   {/* Column header */}
-                  <div className={`${col.color} rounded-t-2xl px-4 py-3 flex items-center justify-between mb-2`}>
+                  <div className={`${col.headerClass} rounded-t-2xl px-4 py-3 flex items-center justify-between`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-700">{col.label}</span>
-                      <span className="bg-white text-slate-500 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                      <span className="text-sm font-semibold">{col.label}</span>
+                      <span className={`${col.badgeClass} text-xs font-semibold px-2 py-0.5 rounded-full shadow-2xs`}>
                         {colJobs.length}
                       </span>
                     </div>
@@ -228,10 +228,10 @@ export default function Tracker() {
                     items={colJobs.map((j) => j.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div className="flex-1 space-y-2.5 min-h-[200px] bg-slate-50/50 rounded-b-2xl p-2">
+                    <div className="flex-1 space-y-2.5 min-h-[220px] bg-[#F1F3F8]/50 dark:bg-[#0D101A]/60 border-x border-b border-[#E2E5EC] dark:border-[#252B3A] rounded-b-2xl p-2.5">
                       {colJobs.length === 0 ? (
-                        <div className="flex items-center justify-center h-24 border-2 border-dashed border-slate-200 rounded-xl">
-                          <p className="text-xs text-slate-300">Drop here</p>
+                        <div className="flex items-center justify-center h-24 border-2 border-dashed border-[#D9DDE7] dark:border-[#252B3A] rounded-xl">
+                          <p className="text-xs font-medium text-slate-400 dark:text-[#737D94]">Drop here</p>
                         </div>
                       ) : (
                         colJobs.map((job) => (
@@ -252,9 +252,9 @@ export default function Tracker() {
 
           <DragOverlay>
             {activeJob && (
-              <div className="bg-white rounded-xl border border-primary-200 shadow-modal p-3.5 w-72 opacity-95 rotate-2">
-                <p className="text-sm font-semibold text-slate-900">{activeJob.title}</p>
-                <p className="text-xs text-slate-500 mt-1">{activeJob.company}</p>
+              <div className="bg-white dark:bg-[#151A29] rounded-xl border border-primary-400 dark:border-violet-600 shadow-modal dark:shadow-modal-dark p-3.5 w-72 opacity-95 rotate-2">
+                <p className="text-sm font-semibold text-slate-900 dark:text-[#F5F7FF]">{activeJob.title}</p>
+                <p className="text-xs text-slate-500 dark:text-[#A8B0C2] mt-1">{activeJob.company}</p>
               </div>
             )}
           </DragOverlay>

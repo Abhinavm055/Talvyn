@@ -13,7 +13,7 @@
   }
 
   body {
-    @apply font-sans text-slate-900 bg-surface-50 dark:bg-[#0B0B0F] dark:text-[#E5E7EB];
+    @apply font-sans text-slate-900 bg-[#F7F8FC] dark:bg-[#080A12] dark:text-[#F5F7FF];
     min-height: 100vh;
   }
 
@@ -25,10 +25,10 @@
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-200 dark:bg-slate-800 rounded-full;
+    @apply bg-slate-200 dark:bg-[#252B3A] rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-300 dark:bg-slate-700;
+    @apply bg-slate-300 dark:bg-[#353D50];
   }
 }
 

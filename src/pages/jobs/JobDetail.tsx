@@ -123,12 +123,12 @@ export default function JobDetail() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-6 md:p-8 max-w-5xl mx-auto">
       {/* Back + Actions */}
       <div className="flex items-center justify-between mb-6">
         <Link
           to="/jobs"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[#A8B0C2] hover:text-slate-800 dark:hover:text-[#F5F7FF] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           My Jobs
@@ -159,16 +159,16 @@ export default function JobDetail() {
           <Card padding="lg">
             {/* Company + Title */}
             <div className="flex items-start gap-4 mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0">
-                <span className="text-slate-600 text-xl font-bold">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-[#151A29] border border-slate-200/60 dark:border-[#252B3A] flex items-center justify-center shrink-0">
+                <span className="text-slate-600 dark:text-[#A8B0C2] text-xl font-bold">
                   {job.company.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="flex-1">
-                <h1 className="text-xl font-bold text-slate-900">{job.title}</h1>
+                <h1 className="text-xl font-bold text-slate-900 dark:text-[#F5F7FF]">{job.title}</h1>
                 <div className="flex items-center gap-2 mt-1">
-                  <Building2 className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-600 font-medium text-sm">{job.company}</span>
+                  <Building2 className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
+                  <span className="text-slate-600 dark:text-[#A8B0C2] font-medium text-sm">{job.company}</span>
                 </div>
               </div>
               <StatusBadge status={job.status as JobStatus} />
@@ -177,36 +177,36 @@ export default function JobDetail() {
             {/* Meta grid */}
             <div className="grid grid-cols-2 gap-3 mb-5">
               {job.location && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <MapPin className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                  <MapPin className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>{job.location}</span>
                 </div>
               )}
               {job.salary && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <DollarSign className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                  <DollarSign className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>{job.salary}</span>
                 </div>
               )}
               {job.jobType && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <Briefcase className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                  <Briefcase className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>{job.jobType.replace('_', ' ')}</span>
                 </div>
               )}
               {job.sourceWebsite && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <Send className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                  <Send className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>{job.sourceWebsite}</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Clock className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                <Clock className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                 <span>Saved {formatDate(job.dateSaved)}</span>
               </div>
               {job.dateApplied && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <CheckCircle className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
+                  <CheckCircle className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>Applied {formatDate(job.dateApplied)}</span>
                 </div>
               )}
@@ -218,7 +218,7 @@ export default function JobDetail() {
                 href={job.jobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-primary-600 hover:text-primary-800 font-medium mb-5"
+                className="inline-flex items-center gap-2 text-sm text-primary-600 dark:text-violet-400 hover:text-primary-800 dark:hover:text-violet-300 font-medium mb-5"
               >
                 <ExternalLink className="w-4 h-4" />
                 View Job Posting
@@ -228,24 +228,22 @@ export default function JobDetail() {
             {/* Description */}
             {job.description && (
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Job Description</h3>
-                <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-[#F5F7FF] mb-2">Job Description</h3>
+                <div className="text-sm text-slate-700 dark:text-[#A8B0C2] leading-relaxed whitespace-pre-wrap bg-slate-50 dark:bg-[#151A29] border border-slate-200/60 dark:border-[#252B3A] rounded-xl p-4">
                   {job.description}
                 </div>
               </div>
             )}
           </Card>
 
-
-
-            {/* Notes Section */}
+          {/* Notes Section */}
           <Card padding="lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <StickyNote className="w-4 h-4 text-slate-400" />
+                <StickyNote className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                 Notes & Activity
                 {notes.length > 0 && (
-                  <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-normal text-slate-600 dark:text-[#A8B0C2] bg-slate-100 dark:bg-[#151A29] px-2 py-0.5 rounded-full">
                     {notes.length}
                   </span>
                 )}
@@ -259,7 +257,7 @@ export default function JobDetail() {
                 onChange={(e) => setNoteContent(e.target.value)}
                 placeholder="Add a note — follow-up, interview prep, recruiter details…"
                 rows={2}
-                className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent hover:border-slate-300 transition-colors"
+                className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-[#D9DDE7] dark:border-[#252B3A] bg-white dark:bg-[#111522] text-[#11131A] dark:text-[#F5F7FF] placeholder:text-[#858DA0] dark:placeholder-[#737D94] resize-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:dark:ring-[#7C3AED] focus:border-transparent hover:border-[#BFC6D4] dark:hover:border-[#353D50] transition-colors"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && noteContent.trim()) {
                     e.preventDefault()
@@ -281,7 +279,7 @@ export default function JobDetail() {
 
             {/* Notes list */}
             {notes.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">
+              <p className="text-sm text-slate-400 dark:text-[#737D94] text-center py-4">
                 No notes yet. Add your first note above.
               </p>
             ) : (
@@ -289,14 +287,14 @@ export default function JobDetail() {
                 {notes.map((note) => (
                   <div
                     key={note.id}
-                    className="p-3 bg-amber-50 border border-amber-100 rounded-xl group"
+                    className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/50 rounded-xl group"
                   >
                     {editingNote?.id === note.id ? (
                       <div className="space-y-2">
                         <textarea
                           value={editNoteContent}
                           onChange={(e) => setEditNoteContent(e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-amber-200 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-[#111522] text-[#11131A] dark:text-[#F5F7FF] resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
                           rows={3}
                           autoFocus
                         />
@@ -321,24 +319,24 @@ export default function JobDetail() {
                       </div>
                     ) : (
                       <>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        <p className="text-sm text-slate-800 dark:text-[#F5F7FF] whitespace-pre-wrap leading-relaxed">
                           {note.content}
                         </p>
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs text-slate-400">{timeAgo(note.updatedAt)}</span>
+                          <span className="text-xs text-slate-500 dark:text-[#A8B0C2]">{timeAgo(note.updatedAt)}</span>
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => {
                                 setEditingNote(note)
                                 setEditNoteContent(note.content)
                               }}
-                              className="text-xs text-slate-500 hover:text-primary-600 px-2 py-0.5 rounded hover:bg-primary-50 transition-colors"
+                              className="text-xs text-slate-600 dark:text-[#A8B0C2] hover:text-primary-600 dark:hover:text-violet-300 px-2 py-0.5 rounded hover:bg-white dark:hover:bg-[#151A29] transition-colors cursor-pointer"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => deleteNoteMutation.mutate(note.id)}
-                              className="text-xs text-slate-500 hover:text-red-600 px-2 py-0.5 rounded hover:bg-red-50 transition-colors"
+                              className="text-xs text-slate-600 dark:text-[#A8B0C2] hover:text-red-600 dark:hover:text-red-400 px-2 py-0.5 rounded hover:bg-white dark:hover:bg-[#151A29] transition-colors cursor-pointer"
                             >
                               Delete
                             </button>
@@ -360,36 +358,36 @@ export default function JobDetail() {
         <div className="space-y-4">
           {/* Status Update */}
           <Card padding="md">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Update Status</h3>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-[#F5F7FF] mb-3">Update Status</h3>
             <Select
               value={job.status}
               onChange={(e) => updateStatusMutation.mutate(e.target.value as JobStatus)}
               options={JOB_STATUSES}
             />
             {updateStatusMutation.isPending && (
-              <p className="text-xs text-slate-400 mt-2">Updating…</p>
+              <p className="text-xs text-slate-400 dark:text-[#737D94] mt-2">Updating…</p>
             )}
           </Card>
 
           {/* Application Readiness Score Widget (Phase 2E) */}
           <Card padding="md">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-700">Application Readiness</h3>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-[#F5F7FF]">Application Readiness</h3>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                 readiness.tier === 'READY'
-                  ? 'bg-emerald-50 text-emerald-700'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50'
                   : readiness.tier === 'MOSTLY_READY'
-                  ? 'bg-blue-50 text-blue-700'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50'
                   : readiness.tier === 'NEEDS_ATTENTION'
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-slate-100 text-slate-600'
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50'
+                  : 'bg-slate-100 dark:bg-[#151A29] text-slate-600 dark:text-[#A8B0C2]'
               }`}>
                 {readiness.score}%
               </span>
             </div>
 
             {/* Progress Bar */}
-            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-3">
+            <div className="w-full bg-slate-100 dark:bg-[#151A29] h-2 rounded-full overflow-hidden mb-3">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   readiness.tier === 'READY'
@@ -404,18 +402,18 @@ export default function JobDetail() {
               />
             </div>
 
-            <p className="text-xs font-medium text-slate-600 mb-3">{readiness.summaryText}</p>
+            <p className="text-xs font-medium text-slate-600 dark:text-[#A8B0C2] mb-3">{readiness.summaryText}</p>
 
-            <div className="space-y-1.5 border-t border-slate-100 pt-2.5">
+            <div className="space-y-1.5 border-t border-[#E2E5EC] dark:border-[#252B3A] pt-2.5">
               {readiness.items.map((item) => (
                 <div key={item.key} className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600">{item.label}</span>
+                  <span className="text-slate-600 dark:text-[#A8B0C2]">{item.label}</span>
                   {item.isReady ? (
-                    <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" /> Ready
                     </span>
                   ) : (
-                    <span className="text-amber-600 font-semibold flex items-center gap-1">
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" /> Missing
                     </span>
                   )}
@@ -424,10 +422,10 @@ export default function JobDetail() {
             </div>
 
             {readiness.tier !== 'READY' && (
-              <div className="mt-3 pt-2 border-t border-slate-100">
+              <div className="mt-3 pt-2 border-t border-[#E2E5EC] dark:border-[#252B3A]">
                 <Link
                   to="/profile"
-                  className="text-xs text-primary-600 hover:text-primary-700 font-semibold hover:underline block text-center"
+                  className="text-xs text-primary-600 dark:text-violet-400 hover:text-primary-700 dark:hover:text-violet-300 font-semibold hover:underline block text-center"
                 >
                   Complete Profile in Settings →
                 </Link>
@@ -444,8 +442,8 @@ export default function JobDetail() {
         title="Delete Job"
         size="sm"
       >
-        <p className="text-sm text-slate-600 mb-6">
-          Are you sure you want to delete <strong>{job.title}</strong> at {job.company}? This will also delete all notes. This action cannot be undone.
+        <p className="text-sm text-slate-600 dark:text-[#A8B0C2] mb-6">
+          Are you sure you want to delete <strong className="text-slate-900 dark:text-[#F5F7FF]">{job.title}</strong> at {job.company}? This will also delete all notes. This action cannot be undone.
         </p>
         <div className="flex gap-3 justify-end">
           <Button variant="outline" onClick={() => setShowDeleteModal(false)}>

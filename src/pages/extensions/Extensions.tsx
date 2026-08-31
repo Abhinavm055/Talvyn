@@ -87,19 +87,19 @@ export default function Extensions() {
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
       {/* Top Title */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] tracking-tight">
           Talvyn Browser Extension
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-[#A8B0C2] mt-1">
           Universal job capture, smart autofill, and automatic application tracker for Chromium browsers.
         </p>
       </div>
 
       {/* Balanced Two-Column Hero Showcase Card */}
-      <Card padding="lg" className="border-slate-200/90 dark:border-slate-800">
+      <Card padding="lg" className="border-[#E2E5EC] dark:border-[#252B3A]">
         <div className="flex flex-col md:flex-row items-center gap-6 md:gap-10">
-          {/* Logo Container - Proportionate & Elegant */}
-          <div className="w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/50 dark:from-slate-800 dark:via-slate-800/90 dark:to-indigo-950/40 rounded-2xl p-4 flex items-center justify-center shrink-0 border border-slate-200/70 dark:border-slate-700/60 shadow-xs">
+          {/* Logo Container */}
+          <div className="w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/50 dark:from-[#151A29] dark:via-[#111522] dark:to-indigo-950/40 rounded-2xl p-4 flex items-center justify-center shrink-0 border border-slate-200/70 dark:border-[#252B3A] shadow-xs">
             <img
               src="/logotalvyn.png"
               alt="Talvyn Logo"
@@ -107,10 +107,10 @@ export default function Extensions() {
             />
           </div>
 
-          {/* Hero Content - Ample Text Width & Centered Alignment */}
+          {/* Hero Content */}
           <div className="space-y-3.5 flex-1 text-center md:text-left min-w-0">
             <div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-[#F5F7FF] tracking-tight">
                 Talvyn for{' '}
                 <span className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 via-indigo-600 to-purple-600 dark:from-primary-400 dark:via-indigo-400 dark:to-purple-400">
                   Chromium Browsers
@@ -118,18 +118,18 @@ export default function Extensions() {
               </h2>
             </div>
 
-            <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm md:text-base leading-relaxed max-w-2xl">
+            <p className="text-slate-600 dark:text-[#A8B0C2] text-xs sm:text-sm md:text-base leading-relaxed max-w-2xl">
               Save jobs with one click, autofill applications accurately with your profile data, and keep your entire career search synchronized in real time.
             </p>
 
             {/* Chromium Badges */}
             <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap pt-0.5">
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-2xs">
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#151A29] px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-[#252B3A] shadow-2xs">
                 <ChromeIcon className="w-3.5 h-3.5" />
                 <BraveIcon className="w-3.5 h-3.5" />
                 <EdgeIcon className="w-3.5 h-3.5" />
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              <span className="text-xs text-slate-500 dark:text-[#A8B0C2] font-medium">
                 Works on Google Chrome, Brave, Microsoft Edge, and any Chromium-based browser.
               </span>
             </div>
@@ -163,14 +163,14 @@ export default function Extensions() {
                 <button
                   type="button"
                   onClick={handleOpenExtensions}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 font-semibold text-xs sm:text-sm transition-colors shadow-2xs"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#252B3A] bg-white dark:bg-[#151A29] hover:bg-slate-50 dark:hover:bg-[#1E2538] text-slate-700 dark:text-[#F5F7FF] font-semibold text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
                 >
                   <span>Open Extensions</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400 dark:text-[#737D94]" />
                 </button>
               </div>
 
-              <div className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+              <div className="text-[11px] text-slate-400 dark:text-[#737D94] font-medium">
                 ZIP download • Instant 1-click connection for authenticated users
               </div>
             </div>
@@ -181,11 +181,11 @@ export default function Extensions() {
 
       {/* How to Install Section (6 Steps Horizontal Grid) */}
       <div className="space-y-4">
-        <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">How to Install</h3>
+        <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#F5F7FF]">How to Install</h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
           {/* Step 1 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 1
@@ -193,17 +193,17 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 flex items-center justify-center">
                 <Download className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Download Extension
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Download <span className="font-mono text-slate-700 dark:text-slate-300">Talvyn v1.zip</span>
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
+                Download <span className="font-mono text-slate-700 dark:text-[#F5F7FF]/90">Talvyn v1.zip</span>
               </p>
             </div>
           </Card>
 
           {/* Step 2 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 2
@@ -211,17 +211,17 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                 <FolderArchive className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Extract the ZIP
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
                 Extract the ZIP to any folder on your device
               </p>
             </div>
           </Card>
 
           {/* Step 3 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 3
@@ -229,46 +229,46 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
                 <Puzzle className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Open Extensions
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
                 Open extensions in your browser
               </p>
               <div className="space-y-1 pt-1">
                 <button
                   type="button"
                   onClick={() => handleCopyUrl('chrome://extensions')}
-                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-1.5 py-1 rounded text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 truncate transition-colors flex items-center justify-between"
+                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-[#151A29] hover:bg-slate-200 dark:hover:bg-[#1E2538] px-1.5 py-1 rounded text-slate-700 dark:text-[#A8B0C2] border border-slate-200 dark:border-[#252B3A] truncate transition-colors flex items-center justify-between cursor-pointer"
                   title="Click to copy chrome://extensions"
                 >
                   <span className="truncate">chrome://extensions</span>
-                  {copiedUrl === 'chrome://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
+                  {copiedUrl === 'chrome://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleCopyUrl('brave://extensions')}
-                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-1.5 py-1 rounded text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 truncate transition-colors flex items-center justify-between"
+                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-[#151A29] hover:bg-slate-200 dark:hover:bg-[#1E2538] px-1.5 py-1 rounded text-slate-700 dark:text-[#A8B0C2] border border-slate-200 dark:border-[#252B3A] truncate transition-colors flex items-center justify-between cursor-pointer"
                   title="Click to copy brave://extensions"
                 >
                   <span className="truncate">brave://extensions</span>
-                  {copiedUrl === 'brave://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
+                  {copiedUrl === 'brave://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleCopyUrl('edge://extensions')}
-                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-1.5 py-1 rounded text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 truncate transition-colors flex items-center justify-between"
+                  className="w-full text-left font-mono text-[9px] bg-slate-100 dark:bg-[#151A29] hover:bg-slate-200 dark:hover:bg-[#1E2538] px-1.5 py-1 rounded text-slate-700 dark:text-[#A8B0C2] border border-slate-200 dark:border-[#252B3A] truncate transition-colors flex items-center justify-between cursor-pointer"
                   title="Click to copy edge://extensions"
                 >
                   <span className="truncate">edge://extensions</span>
-                  {copiedUrl === 'edge://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
+                  {copiedUrl === 'edge://extensions' ? <Check className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400 shrink-0" /> : <Copy className="w-2.5 h-2.5 text-slate-400 shrink-0" />}
                 </button>
               </div>
             </div>
           </Card>
 
           {/* Step 4 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 4
@@ -276,17 +276,17 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                 <ToggleRight className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Enable Developer Mode
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
                 Turn on Developer mode toggle in top-right
               </p>
             </div>
           </Card>
 
           {/* Step 5 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 5
@@ -294,17 +294,17 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                 <FolderOpen className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Load Unpacked
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
                 Click &ldquo;Load unpacked&rdquo; and select the extracted folder
               </p>
             </div>
           </Card>
 
           {/* Step 6 */}
-          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card padding="md" className="flex flex-col justify-between space-y-3 bg-white dark:bg-[#111522] border-[#E2E5EC] dark:border-[#252B3A]">
             <div className="space-y-2.5">
               <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 6
@@ -312,10 +312,10 @@ export default function Extensions() {
               <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                 <CheckCircle2 className="w-4.5 h-4.5" />
               </div>
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-snug">
+              <h4 className="font-bold text-xs text-slate-900 dark:text-[#F5F7FF] leading-snug">
                 Connect Account
               </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
                 Open Talvyn extension and sign in with your account
               </p>
             </div>
@@ -325,44 +325,44 @@ export default function Extensions() {
 
       {/* Feature Highlights Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card padding="md" className="border-slate-200/90 dark:border-slate-800 space-y-2">
+        <Card padding="md" className="border-[#E2E5EC] dark:border-[#252B3A] space-y-2">
           <div className="w-8 h-8 rounded-xl bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 flex items-center justify-center">
             <Sparkles className="w-4 h-4" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">Smart Job Extraction</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          <h4 className="font-bold text-sm text-slate-900 dark:text-[#F5F7FF]">Smart Job Extraction</h4>
+          <p className="text-xs text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
             Instantly captures job title, company, salary, location, and description across LinkedIn, Indeed, Ashby, Greenhouse, Lever, and 20+ ATS platforms.
           </p>
         </Card>
 
-        <Card padding="md" className="border-slate-200/90 dark:border-slate-800 space-y-2">
+        <Card padding="md" className="border-[#E2E5EC] dark:border-[#252B3A] space-y-2">
           <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
             <Zap className="w-4 h-4" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">Universal Autofill</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          <h4 className="font-bold text-sm text-slate-900 dark:text-[#F5F7FF]">Universal Autofill</h4>
+          <p className="text-xs text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
             Fills complex application forms in seconds using your Talvyn profile while preserving manually entered answers and critical terms.
           </p>
         </Card>
 
-        <Card padding="md" className="border-slate-200/90 dark:border-slate-800 space-y-2">
+        <Card padding="md" className="border-[#E2E5EC] dark:border-[#252B3A] space-y-2">
           <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
             <KanbanSquare className="w-4 h-4" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">Automatic Tracking</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          <h4 className="font-bold text-sm text-slate-900 dark:text-[#F5F7FF]">Automatic Tracking</h4>
+          <p className="text-xs text-slate-500 dark:text-[#A8B0C2] leading-relaxed">
             Detects completed submissions automatically and transitions job cards across your career tracker pipeline with timestamps and notes.
           </p>
         </Card>
       </div>
 
       {/* Security & Reliability Banner */}
-      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-4 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+      <div className="p-4 rounded-2xl bg-[#F1F3F8] dark:bg-[#0D101A] border border-[#E2E5EC] dark:border-[#252B3A] flex items-center justify-between gap-4 flex-wrap text-xs text-slate-500 dark:text-[#A8B0C2]">
         <span className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           Privacy First: Works locally with your authenticated Talvyn account. No tracking or telemetry.
         </span>
-        <span className="font-mono text-[11px] text-slate-400">
+        <span className="font-mono text-[11px] text-slate-400 dark:text-[#737D94]">
           Manifest V3 • Production Build
         </span>
       </div>

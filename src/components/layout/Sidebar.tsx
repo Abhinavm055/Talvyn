@@ -45,12 +45,12 @@ export function Sidebar() {
   const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl
 
   return (
-    <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-white dark:bg-[#11121A] border-r border-slate-100 dark:border-[#1E1E2A] transition-colors duration-150 select-none">
+    <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-white dark:bg-[#0D101A] border-r border-[#E2E5EC] dark:border-[#252B3A] transition-colors duration-150 select-none">
       {/* Logo Header */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-100 dark:border-[#1E1E2A]">
+      <div className="h-16 flex items-center px-6 border-b border-[#E2E5EC] dark:border-[#252B3A]">
         <div className="flex items-center gap-2.5">
           <img src="/logotalvyn.png" alt="Talvyn" className="w-8 h-8 rounded-xl object-contain shadow-xs" />
-          <span className="text-lg font-bold text-slate-900 dark:text-[#E5E7EB] tracking-tight">Talvyn</span>
+          <span className="text-lg font-bold text-slate-900 dark:text-[#F5F7FF] tracking-tight">Talvyn</span>
         </div>
       </div>
 
@@ -64,8 +64,8 @@ export function Sidebar() {
               cn(
                 'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group',
                 isActive
-                  ? 'bg-primary-50 dark:bg-violet-950/40 text-primary-700 dark:text-violet-300 font-semibold border border-transparent dark:border-violet-500/20'
-                  : 'text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-[#161725] hover:text-slate-900 dark:hover:text-[#E5E7EB]'
+                  ? 'bg-primary-50 dark:bg-violet-950/50 text-primary-700 dark:text-violet-200 font-semibold border border-primary-200/60 dark:border-violet-500/30'
+                  : 'text-[#5E6678] dark:text-[#A8B0C2] hover:bg-[#F1F3F8] dark:hover:bg-[#151A29] hover:text-[#11131A] dark:hover:text-[#F5F7FF]'
               )
             }
           >
@@ -76,7 +76,7 @@ export function Sidebar() {
                     'w-4.5 h-4.5 shrink-0 transition-colors',
                     isActive
                       ? 'text-primary-600 dark:text-violet-400'
-                      : 'text-slate-400 dark:text-[#71717A] group-hover:text-slate-600 dark:group-hover:text-violet-300'
+                      : 'text-[#858DA0] dark:text-[#737D94] group-hover:text-primary-600 dark:group-hover:text-violet-300'
                   )}
                 />
                 <span className="flex-1 text-sm">{label}</span>
@@ -88,19 +88,19 @@ export function Sidebar() {
       </nav>
 
       {/* Theme Section - Sleek Segmented Control */}
-      <div className="px-3 py-2.5 border-t border-slate-100 dark:border-[#1E1E2A] space-y-1.5">
-        <span className="px-1 text-[11px] font-semibold text-slate-400 dark:text-[#71717A] uppercase tracking-wider">
+      <div className="px-3 py-2.5 border-t border-[#E2E5EC] dark:border-[#252B3A] space-y-1.5">
+        <span className="px-1 text-[11px] font-semibold text-[#858DA0] dark:text-[#737D94] uppercase tracking-wider">
           Theme
         </span>
-        <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-[#161725] p-1 rounded-xl border border-slate-200/60 dark:border-[#1E1E2A]">
+        <div className="grid grid-cols-3 gap-1 bg-[#F1F3F8] dark:bg-[#111522] p-1 rounded-xl border border-[#E2E5EC] dark:border-[#252B3A]">
           <button
             type="button"
             onClick={() => setTheme('light')}
             className={cn(
               'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer',
               theme === 'light'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white text-slate-900 border border-[#E2E5EC] shadow-xs'
+                : 'text-[#5E6678] dark:text-[#A8B0C2] hover:text-[#11131A] dark:hover:text-[#F5F7FF]'
             )}
             title="Light theme"
           >
@@ -114,8 +114,8 @@ export function Sidebar() {
             className={cn(
               'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer',
               theme === 'dark'
-                ? 'bg-violet-600/30 text-violet-300 border border-violet-500/30 shadow-xs'
-                : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40 shadow-xs'
+                : 'text-[#5E6678] dark:text-[#A8B0C2] hover:text-[#11131A] dark:hover:text-[#F5F7FF]'
             )}
             title="Dark theme"
           >
@@ -129,8 +129,8 @@ export function Sidebar() {
             className={cn(
               'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer',
               theme === 'system'
-                ? 'bg-violet-600/30 text-violet-300 border border-violet-500/30 shadow-xs'
-                : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-primary-600/20 dark:bg-violet-600/30 text-primary-700 dark:text-violet-200 border border-primary-300/50 dark:border-violet-500/40 shadow-xs'
+                : 'text-[#5E6678] dark:text-[#A8B0C2] hover:text-[#11131A] dark:hover:text-[#F5F7FF]'
             )}
             title="System theme"
           >
@@ -141,13 +141,13 @@ export function Sidebar() {
       </div>
 
       {/* User & Sign Out Section */}
-      <div className="p-3 border-t border-slate-100 dark:border-[#1E1E2A]">
+      <div className="p-3 border-t border-[#E2E5EC] dark:border-[#252B3A]">
         <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt={displayName}
-              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-[#1E1E2A] shadow-2xs"
+              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-[#252B3A] shadow-2xs"
             />
           ) : (
             <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-violet-950/70 flex items-center justify-center shrink-0 ring-1 ring-primary-200 dark:ring-violet-800/40">
@@ -157,19 +157,19 @@ export function Sidebar() {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-slate-900 dark:text-[#E5E7EB] truncate uppercase tracking-tight">
+            <p className="text-xs font-bold text-slate-900 dark:text-[#F5F7FF] truncate uppercase tracking-tight">
               {displayName}
             </p>
-            <p className="text-[11px] text-slate-400 dark:text-[#71717A] truncate">{user?.email}</p>
+            <p className="text-[11px] text-[#858DA0] dark:text-[#737D94] truncate">{user?.email}</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-[#A1A1AA] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-150 mt-1 group cursor-pointer"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#5E6678] dark:text-[#A8B0C2] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-150 mt-1 group cursor-pointer"
         >
-          <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-500 transition-colors" />
+          <LogOut className="w-4 h-4 text-[#858DA0] group-hover:text-red-500 transition-colors" />
           <span>Sign Out</span>
         </button>
       </div>
