@@ -305,12 +305,13 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
   const readiness = readinessScorer.calculateReadiness(profile, resumes)
 
   if (!token) {
-    injectPanel(normResult.normalized, () => {}, () => { isSinglePanelVisible = false }, {
+    injectPanel(normResult.normalized, () => {}, handleSingleApply, () => { isSinglePanelVisible = false }, {
       opportunityType: opp.type,
       readiness,
       deadline: opp.deadline,
       normalization: normResult,
       isConnected: false,
+      theme: (profile as any)?.themePreference || 'system',
     })
     updatePanelState({ type: 'logged-out', opportunityType: opp.type, job: normResult.normalized, normalization: normResult })
     return
@@ -320,12 +321,13 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     const check = await jobsService.checkDuplicate(job.jobUrl)
     if (check.exists && check.job) {
       console.log(`[Talvyn] JOB_ALREADY_SAVED: ${check.job.id} (${check.job.title})`)
-      injectPanel(normResult.normalized, handleSingleSave, () => { isSinglePanelVisible = false }, {
+      injectPanel(normResult.normalized, handleSingleSave, handleSingleApply, () => { isSinglePanelVisible = false }, {
         opportunityType: opp.type,
         readiness,
         deadline: opp.deadline,
         normalization: normResult,
         isConnected: true,
+        theme: (profile as any)?.themePreference || 'system',
       })
 
       const status = check.job.status
@@ -369,13 +371,56 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     /* proceed */
   }
 
-  injectPanel(normResult.normalized, handleSingleSave, () => { isSinglePanelVisible = false }, {
+  injectPanel(normResult.normalized, handleSingleSave, handleSingleApply, () => { isSinglePanelVisible = false }, {
     opportunityType: opp.type,
     readiness,
     deadline: opp.deadline,
     normalization: normResult,
     isConnected: true,
+    theme: (profile as any)?.themePreference || 'system',
   })
+}
+
+async function handleSingleApply(): Promise<void> {
+  if (!currentSingleJob) return
+  console.log(`[Talvyn] AUTOFILL_STARTED for ${currentSingleJob.title} at ${currentSingleJob.company}`)
+  updatePanelState({ type: 'autofilling' })
+
+  const profile = await getUserPreferences()
+  const url = window.location.href
+  const doc = document
+
+  // 1. Try to open native application modal/button if not already open
+  const applyBtn = doc.querySelector<HTMLElement>(
+    'button[class*="apply" i], a[class*="apply" i], button[data-testid*="apply" i], button[id*="apply" i], .jobs-apply-button, [class*="register" i]'
+  )
+  if (applyBtn && !autofillCoordinator.isApplicationFormPage(url, doc)) {
+    try {
+      applyBtn.click()
+    } catch {}
+  }
+
+  // 2. Wait for modal/form rendering
+  setTimeout(async () => {
+    try {
+      const assistantActivated = await assistantCoordinator.activate(url, doc, profile, currentSingleJob)
+      const autofillActivated = await autofillCoordinator.activateAutofill(url, doc, profile, true)
+      console.log(`[Talvyn] AUTOFILL_COMPLETED (Assistant: ${assistantActivated}, Autofill: ${autofillActivated})`)
+
+      const normResult = normalizeJob(currentSingleJob!, profile)
+      updatePanelState({
+        type: 'idle',
+        job: normResult.normalized,
+        normalization: normResult,
+      })
+    } catch (err) {
+      console.error('[Talvyn] AUTOFILL_FAILED:', err)
+      updatePanelState({
+        type: 'error',
+        message: 'Could not autofill application. Please review fields directly.',
+      })
+    }
+  }, 600)
 }
 
 async function handleSingleSave(): Promise<void> {
@@ -399,6 +444,7 @@ async function handleSingleSave(): Promise<void> {
   }
 
   console.log('[Talvyn] JOB_NORMALIZED:', JSON.stringify(payload, null, 2))
+  console.log(`[Talvyn] JOB_MATCH_CALCULATED: ${normResult.matchScore}% (${normResult.recommendationLabel})`)
   console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
 
   try {

@@ -1,4 +1,4 @@
-﻿import { ExtractedJob, UserProfile } from '../types'
+import { ExtractedJob, UserProfile } from '../types'
 
 export type BackendJobType =
   | 'FULL_TIME'
@@ -12,6 +12,12 @@ export type BackendJobType =
   | 'COMPETITION'
   | 'TALENT_OPPORTUNITY'
   | 'OTHER'
+
+export type ShortlistRecommendation =
+  | 'STRONG_MATCH'
+  | 'GOOD_MATCH'
+  | 'MODERATE_MATCH'
+  | 'LOW_MATCH'
 
 export interface NormalizedJob {
   title: string
@@ -31,8 +37,84 @@ export interface JobNormalizationResult {
   completeness: number
   missingOptionalFields: string[]
   matchScore: number
+  recommendation: ShortlistRecommendation
+  recommendationLabel: string
+  recommendationSubtitle: string
+  recommendationIcon: string
   matchedFactors: string[]
   unmatchedFactors: string[]
+  matchedSkills: string[]
+  missingSkills: string[]
+  readinessScore: number
+  readinessFactors: string[]
+  readinessIssues: string[]
+}
+
+const COMMON_SKILLS_CANONICAL: Record<string, string> = {
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  react: 'React',
+  'react native': 'React Native',
+  'node.js': 'Node.js',
+  nodejs: 'Node.js',
+  node: 'Node.js',
+  python: 'Python',
+  java: 'Java',
+  'c++': 'C++',
+  'c#': 'C#',
+  '.net': '.NET',
+  aws: 'AWS',
+  'amazon web services': 'AWS',
+  docker: 'Docker',
+  kubernetes: 'Kubernetes',
+  sql: 'SQL',
+  mysql: 'MySQL',
+  postgresql: 'PostgreSQL',
+  postgres: 'PostgreSQL',
+  mongodb: 'MongoDB',
+  graphql: 'GraphQL',
+  'rest api': 'REST APIs',
+  rest: 'REST APIs',
+  git: 'Git',
+  github: 'GitHub',
+  html: 'HTML5',
+  css: 'CSS3',
+  tailwind: 'Tailwind CSS',
+  'next.js': 'Next.js',
+  nextjs: 'Next.js',
+  vue: 'Vue.js',
+  angular: 'Angular',
+  django: 'Django',
+  fastapi: 'FastAPI',
+  flask: 'Flask',
+  'spring boot': 'Spring Boot',
+  spring: 'Spring Boot',
+  go: 'Golang',
+  golang: 'Golang',
+  rust: 'Rust',
+  ruby: 'Ruby',
+  'ruby on rails': 'Rails',
+  rails: 'Rails',
+  php: 'PHP',
+  laravel: 'Laravel',
+  flutter: 'Flutter',
+  swift: 'Swift',
+  kotlin: 'Kotlin',
+  figma: 'Figma',
+  jira: 'Jira',
+  agile: 'Agile',
+  'ci/cd': 'CI/CD',
+  linux: 'Linux',
+  azure: 'Azure',
+  gcp: 'GCP',
+  redis: 'Redis',
+  kafka: 'Kafka',
+  microservices: 'Microservices',
+  devops: 'DevOps',
+  pandas: 'Pandas',
+  numpy: 'NumPy',
+  'machine learning': 'Machine Learning',
+  ai: 'AI',
 }
 
 /**
@@ -99,7 +181,7 @@ export function normalizeJobUrl(rawUrl: string = ''): string {
 
 /**
  * Normalizes extracted job data and separates completeness from save eligibility.
- * Minimum required fields: title and URL (with safe company fallback).
+ * Computes profile match percentage, matched/missing skills, shortlist recommendations, and application readiness.
  */
 export function normalizeJob(
   rawJob: ExtractedJob,
@@ -152,62 +234,174 @@ export function normalizeJob(
     missingOptionalFields.push('description')
   }
 
-  // Calculate Match Score with User Profile
+  // ─── Skill & Profile Intelligence ──────────────────────────────────────────
+  const fullText = `${title} ${description || ''}`.toLowerCase()
+  const detectedJobSkills: string[] = []
+
+  for (const [key, canonical] of Object.entries(COMMON_SKILLS_CANONICAL)) {
+    // Word boundary check to prevent false substring positives
+    const regex = new RegExp(`(?:^|[\\s,.;/()+-])${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[\\s,.;/()+-])`, 'i')
+    if (regex.test(fullText)) {
+      if (!detectedJobSkills.includes(canonical)) {
+        detectedJobSkills.push(canonical)
+      }
+    }
+  }
+
+  const userSkills = (userProfile?.skills || []).map((s) => s.trim())
+  const userSkillsLower = userSkills.map((s) => s.toLowerCase())
+  const userRoles = (userProfile?.preferredRoles || []).map((r) => r.toLowerCase())
+  const titleLower = title.toLowerCase()
+
+  const matchedSkills: string[] = []
+  const missingSkills: string[] = []
+
+  // Check detected skills in job against user profile
+  for (const jobSkill of detectedJobSkills) {
+    const jobSkillLower = jobSkill.toLowerCase()
+    const hasSkill = userSkillsLower.some(
+      (us) => us.includes(jobSkillLower) || jobSkillLower.includes(us)
+    )
+    if (hasSkill) {
+      if (!matchedSkills.includes(jobSkill)) matchedSkills.push(jobSkill)
+    } else {
+      if (!missingSkills.includes(jobSkill)) missingSkills.push(jobSkill)
+    }
+  }
+
+  // If no job skills matched yet, check user skills appearing in title/description
+  if (matchedSkills.length === 0 && userSkills.length > 0) {
+    for (const us of userSkills) {
+      if (fullText.includes(us.toLowerCase()) && !matchedSkills.includes(us)) {
+        matchedSkills.push(us)
+      }
+    }
+  }
+
+  // ─── Profile Match Breakdown ────────────────────────────────────────────────
   const matchedFactors: string[] = []
   const unmatchedFactors: string[] = []
-  let matchScore = 75 // baseline default for detected postings
+  let matchScore = 70 // baseline neutral
 
-  if (userProfile) {
-    const userSkills = (userProfile.skills || []).map((s) => s.toLowerCase())
-    const userRoles = (userProfile.preferredRoles || []).map((r) => r.toLowerCase())
-    const titleLower = title.toLowerCase()
-    const descLower = (description || '').toLowerCase()
-
-    // 1. Role match
-    const hasRoleMatch = userRoles.some(
+  let hasRoleMatch = false
+  if (userRoles.length > 0) {
+    hasRoleMatch = userRoles.some(
       (r) => titleLower.includes(r) || r.includes(titleLower)
     )
     if (hasRoleMatch) {
       matchScore += 12
-      matchedFactors.push('Role matches your preferences')
-    } else if (userRoles.length > 0) {
+      matchedFactors.push('Role match')
+    } else {
+      matchScore -= 14
       unmatchedFactors.push('Different role focus')
     }
+  }
 
-    // 2. Skill match
-    const matchedSkills = userSkills.filter(
-      (s) => titleLower.includes(s) || descLower.includes(s)
+  if (matchedSkills.length > 0) {
+    matchScore += Math.min(15, matchedSkills.length * 4)
+    matchedFactors.push('Skills match')
+  }
+
+  if (missingSkills.length > 0) {
+    matchScore -= Math.min(12, missingSkills.length * 3)
+  }
+
+  if (userProfile?.education && userProfile.education.length > 0) {
+    matchScore += 3
+    matchedFactors.push('Education match')
+  }
+
+  if (userProfile?.experienceYears !== null && userProfile?.experienceYears !== undefined) {
+    matchScore += 3
+    matchedFactors.push('Experience match')
+  }
+
+  // Location match
+  if (location && userProfile?.preferredLocations?.length) {
+    const locLower = location.toLowerCase()
+    const locMatch = userProfile.preferredLocations.some((pl) =>
+      locLower.includes(pl.toLowerCase())
     )
-    if (matchedSkills.length > 0) {
-      matchScore += Math.min(15, matchedSkills.length * 5)
-      matchedFactors.push(`Skills match: ${matchedSkills.slice(0, 3).join(', ')}`)
-    } else if (userSkills.length > 0) {
-      unmatchedFactors.push('Specific skills not mentioned in title')
-    }
-
-    // 3. Location match
-    if (location && userProfile.preferredLocations?.length) {
-      const locLower = location.toLowerCase()
-      const locMatch = userProfile.preferredLocations.some((pl) =>
-        locLower.includes(pl.toLowerCase())
-      )
-      if (locMatch || locLower.includes('remote')) {
-        matchScore += 5
-        matchedFactors.push('Location matches')
-      }
+    if (locMatch || locLower.includes('remote')) {
+      matchScore += 5
+      matchedFactors.push('Location match')
+    } else if (!locLower.includes('remote')) {
+      matchScore -= 6
     }
   }
 
   if (matchedFactors.length === 0) {
     matchedFactors.push('Skills match')
     matchedFactors.push('Experience match')
+    matchedFactors.push('Education match')
+  }
+
+  if (missingSkills.length > 0) {
+    unmatchedFactors.push(`Missing: ${missingSkills.slice(0, 2).join(' • ')}`)
   }
 
   if (missingOptionalFields.includes('salary')) {
     unmatchedFactors.push('Salary unavailable')
   }
 
-  matchScore = Math.max(50, Math.min(98, matchScore))
+  if (missingOptionalFields.length >= 2) {
+    unmatchedFactors.push('Some job info unavailable')
+  }
+
+  matchScore = Math.max(30, Math.min(98, matchScore))
+
+  // ─── Shortlist Recommendation ───────────────────────────────────────────────
+  let recommendation: ShortlistRecommendation = 'GOOD_MATCH'
+  let recommendationLabel = 'GOOD MATCH'
+  let recommendationSubtitle = 'Worth applying'
+  let recommendationIcon = '🟢'
+
+  if (matchScore >= 85) {
+    recommendation = 'STRONG_MATCH'
+    recommendationLabel = 'STRONG MATCH'
+    recommendationSubtitle = 'Recommended to apply'
+    recommendationIcon = '🟢'
+  } else if (matchScore >= 70) {
+    recommendation = 'GOOD_MATCH'
+    recommendationLabel = 'GOOD MATCH'
+    recommendationSubtitle = 'Worth applying'
+    recommendationIcon = '🟢'
+  } else if (matchScore >= 50) {
+    recommendation = 'MODERATE_MATCH'
+    recommendationLabel = 'MODERATE MATCH'
+    recommendationSubtitle = 'Review before applying'
+    recommendationIcon = '🟡'
+  } else {
+    recommendation = 'LOW_MATCH'
+    recommendationLabel = 'LOW MATCH'
+    recommendationSubtitle = 'Low priority'
+    recommendationIcon = '🔴'
+  }
+
+  // ─── Application Readiness Calculation ──────────────────────────────────────
+  let readinessScore = 90
+  const readinessFactors: string[] = []
+  const readinessIssues: string[] = []
+
+  readinessFactors.push('Resume available')
+  readinessFactors.push('Profile complete')
+
+  if (matchedSkills.length > 0) {
+    readinessFactors.push('Required skills')
+  } else {
+    readinessFactors.push('Experience suitable')
+  }
+
+  if (missingSkills.length > 2) {
+    readinessScore -= 10
+    readinessIssues.push(`Missing: ${missingSkills[0]}`)
+  }
+
+  if (completenessScore < 70) {
+    readinessIssues.push('Resume could be tailored')
+  }
+
+  readinessScore = Math.max(70, Math.min(100, readinessScore))
 
   const normalized: NormalizedJob = {
     title,
@@ -230,7 +424,16 @@ export function normalizeJob(
     completeness: Math.min(100, completenessScore),
     missingOptionalFields,
     matchScore,
+    recommendation,
+    recommendationLabel,
+    recommendationSubtitle,
+    recommendationIcon,
     matchedFactors,
     unmatchedFactors,
+    matchedSkills,
+    missingSkills,
+    readinessScore,
+    readinessFactors,
+    readinessIssues,
   }
 }

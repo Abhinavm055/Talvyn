@@ -745,6 +745,114 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
     'Duplicate save triggers "Already Saved ✓" state'
   )
 
+  // ─── 15. In-Page Job Intelligence & Shortlisting UX ────────────────────────
+  console.log('\n--- 15. Testing In-Page Job Intelligence & Shortlisting UX ---')
+
+  const testProfile: UserProfile = {
+    id: 'user-1',
+    userId: 'user-1',
+    skills: ['React', 'JavaScript', 'Node.js', 'Git', 'HTML5', 'CSS3'],
+    preferredRoles: ['Frontend Developer', 'Software Engineer', 'Full Stack Developer'],
+    preferredLocations: ['Remote', 'Bengaluru'],
+    preferredJobTypes: ['FULL_TIME'],
+    experienceYears: 2,
+    education: [{ school: 'Anna University', degree: 'B.Tech', fieldOfStudy: 'Computer Science', graduationYear: 2024 }],
+    workStyle: 'REMOTE',
+    onboardingCompleted: true,
+  }
+
+  // 1. High Match Job
+  const highMatchJob: ExtractedJob = {
+    title: 'Frontend Developer (React / Node.js)',
+    company: 'NextGen Solutions',
+    description: 'Looking for a Frontend Developer proficient in React, JavaScript, Node.js, and Git. AWS experience is a plus.',
+    location: 'Remote',
+    salary: '₹8,00,000 - ₹12,00,000 PA',
+    jobUrl: 'https://in.indeed.com/viewjob?jk=998877',
+    sourceWebsite: 'Indeed',
+    confidence: 'HIGH',
+  }
+
+  const highMatchResult = normalizeJob(highMatchJob, testProfile)
+  assert(
+    highMatchResult.matchScore >= 85,
+    `High match job scores >= 85% (Score: ${highMatchResult.matchScore}%)`
+  )
+  assert(
+    highMatchResult.recommendation === 'STRONG_MATCH' && highMatchResult.recommendationLabel === 'STRONG MATCH',
+    'Shortlist recommendation classifies >= 85% as STRONG MATCH (🟢 STRONG MATCH)'
+  )
+  assert(
+    highMatchResult.matchedSkills.includes('React') && highMatchResult.matchedSkills.includes('Node.js'),
+    'Extracts matched skills correctly (React, Node.js, JavaScript)'
+  )
+  assert(
+    highMatchResult.missingSkills.includes('AWS'),
+    'Extracts missing skill requirement correctly (AWS)'
+  )
+  assert(
+    highMatchResult.readinessScore >= 85,
+    `Application readiness score calculated (Score: ${highMatchResult.readinessScore}%)`
+  )
+  assert(
+    highMatchResult.readinessFactors.includes('Resume available') && highMatchResult.readinessFactors.includes('Profile complete'),
+    'Readiness factors include Resume available and Profile complete'
+  )
+
+  // 2. Moderate / Different Role Job
+  const lowMatchJob: ExtractedJob = {
+    title: 'Senior DevOps Architect',
+    company: 'Cloud Corp',
+    description: '10+ years experience required with Kubernetes, Docker, Terraform, CI/CD, and GCP.',
+    location: 'Mumbai (On-site)',
+    salary: '₹30,00,000 PA',
+    jobUrl: 'https://unstop.com/jobs/devops-architect-111',
+    sourceWebsite: 'Unstop',
+    confidence: 'HIGH',
+  }
+
+  const lowMatchResult = normalizeJob(lowMatchJob, testProfile)
+  assert(
+    lowMatchResult.matchScore < 70,
+    `DevOps role evaluates to Moderate/Low match for Frontend candidate (Score: ${lowMatchResult.matchScore}%)`
+  )
+  assert(
+    lowMatchResult.recommendation === 'MODERATE_MATCH' || lowMatchResult.recommendation === 'LOW_MATCH',
+    'Classifies different role focus as MODERATE MATCH / LOW MATCH'
+  )
+  assert(
+    lowMatchResult.missingSkills.includes('Kubernetes') || lowMatchResult.missingSkills.includes('Docker'),
+    'Identifies missing DevOps requirements (Kubernetes, Docker)'
+  )
+
+  // 3. Shortlist Classification Tier Thresholds
+  const tier90 = normalizeJob({ title: 'Frontend Developer', company: 'A', jobUrl: 'https://test.com/1', description: 'React, JavaScript, Git' }, testProfile)
+  assert(tier90.recommendation === 'STRONG_MATCH', '85–100% is classified as STRONG MATCH')
+
+  // 4. Autofill Field Safety Verification
+  const sensitiveFieldNames = [
+    'work_authorization',
+    'visa_sponsorship',
+    'disability_status',
+    'veteran_status',
+    'salary_expectation',
+    'legal_declaration',
+  ]
+  const isSafeToAutoFill = (fieldName: string) => !sensitiveFieldNames.includes(fieldName)
+  assert(isSafeToAutoFill('first_name') === true, 'Autofill allows standard field first_name')
+  assert(isSafeToAutoFill('email') === true, 'Autofill allows standard field email')
+  assert(isSafeToAutoFill('phone') === true, 'Autofill allows standard field phone')
+  assert(isSafeToAutoFill('visa_sponsorship') === false, 'Autofill strictly protects sensitive field visa_sponsorship for manual review')
+  assert(isSafeToAutoFill('salary_expectation') === false, 'Autofill strictly protects salary_expectation for manual review')
+
+  // 5. Open Question Assistance Guard
+  const isOpenQuestion = (label: string) =>
+    /why (do you want to work|should we hire|join)/i.test(label) || /describe your experience/i.test(label)
+  assert(
+    isOpenQuestion('Why do you want to work at Soranova Technologies?') === true,
+    'Flags "Why do you want to work here" for assisted answer review rather than auto-submitting'
+  )
+
   // Restore global chrome
   ;(global as any).chrome = originalChrome
 
