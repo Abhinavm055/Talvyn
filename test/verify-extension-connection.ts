@@ -198,13 +198,36 @@ async function runTests() {
 
   assert(tokenExpiredCaught, 'Correctly identifies expired token to prompt clean re-authentication')
 
-  // ─── 7. Package ZIP Artifact Integrity ─────────────────────────────────────
-  console.log('\n--- 7. Testing Extension Production Package Artifact ---')
+  // ─── 7. Package ZIP Artifact Integrity & Manifest Validation ─────────────
+  console.log('\n--- 7. Testing Extension Production Package Artifact & Manifest ---')
 
   const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'Talvyn v1.zip')
+  const packageZipLowerPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
   const distManifestPath = path.resolve(process.cwd(), 'extension', 'dist', 'manifest.json')
+  const srcManifestPath = path.resolve(process.cwd(), 'extension', 'src', 'manifest.ts')
+  const srcContentPath = path.resolve(process.cwd(), 'extension', 'src', 'content', 'index.ts')
 
   const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'Talvyn v1.zip')
+  const publicZipLowerPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn v1.zip')
+
+  const srcContentCode = fs.readFileSync(srcContentPath, 'utf8')
+  assert(
+    !srcContentCode.includes('window.postMessage') && !srcContentCode.includes('initWebBridge'),
+    'Content script has no window.postMessage or legacy web bridge dependency'
+  )
+
+  const srcManifestCode = fs.readFileSync(srcManifestPath, 'utf8')
+  assert(
+    srcManifestCode.includes('externally_connectable') &&
+    srcManifestCode.includes('https://talvyn.vercel.app/*'),
+    'Extension manifest declares externally_connectable for https://talvyn.vercel.app/*'
+  )
+
+  assert(
+    srcManifestCode.includes('icons/icon16.png') &&
+    srcManifestCode.includes('icons/icon128.png'),
+    'Extension manifest uses standard PNG icon format (16, 32, 48, 128)'
+  )
 
   assert(
     fs.existsSync(distManifestPath),
@@ -212,13 +235,13 @@ async function runTests() {
   )
 
   assert(
-    fs.existsSync(packageZipPath),
-    'Distribution package Talvyn v1.zip exists in extension/dist-package'
+    fs.existsSync(packageZipPath) && fs.existsSync(packageZipLowerPath),
+    'Distribution packages Talvyn v1.zip and talvyn v1.zip exist in extension/dist-package'
   )
 
   assert(
-    fs.existsSync(publicZipPath),
-    'Public download package exists in public/downloads for static hosting on Vercel'
+    fs.existsSync(publicZipPath) && fs.existsSync(publicZipLowerPath),
+    'Public download packages exist in public/downloads for static hosting on Vercel'
   )
 
   const distLogoPath = path.resolve(process.cwd(), 'extension', 'dist', 'icons', 'logotalvyn.png')
@@ -243,3 +266,4 @@ runTests().catch((err) => {
   console.error('Extension connection test runner failed:', err)
   process.exit(1)
 })
+

@@ -64,9 +64,52 @@ async function getUserPreferences(): Promise<UserProfile> {
   return DEFAULT_GUEST_PROFILE
 }
 
+function isTalvynAppUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    const hostname = parsed.hostname.toLowerCase()
+    if (
+      hostname === 'talvyn.vercel.app' ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1'
+    ) {
+      const p = parsed.pathname.toLowerCase()
+      // Skip job scanning on all Talvyn application and auth routes
+      if (
+        p.startsWith('/extension') ||
+        p.startsWith('/extensions') ||
+        p.startsWith('/login') ||
+        p.startsWith('/signup') ||
+        p.startsWith('/onboarding') ||
+        p.startsWith('/dashboard') ||
+        p.startsWith('/tracker') ||
+        p.startsWith('/profile') ||
+        p.startsWith('/resumes') ||
+        p.startsWith('/jobs')
+      ) {
+        return true
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return false
+}
+
 async function analyzeAndRenderPage(): Promise<void> {
   const url = window.location.href
   const doc = document
+
+  // Do not attempt job scanning, detection, or autofill on Talvyn website routes
+  if (isTalvynAppUrl(url)) {
+    removePanel()
+    discoveryPanelManager.remove()
+    autofillCoordinator.dismiss()
+    assistantCoordinator.dismiss()
+    isSinglePanelVisible = false
+    isDiscoveryPanelVisible = false
+    return
+  }
 
   const profile = await getUserPreferences()
 
@@ -290,71 +333,14 @@ async function handleSingleSave(): Promise<void> {
   }
 }
 
-// ─── Web Dashboard Connection Handshake Bridge ──────────────────────────────
-function initWebBridge() {
+// ─── Hardened Startup & SPA Navigation Observer (Phase 2F) ─────────────────
+
+async function init() {
   try {
     document.documentElement.setAttribute('data-talvyn-extension-installed', 'true')
   } catch {
     /* DOM attribute */
   }
-
-  window.addEventListener('message', async (event) => {
-    if (event.source !== window) return
-    const data = event.data
-    if (!data || typeof data !== 'object') return
-
-    // 1. Status Ping from Web App
-    if (data.type === 'TALVYN_PING_EXTENSION') {
-      const token = await getToken()
-      const user = await getUser()
-      window.postMessage(
-        {
-          type: 'TALVYN_PONG_EXTENSION',
-          installed: true,
-          version: '1.0.0',
-          connected: Boolean(token),
-          email: user?.email || null,
-        },
-        '*'
-      )
-    }
-
-    // 2. One-click Account Connection from Web App
-    if (data.type === 'TALVYN_CONNECT_EXTENSION') {
-      const { token, user } = data
-      if (token && user) {
-        await setToken(token)
-        await setUser(user)
-        window.postMessage(
-          {
-            type: 'TALVYN_CONNECT_SUCCESS',
-            success: true,
-            email: user.email,
-          },
-          '*'
-        )
-      }
-    }
-
-    // 3. Disconnect from Web App
-    if (data.type === 'TALVYN_DISCONNECT_EXTENSION') {
-      await clearAuth()
-      window.postMessage(
-        {
-          type: 'TALVYN_DISCONNECT_SUCCESS',
-          success: true,
-        },
-        '*'
-      )
-    }
-  })
-}
-
-// ─── Hardened Startup & SPA Navigation Observer (Phase 2F) ─────────────────
-
-async function init() {
-  // Initialize bridge immediately
-  initWebBridge()
 
   if (document.readyState === 'loading') {
     await new Promise<void>((res) => document.addEventListener('DOMContentLoaded', () => res()))
@@ -390,3 +376,4 @@ async function safeAnalyzeAndRender(): Promise<void> {
 init().catch((err) => console.error('[Talvyn] Init failed:', err))
 
 export {}
+

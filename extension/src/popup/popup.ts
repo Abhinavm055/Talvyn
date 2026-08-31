@@ -27,12 +27,12 @@ function getLogoUrl(): string {
 function getFallbackIconUrl(): string {
   try {
     if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL('icons/icon48.svg')
+      return chrome.runtime.getURL('icons/icon48.png')
     }
   } catch {
     /* fallback */
   }
-  return '/icons/icon48.svg'
+  return '/icons/icon48.png'
 }
 
 async function checkApiHealth(): Promise<boolean> {
@@ -49,6 +49,23 @@ async function checkApiHealth(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+function openConnectTab(): void {
+  const extId = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : ''
+  const connectUrl = extId
+    ? `${CONFIG.DASHBOARD_URL}/extension/connect?extId=${encodeURIComponent(extId)}`
+    : `${CONFIG.DASHBOARD_URL}/extension/connect`
+
+  try {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url: connectUrl })
+      return
+    }
+  } catch {
+    /* fallback */
+  }
+  window.open(connectUrl, '_blank')
 }
 
 async function init() {
@@ -90,18 +107,18 @@ function renderLogin(isSessionExpired = false) {
               style="width:34px;height:34px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);flex-shrink:0;object-fit:contain;"
             />
             <div>
-              <div style="font-weight:700;font-size:15px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Extension</div>
+              <div style="font-weight:700;font-size:14px;color:#0f172a;letter-spacing:-0.2px;">Talvyn Browser Extension</div>
               <div style="font-size:11px;color:#64748b;">From Potential to Offer.</div>
             </div>
           </div>
 
           <div id="connection-badge" style="
             display:inline-flex;align-items:center;gap:5px;
-            padding:3px 8px;border-radius:999px;background:#fef3c7;
-            color:#92400e;font-size:10px;font-weight:600;
+            padding:3px 8px;border-radius:999px;background:#f1f5f9;
+            color:#64748b;font-size:10px;font-weight:600;
           ">
-            <span style="width:6px;height:6px;border-radius:50%;background:#eab308;display:inline-block;"></span>
-            Connecting...
+            <span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
+            Disconnected
           </div>
         </div>
 
@@ -114,99 +131,102 @@ function renderLogin(isSessionExpired = false) {
             display:flex;align-items:center;gap:6px;
           ">
             <span>⚠️</span>
-            <span>Your session expired. Please sign in to reconnect.</span>
+            <span>Your session expired. Please reconnect your account.</span>
           </div>
         `
             : `
           <div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.4;">
-            Connect your Talvyn account to save jobs, autofill forms, and track applications seamlessly.
+            Connect your Talvyn account to save jobs, autofill applications, and sync career progress seamlessly.
           </div>
         `
         }
 
-        <!-- Google Sign In Button -->
-        <button type="button" id="google-signin-btn" style="
-          width:100%;padding:9px 12px;background:white;color:#1e293b;
-          border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;
+        <!-- Primary Connect Action Button -->
+        <button type="button" id="connect-account-btn" style="
+          width:100%;padding:11px 14px;background:linear-gradient(to right, #4f46e5, #6366f1);color:white;
+          border:none;border-radius:10px;font-size:13px;font-weight:700;
           display:flex;align-items:center;justify-content:center;gap:8px;
-          cursor:pointer;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);transition:all 0.15s;
+          cursor:pointer;margin-bottom:12px;box-shadow:0 3px 8px rgba(79,70,229,0.3);transition:all 0.15s;
         ">
-          <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          <svg style="width:16px;height:16px;flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
-          <span>Continue with Google</span>
+          <span>Connect your Talvyn account</span>
         </button>
 
         <div style="
-          display:flex;align-items:center;text-align:center;margin-bottom:12px;
+          display:flex;align-items:center;text-align:center;margin:12px 0 10px;
           font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:0.5px;
         ">
           <div style="flex:1;border-bottom:1px solid #e2e8f0;"></div>
-          <span style="padding:0 8px;">OR SIGN IN WITH EMAIL</span>
+          <span style="padding:0 8px;">OR SIGN IN DIRECTLY</span>
           <div style="flex:1;border-bottom:1px solid #e2e8f0;"></div>
         </div>
 
         <!-- Form -->
         <form id="login-form">
-          <div style="margin-bottom:10px;">
-            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px;">Email</label>
+          <div style="margin-bottom:8px;">
+            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px;">Email</label>
             <input id="email-input" type="email" placeholder="you@example.com" required style="
-              width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
+              width:100%;padding:7px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
               font-size:12px;outline:none;background:white;color:#0f172a;box-sizing:border-box;
             " />
           </div>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px;">Password</label>
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px;">Password</label>
             <input id="password-input" type="password" placeholder="••••••••" required style="
-              width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
+              width:100%;padding:7px 10px;border:1.5px solid #cbd5e1;border-radius:8px;
               font-size:12px;outline:none;background:white;color:#0f172a;box-sizing:border-box;
             " />
           </div>
 
           <div id="login-error" style="
-            display:none;margin-bottom:12px;padding:8px 10px;
+            display:none;margin-bottom:10px;padding:7px 10px;
             background:#fef2f2;border:1px solid #fecaca;border-radius:8px;
             font-size:11px;color:#dc2626;
           "></div>
 
           <button type="submit" id="login-btn" style="
-            width:100%;padding:9px;background:linear-gradient(to right, #6366f1, #4f46e5);color:white;
-            border:none;border-radius:8px;font-size:12px;font-weight:600;
-            cursor:pointer;box-shadow:0 2px 4px rgba(79,70,229,0.3);transition:all 0.15s;
-          ">Sign In</button>
+            width:100%;padding:8px;background:#f8fafc;color:#1e293b;
+            border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;
+            cursor:pointer;transition:all 0.15s;
+          ">Sign In with Password</button>
         </form>
       </div>
 
       <!-- Footer Action -->
       <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:10px;color:#64748b;">Not logged in yet</span>
-        <a href="${CONFIG.DASHBOARD_URL}" target="_blank" style="
+        <span style="font-size:10px;color:#64748b;">Not registered yet?</span>
+        <a href="${CONFIG.DASHBOARD_URL}/signup" target="_blank" style="
           font-size:10px;color:#4f46e5;text-decoration:none;font-weight:600;
-        ">Open Dashboard →</a>
+        ">Create Free Account →</a>
       </div>
     </div>
   `
+
+  // Connect Account Button
+  const connectBtn = document.getElementById('connect-account-btn')
+  connectBtn?.addEventListener('click', () => {
+    openConnectTab()
+  })
 
   // Asynchronously verify backend health and update status badge
   checkApiHealth().then((isHealthy) => {
     const badge = document.getElementById('connection-badge')
     if (!badge) return
     if (isHealthy) {
-      badge.style.background = '#d1fae5'
-      badge.style.color = '#065f46'
+      badge.style.background = '#f1f5f9'
+      badge.style.color = '#475569'
       badge.innerHTML = `
-        <span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>
-        Connected
+        <span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
+        Ready to Connect
       `
     } else {
       badge.style.background = '#fee2e2'
       badge.style.color = '#991b1b'
       badge.innerHTML = `
         <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;display:inline-block;"></span>
-        Backend Unavailable
+        Backend Offline
       `
     }
   })
@@ -215,12 +235,7 @@ function renderLogin(isSessionExpired = false) {
   const emailInput = document.getElementById('email-input') as HTMLInputElement
   const passwordInput = document.getElementById('password-input') as HTMLInputElement
   const loginBtn = document.getElementById('login-btn') as HTMLButtonElement
-  const googleBtn = document.getElementById('google-signin-btn') as HTMLButtonElement
   const errorEl = document.getElementById('login-error') as HTMLElement
-
-  googleBtn.addEventListener('click', () => {
-    window.open(`${CONFIG.DASHBOARD_URL}/login`, '_blank')
-  })
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -238,13 +253,14 @@ function renderLogin(isSessionExpired = false) {
         err instanceof Error ? err.message : 'Invalid email or password'
       errorEl.textContent = message
       errorEl.style.display = 'block'
-      loginBtn.textContent = 'Sign In'
+      loginBtn.textContent = 'Sign In with Password'
       loginBtn.disabled = false
     }
   })
 }
 
 // ─── Authenticated Dashboard View ─────────────────────────────────────────────
+
 
 async function renderDashboard(user: AuthUser) {
   const displayName =
@@ -288,7 +304,7 @@ async function renderDashboard(user: AuthUser) {
             <button id="logout-btn" style="
               background:rgba(255,255,255,0.2);border:none;color:white;
               padding:4px 8px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;
-            " title="Sign out">Sign Out</button>
+            " title="Disconnect account">Disconnect</button>
           </div>
         </div>
 
@@ -344,6 +360,7 @@ async function renderDashboard(user: AuthUser) {
     await clearAuth()
     renderLogin()
   })
+
 
   // Load recent jobs
   await loadRecentJobs()

@@ -16,7 +16,9 @@ import path from 'path'
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const DIST_PACKAGE_ZIP = path.join(ROOT_DIR, 'extension', 'dist-package', 'Talvyn v1.zip')
+const DIST_PACKAGE_ZIP_LOWER = path.join(ROOT_DIR, 'extension', 'dist-package', 'talvyn v1.zip')
 const PUBLIC_ZIP = path.join(ROOT_DIR, 'public', 'downloads', 'Talvyn v1.zip')
+const PUBLIC_ZIP_LOWER = path.join(ROOT_DIR, 'public', 'downloads', 'talvyn v1.zip')
 const DIST_ZIP = path.join(ROOT_DIR, 'dist', 'downloads', 'Talvyn v1.zip')
 
 let passedChecks = 0
@@ -88,6 +90,7 @@ function verifyZipFile(filePath: string, label: string) {
 
   assert(entries.includes('manifest.json'), `Archive contains manifest.json at root level`)
   assert(entries.some((e) => e.startsWith('icons/')), `Archive contains extension icons`)
+  assert(entries.some((e) => e.includes('icon16.png') || e.includes('icon48.png') || e.includes('logotalvyn.png')), `Archive contains PNG icons`)
   assert(entries.some((e) => e.includes('popup')), `Archive contains popup UI`)
   assert(entries.some((e) => e.includes('assets/')), `Archive contains transpiled script bundles`)
 }
@@ -97,11 +100,13 @@ function run() {
   console.log('TALVYN: CHROME EXTENSION PACKAGE VERIFICATION')
   console.log('===========================================================')
 
-  // 1. Verify extension/dist-package ZIP
-  verifyZipFile(DIST_PACKAGE_ZIP, 'Packaging Output (extension/dist-package)')
+  // 1. Verify extension/dist-package ZIP (both casings)
+  verifyZipFile(DIST_PACKAGE_ZIP, 'Packaging Output (Talvyn v1.zip)')
+  verifyZipFile(DIST_PACKAGE_ZIP_LOWER, 'Packaging Output (talvyn v1.zip)')
 
   // 2. Verify public/downloads ZIP
-  verifyZipFile(PUBLIC_ZIP, 'Public Static Download Asset (public/downloads)')
+  verifyZipFile(PUBLIC_ZIP, 'Public Static Download Asset (Talvyn v1.zip)')
+  verifyZipFile(PUBLIC_ZIP_LOWER, 'Public Static Download Asset (talvyn v1.zip)')
 
   // 3. Verify dist/downloads ZIP if dist directory has been built
   const distDir = path.join(ROOT_DIR, 'dist')
@@ -122,3 +127,4 @@ function run() {
 }
 
 run()
+

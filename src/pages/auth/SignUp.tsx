@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -26,12 +26,27 @@ type FormData = z.infer<typeof schema>
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+
+  const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
+
+  const handlePostSignUpRedirect = (user: { profile?: { onboardingCompleted?: boolean } | null }) => {
+    if (redirectParam && redirectParam.startsWith('/')) {
+      navigate(redirectParam)
+      return
+    }
+    if (user.profile?.onboardingCompleted === true) {
+      navigate('/dashboard')
+    } else {
+      navigate('/onboarding')
+    }
+  }
 
   const onSubmit = async (data: FormData) => {
     setError('')
@@ -42,7 +57,7 @@ export default function SignUp() {
         givenName: data.givenName,
       })
       setAuth(result.token, result.user)
-      navigate('/onboarding')
+      handlePostSignUpRedirect(result.user)
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || 'Registration failed. Please try again.')
@@ -50,12 +65,9 @@ export default function SignUp() {
   }
 
   const handleGoogleSuccess = (result: { user: { profile?: { onboardingCompleted?: boolean } | null } }) => {
-    if (result.user.profile?.onboardingCompleted === true) {
-      navigate('/dashboard')
-    } else {
-      navigate('/onboarding')
-    }
+    handlePostSignUpRedirect(result.user)
   }
+
 
   return (
     <div className="min-h-screen bg-surface-50 flex">

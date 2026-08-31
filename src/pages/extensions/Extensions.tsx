@@ -66,7 +66,7 @@ export default function Extensions() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
 
   // Direct static download link served by Vercel deployment
-  const downloadUrl = '/downloads/Talvyn%20v1.zip'
+  const downloadUrl = '/downloads/talvyn%20v1.zip'
 
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -134,7 +134,7 @@ export default function Extensions() {
               <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap">
                 <a
                   href={downloadUrl}
-                  download="Talvyn v1.zip"
+                  download="talvyn v1.zip"
                   target="_self"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-3 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-[0.98] text-white transition-all shadow-sm shadow-primary-600/20 group"
@@ -142,9 +142,10 @@ export default function Extensions() {
                   <Download className="w-4.5 h-4.5 text-white/90 group-hover:-translate-y-0.5 transition-transform" />
                   <div className="text-left leading-tight">
                     <div className="font-bold text-xs sm:text-sm">Download Talvyn v1</div>
-                    <div className="text-[10px] text-white/80 font-normal">Talvyn v1.zip</div>
+                    <div className="text-[10px] text-white/80 font-normal">talvyn v1.zip</div>
                   </div>
                 </a>
+
 
                 <button
                   type="button"

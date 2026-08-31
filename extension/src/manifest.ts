@@ -2,7 +2,7 @@ import { defineManifest } from '@crxjs/vite-plugin'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Talvyn – Job Saver',
+  name: 'Talvyn Browser Extension',
   version: '1.0.0',
   description: 'Save jobs from any website directly to your Talvyn dashboard.',
 
@@ -15,21 +15,32 @@ export default defineManifest({
   // Popup
   action: {
     default_popup: 'src/popup/index.html',
-    default_title: 'Talvyn',
+    default_title: 'Talvyn Browser Extension',
     default_icon: {
-      '16':  'icons/icon16.svg',
-      '32':  'icons/icon32.svg',
-      '48':  'icons/icon48.svg',
-      '128': 'icons/icon128.svg',
+      '16':  'icons/icon16.png',
+      '32':  'icons/icon32.png',
+      '48':  'icons/icon48.png',
+      '128': 'icons/icon128.png',
     },
   },
 
   // Icons
   icons: {
-    '16':  'icons/icon16.svg',
-    '32':  'icons/icon32.svg',
-    '48':  'icons/icon48.svg',
-    '128': 'icons/icon128.svg',
+    '16':  'icons/icon16.png',
+    '32':  'icons/icon32.png',
+    '48':  'icons/icon48.png',
+    '128': 'icons/icon128.png',
+  },
+
+  // Allow production and local Talvyn web app to communicate with extension
+  externally_connectable: {
+    matches: [
+      'https://talvyn.vercel.app/*',
+      'http://localhost:5173/*',
+      'http://localhost:3000/*',
+      'http://127.0.0.1:5173/*',
+      'http://localhost:3001/*',
+    ],
   },
 
   // Content scripts — injected into all pages, activates only when job detected
@@ -68,3 +79,4 @@ export default defineManifest({
     extension_pages: "script-src 'self'; object-src 'self'",
   },
 })
+

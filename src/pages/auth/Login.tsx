@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -21,24 +21,34 @@ type FormData = z.infer<typeof schema>
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+
+  const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
+
+  const handlePostLoginRedirect = (user: { profile?: { onboardingCompleted?: boolean } | null }) => {
+    if (redirectParam && redirectParam.startsWith('/')) {
+      navigate(redirectParam)
+      return
+    }
+    if (user.profile?.onboardingCompleted === true) {
+      navigate('/dashboard')
+    } else {
+      navigate('/onboarding')
+    }
+  }
 
   const onSubmit = async (data: FormData) => {
     setError('')
     try {
       const result = await authApi.login(data)
       setAuth(result.token, result.user)
-      // Redirect based on onboarding status: explicit true -> /dashboard, otherwise -> /onboarding
-      if (result.user.profile?.onboardingCompleted === true) {
-        navigate('/dashboard')
-      } else {
-        navigate('/onboarding')
-      }
+      handlePostLoginRedirect(result.user)
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || 'Invalid email or password.')
@@ -46,12 +56,9 @@ export default function Login() {
   }
 
   const handleGoogleSuccess = (result: { user: { profile?: { onboardingCompleted?: boolean } | null } }) => {
-    if (result.user.profile?.onboardingCompleted === true) {
-      navigate('/dashboard')
-    } else {
-      navigate('/onboarding')
-    }
+    handlePostLoginRedirect(result.user)
   }
+
 
   return (
     <div className="min-h-screen bg-surface-50 flex">
