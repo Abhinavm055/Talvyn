@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { X, Upload, ZoomIn, ZoomOut, Check, RotateCw, Image as ImageIcon } from 'lucide-react'
+import { Upload, ZoomIn, ZoomOut, Check, Image as ImageIcon } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 
@@ -11,7 +11,7 @@ interface PhotoCropModalProps {
 }
 
 export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: PhotoCropModalProps) {
-  const [imageSrc, setImageSrc] = useState<string | null>(initialImageUrl || null)
+  const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -21,15 +21,64 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const objectUrlRef = useRef<string | null>(null)
 
-  // Reset state when modal opens
   useEffect(() => {
-    if (isOpen) {
-      setImageSrc(initialImageUrl || null)
-      setZoom(1)
-      setPan({ x: 0, y: 0 })
-      setError('')
+    if (!isOpen) return
+
+    let cancelled = false
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setError('')
+    setImageSrc(null)
+
+    if (!initialImageUrl) return
+
+    const loadInitialImage = async () => {
+      try {
+        // Data/blob URLs are already canvas-safe.
+        if (initialImageUrl.startsWith('data:') || initialImageUrl.startsWith('blob:')) {
+          if (!cancelled) setImageSrc(initialImageUrl)
+          return
+        }
+
+        // Same-origin URLs are safe to draw directly.
+        const parsed = new URL(initialImageUrl, window.location.href)
+        if (parsed.origin === window.location.origin) {
+          if (!cancelled) setImageSrc(parsed.href)
+          return
+        }
+
+        // For remote avatars (e.g. Google profile photos), fetch the image
+        // first and use a blob URL so the canvas never becomes tainted.
+        const response = await fetch(parsed.href, { mode: 'cors', credentials: 'omit' })
+        if (!response.ok) throw new Error(`Image request failed (${response.status})`)
+
+        const blob = await response.blob()
+        if (!blob.type.startsWith('image/')) throw new Error('Remote resource is not an image')
+
+        const objectUrl = URL.createObjectURL(blob)
+        objectUrlRef.current = objectUrl
+        if (!cancelled) {
+          setImageSrc(objectUrl)
+        } else {
+          URL.revokeObjectURL(objectUrl)
+        }
+      } catch {
+        if (!cancelled) {
+          setError('This profile photo cannot be edited from its current location. Please choose the photo again.')
+        }
+      }
+    }
+
+    loadInitialImage()
+
+    return () => {
+      cancelled = true
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = null
+      }
     }
   }, [isOpen, initialImageUrl])
 
@@ -45,6 +94,11 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
     if (file.size > 5 * 1024 * 1024) {
       setError('Image size must be less than 5 MB.')
       return
+    }
+
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
     }
 
     setError('')
@@ -83,6 +137,7 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
     try {
       const img = imageRef.current
       if (!img) throw new Error('Image reference missing')
+      if (!img.complete || !img.naturalWidth) throw new Error('Image is still loading. Please try again.')
 
       const canvas = document.createElement('canvas')
       const targetSize = 400
@@ -92,9 +147,8 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
 
       if (!ctx) throw new Error('Could not get canvas context')
 
-      const cropBoxSize = 220 // Displayed crop box dimension in px
+      const cropBoxSize = 220
       const scale = (img.naturalWidth / img.width) / zoom
-
       const sourceWidth = cropBoxSize * scale
       const sourceHeight = cropBoxSize * scale
       const sourceX = (img.naturalWidth / 2) - (sourceWidth / 2) - (pan.x * (img.naturalWidth / (img.width * zoom)))
@@ -112,27 +166,19 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
         targetSize
       )
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setError('Failed to generate image file.')
-          setSaving(false)
-          return
-        }
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.92)
+      })
 
-        const croppedFile = new File([blob], 'profile-avatar.jpg', { type: 'image/jpeg' })
-        try {
-          await onSave(croppedFile)
-          onClose()
-        } catch (err: unknown) {
-          const e = err as Error
-          setError(e.message || 'Failed to upload cropped photo.')
-        } finally {
-          setSaving(false)
-        }
-      }, 'image/jpeg', 0.92)
+      if (!blob) throw new Error('Failed to generate image file.')
+
+      const croppedFile = new File([blob], 'profile-avatar.jpg', { type: 'image/jpeg' })
+      await onSave(croppedFile)
+      onClose()
     } catch (err: unknown) {
       const e = err as Error
       setError(e.message || 'Error processing crop.')
+    } finally {
       setSaving(false)
     }
   }
@@ -147,7 +193,6 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
         )}
 
         <div
-          ref={containerRef}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -160,7 +205,6 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
                 ref={imageRef}
                 src={imageSrc}
                 alt="Crop Target"
-                crossOrigin="anonymous"
                 draggable={false}
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -168,7 +212,7 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
                   maxHeight: '100%',
                   objectFit: 'contain',
                 }}
-                onError={() => setError('Unable to load this profile photo for cropping. Please choose the photo again.')}
+                onError={() => setError('Unable to load this profile photo. Please choose the photo again.')}
                 className="transition-transform duration-75 pointer-events-none"
               />
 
@@ -243,7 +287,7 @@ export function PhotoCropModal({ isOpen, onClose, onSave, initialImageUrl }: Pho
             icon={<Check className="w-4 h-4" />}
             onClick={handleSaveCrop}
             loading={saving}
-            disabled={!imageSrc}
+            disabled={!imageSrc || saving}
           >
             Save Photo
           </Button>
