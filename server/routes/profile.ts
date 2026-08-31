@@ -4,6 +4,7 @@ import multer from 'multer'
 import { prisma } from '../lib/prisma'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import { storageService } from '../services/storageService'
+import { config } from '../config'
 
 const router = Router()
 router.use(authenticate)
@@ -164,6 +165,78 @@ router.post('/avatar', (req: AuthRequest, res: Response) => {
       res.status(500).json({ error: 'Failed to save avatar image' })
     }
   })
+})
+
+// GET /api/profile/avatar/proxy — Secure avatar proxy for remote CORS-restricted images
+const ALLOWED_AVATAR_HOST_SUFFIXES = [
+  'googleusercontent.com',
+  'githubusercontent.com',
+  'gravatar.com',
+  'onrender.com',
+  'vercel.app',
+  'localhost',
+  '127.0.0.1',
+]
+
+function isTrustedAvatarUrl(urlString: string): boolean {
+  try {
+    if (urlString.startsWith('/uploads/avatars/')) return true
+
+    const parsed = new URL(urlString)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+
+    const hostname = parsed.hostname.toLowerCase()
+    return ALLOWED_AVATAR_HOST_SUFFIXES.some(
+      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
+    )
+  } catch {
+    return false
+  }
+}
+
+router.get('/avatar/proxy', async (req: AuthRequest, res: Response) => {
+  const targetUrl = req.query.url as string
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    res.status(400).json({ error: 'Missing avatar url parameter' })
+    return
+  }
+
+  if (!isTrustedAvatarUrl(targetUrl)) {
+    res.status(400).json({ error: 'Untrusted avatar source origin' })
+    return
+  }
+
+  try {
+    let fullUrl = targetUrl
+    if (targetUrl.startsWith('/uploads/')) {
+      const port = config.port || 3001
+      fullUrl = `http://localhost:${port}${targetUrl}`
+    }
+
+    const response = await fetch(fullUrl)
+    if (!response.ok) {
+      res.status(response.status).json({ error: 'Failed to fetch upstream avatar' })
+      return
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg'
+    if (!contentType.startsWith('image/')) {
+      res.status(400).json({ error: 'Upstream response is not an image' })
+      return
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    res.send(buffer)
+  } catch (err) {
+    console.error('[Talvyn] Avatar proxy error:', err)
+    res.status(500).json({ error: 'Failed to proxy avatar image' })
+  }
 })
 
 // DELETE /api/profile/avatar — Remove profile image

@@ -69,6 +69,54 @@ interface GoogleSignInButtonProps {
   className?: string
 }
 
+// Module-level state to track GIS script load and single initialization per client_id
+let gisScriptLoaded = false
+let gisScriptLoading = false
+const scriptLoadListeners: Array<() => void> = []
+
+let lastInitializedClientId: string | null = null
+let activeGoogleCallback: ((response: { credential: string }) => void) | null = null
+
+function ensureGisScript(onLoaded: () => void) {
+  if (gisScriptLoaded && window.google?.accounts?.id) {
+    onLoaded()
+    return
+  }
+
+  scriptLoadListeners.push(onLoaded)
+
+  if (gisScriptLoading) return
+
+  if (document.getElementById('google-gsi-client')) {
+    if (window.google?.accounts?.id) {
+      gisScriptLoaded = true
+      while (scriptLoadListeners.length > 0) {
+        scriptLoadListeners.shift()?.()
+      }
+    }
+    return
+  }
+
+  gisScriptLoading = true
+  const script = document.createElement('script')
+  script.id = 'google-gsi-client'
+  script.src = 'https://accounts.google.com/gsi/client'
+  script.async = true
+  script.defer = true
+  script.onload = () => {
+    gisScriptLoaded = true
+    gisScriptLoading = false
+    while (scriptLoadListeners.length > 0) {
+      scriptLoadListeners.shift()?.()
+    }
+  }
+  script.onerror = () => {
+    gisScriptLoading = false
+    console.warn('[Talvyn] Failed to load Google Identity Services script')
+  }
+  document.body.appendChild(script)
+}
+
 export function GoogleSignInButton({
   mode = 'signin',
   onSuccess,
@@ -83,50 +131,9 @@ export function GoogleSignInButton({
   const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
   const isConfigured = isValidGoogleClientId(rawClientId)
 
-  useEffect(() => {
-    if (!isConfigured) return
+  const handleGoogleCallbackRef = useRef<(response: { credential: string }) => Promise<void>>()
 
-    // 1. Dynamically load Google Identity Services script if not already on page
-    if (!document.getElementById('google-gsi-client')) {
-      const script = document.createElement('script')
-      script.id = 'google-gsi-client'
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      script.onload = () => initGoogleGsi()
-      document.body.appendChild(script)
-    } else if (window.google?.accounts?.id) {
-      initGoogleGsi()
-    }
-
-    function initGoogleGsi() {
-      if (!window.google?.accounts?.id || !isConfigured) return
-
-      try {
-        window.google.accounts.id.initialize({
-          client_id: rawClientId,
-          callback: handleGoogleCallback,
-          cancel_on_tap_outside: true,
-        })
-
-        if (hiddenBtnContainerRef.current) {
-          window.google.accounts.id.renderButton(hiddenBtnContainerRef.current, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            text: mode === 'signup' ? 'signup_with' : 'continue_with',
-            shape: 'rectangular',
-            width: 320,
-          })
-        }
-
-      } catch (err) {
-        console.warn('[Talvyn] Failed to initialize Google Sign-In:', err)
-      }
-    }
-  }, [isConfigured, rawClientId, mode])
-
-  const handleGoogleCallback = async (response: { credential: string }) => {
+  handleGoogleCallbackRef.current = async (response: { credential: string }) => {
     if (!response.credential) {
       const err = 'Google sign-in was cancelled or failed.'
       setNoticeMessage(err)
@@ -152,6 +159,46 @@ export function GoogleSignInButton({
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isConfigured) return
+
+    activeGoogleCallback = (res) => {
+      handleGoogleCallbackRef.current?.(res)
+    }
+
+    ensureGisScript(() => {
+      if (!window.google?.accounts?.id || !isConfigured) return
+
+      try {
+        // Initialize at most once per client_id
+        if (lastInitializedClientId !== rawClientId) {
+          window.google.accounts.id.initialize({
+            client_id: rawClientId,
+            callback: (response) => {
+              activeGoogleCallback?.(response)
+            },
+            cancel_on_tap_outside: true,
+          })
+          lastInitializedClientId = rawClientId
+        }
+
+        if (hiddenBtnContainerRef.current) {
+          hiddenBtnContainerRef.current.innerHTML = ''
+          window.google.accounts.id.renderButton(hiddenBtnContainerRef.current, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: mode === 'signup' ? 'signup_with' : 'continue_with',
+            shape: 'rectangular',
+            width: 320,
+          })
+        }
+      } catch (err) {
+        console.warn('[Talvyn] Failed to initialize Google Sign-In:', err)
+      }
+    })
+  }, [isConfigured, rawClientId, mode])
 
   const handleCustomButtonClick = () => {
     if (!isConfigured) {

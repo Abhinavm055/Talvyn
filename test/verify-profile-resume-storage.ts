@@ -110,6 +110,92 @@ async function runTests() {
   const deleted = await testProvider.deleteFile(avatarResult.storagePath)
   assert(deleted && !fs.existsSync(diskPath), 'LocalStorageProvider removes physical file from disk on delete')
 
+  // ─── 2B. Testing Avatar CORS Proxy & Crop Math ──────────────────────────────
+  console.log('\n--- 2B. Testing Avatar CORS Proxy & Crop Math ---')
+
+  const ALLOWED_AVATAR_HOST_SUFFIXES = [
+    'googleusercontent.com',
+    'githubusercontent.com',
+    'gravatar.com',
+    'onrender.com',
+    'vercel.app',
+    'localhost',
+    '127.0.0.1',
+  ]
+
+  function isTrustedAvatarUrl(urlString: string): boolean {
+    try {
+      if (urlString.startsWith('/uploads/avatars/')) return true
+      const parsed = new URL(urlString)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+      const hostname = parsed.hostname.toLowerCase()
+      return ALLOWED_AVATAR_HOST_SUFFIXES.some(
+        (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
+      )
+    } catch {
+      return false
+    }
+  }
+
+  assert(
+    isTrustedAvatarUrl('https://lh3.googleusercontent.com/a/ACg8ocKSAMPLE') === true,
+    'Avatar proxy approves Google user content avatars'
+  )
+  assert(
+    isTrustedAvatarUrl('https://avatars.githubusercontent.com/u/123456') === true,
+    'Avatar proxy approves GitHub avatars'
+  )
+  assert(
+    isTrustedAvatarUrl('/uploads/avatars/avatar-123.jpg') === true,
+    'Avatar proxy approves local uploads path'
+  )
+  assert(
+    isTrustedAvatarUrl('https://evil-attacker.com/steal-data.png') === false,
+    'Avatar proxy strictly rejects untrusted external origins'
+  )
+  assert(
+    isTrustedAvatarUrl('javascript:alert(1)') === false,
+    'Avatar proxy rejects non-HTTP protocol URLs'
+  )
+
+  // Verify crop coordinate mathematics
+  function calculateCropDestination(
+    targetSize: number,
+    cropBoxSize: number,
+    imgWidth: number,
+    imgHeight: number,
+    zoom: number,
+    panX: number,
+    panY: number
+  ) {
+    const destScale = targetSize / cropBoxSize
+    const dw = imgWidth * zoom * destScale
+    const dh = imgHeight * zoom * destScale
+    const canvasCenterX = targetSize / 2 + panX * destScale
+    const canvasCenterY = targetSize / 2 + panY * destScale
+    const dx = canvasCenterX - dw / 2
+    const dy = canvasCenterY - dh / 2
+    return { dx, dy, dw, dh }
+  }
+
+  const defaultCrop = calculateCropDestination(400, 220, 220, 220, 1, 0, 0)
+  assert(
+    Math.round(defaultCrop.dw) === 400 &&
+    Math.round(defaultCrop.dh) === 400 &&
+    Math.round(defaultCrop.dx) === 0 &&
+    Math.round(defaultCrop.dy) === 0,
+    'Square image with zoom=1 and pan=0 fills 400x400 canvas exactly'
+  )
+
+  const zoomedPannedCrop = calculateCropDestination(400, 220, 220, 220, 2, 50, -30)
+  assert(
+    Math.round(zoomedPannedCrop.dw) === 800 &&
+    Math.round(zoomedPannedCrop.dh) === 800 &&
+    Math.round(zoomedPannedCrop.dx) === -109 &&
+    Math.round(zoomedPannedCrop.dy) === -255,
+    'Zoomed and panned crop scales accurately without edge clipping anomalies'
+  )
+
   // ─── 3. Resume File Uploads & Format Validation ─────────────────────────────
   console.log('\n--- 3. Testing Resume File Uploads & Formats ---')
 

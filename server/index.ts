@@ -87,8 +87,16 @@ app.use(
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// Static uploads serving (e.g. avatars)
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')))
+// Static uploads serving (e.g. avatars) with explicit CORS and Cross-Origin-Resource-Policy headers
+app.use(
+  '/uploads',
+  express.static(path.resolve(process.cwd(), 'uploads'), {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    },
+  })
+)
 
 // Health check endpoint for Render / monitoring
 app.get('/api/health', (_req, res) => {

@@ -78,4 +78,26 @@ export const profileApi = {
     const res = await apiClient.delete<{ success: boolean; avatarUrl: null }>('/profile/avatar')
     return res.data
   },
+
+  fetchSafeAvatarBlob: async (url: string): Promise<Blob> => {
+    // 1. Try direct CORS fetch first
+    try {
+      const directRes = await fetch(url, { mode: 'cors' })
+      if (directRes.ok) {
+        const contentType = directRes.headers.get('content-type') || ''
+        if (!contentType || contentType.startsWith('image/')) {
+          return await directRes.blob()
+        }
+      }
+    } catch {
+      // CORS or network error, fallback to secure backend proxy
+    }
+
+    // 2. Fallback to authenticated backend avatar proxy
+    const proxyRes = await apiClient.get<Blob>('/profile/avatar/proxy', {
+      params: { url },
+      responseType: 'blob',
+    })
+    return proxyRes.data
+  },
 }
