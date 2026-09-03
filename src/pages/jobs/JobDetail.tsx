@@ -72,6 +72,7 @@ export default function JobDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['job', id] })
       qc.invalidateQueries({ queryKey: ['jobs'] })
+      qc.invalidateQueries({ queryKey: ['timeline', id] })
     },
   })
 
@@ -204,7 +205,7 @@ export default function JobDetail() {
                 <Clock className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                 <span>Saved {formatDate(job.dateSaved)}</span>
               </div>
-              {job.dateApplied && (
+              {job.status === 'APPLIED' && job.dateApplied && (
                 <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-[#A8B0C2]">
                   <CheckCircle className="w-4 h-4 text-slate-400 dark:text-[#737D94]" />
                   <span>Applied {formatDate(job.dateApplied)}</span>

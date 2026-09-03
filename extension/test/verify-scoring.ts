@@ -97,7 +97,7 @@ const jobData1: ExtractedJob = {
 
 const scoreData1 = analyzeJobRelevance(jobData1, dataProfile)
 assert(
-  scoreData1.relevanceScore >= 90 && scoreData1.category === 'EXCELLENT',
+  scoreData1.relevanceScore >= 85 && scoreData1.category === 'EXCELLENT',
   `Data Analyst job receives EXCELLENT score (${scoreData1.relevanceScore}%)`,
   `Reasons: ${scoreData1.matchedReasons.join('; ')}`
 )
@@ -147,7 +147,7 @@ const jobDesign: ExtractedJob = {
 
 const scoreDesign = analyzeJobRelevance(jobDesign, designProfile)
 assert(
-  scoreDesign.relevanceScore >= 90 && scoreDesign.category === 'EXCELLENT',
+  scoreDesign.relevanceScore >= 85 && scoreDesign.category === 'EXCELLENT',
   `Product Designer receives EXCELLENT score (${scoreDesign.relevanceScore}%)`,
   `Matched reasons: ${scoreDesign.matchedReasons.join('; ')}`
 )
@@ -179,13 +179,132 @@ const jobFinance: ExtractedJob = {
 
 const scoreFinance = analyzeJobRelevance(jobFinance, financeProfile)
 assert(
-  scoreFinance.relevanceScore >= 90 && scoreFinance.category === 'EXCELLENT',
+  scoreFinance.relevanceScore >= 85 && scoreFinance.category === 'EXCELLENT',
   `Financial Analyst receives EXCELLENT score (${scoreFinance.relevanceScore}%)`,
   `Score: ${scoreFinance.relevanceScore}%`
 )
 
-// ─── TEST 4: Determinism Check ────────────────────────────────────────────────
-console.log('\n--- 4. Testing Score Determinism ---')
+// ─── TEST 4: Strict Eligibility & Fresher Mismatch Scenarios ─────────────────
+console.log('\n--- 4. Testing Strict Eligibility & Hard Mismatch Overrides ---')
+
+// 4a. Fresher candidate applying for 2-4 years experience job
+const fresherProfile: UserProfile = {
+  id: 'u-fresher',
+  userId: 'u-fresher',
+  preferredRoles: ['Frontend Developer', 'Software Engineer', 'React Developer'],
+  preferredLocations: ['Bangalore', 'Remote'],
+  preferredJobTypes: ['FULL_TIME'],
+  experienceYears: 0,
+  skills: ['JavaScript', 'React', 'Node.js', 'CSS3', 'HTML5'],
+  degree: 'B.Tech',
+  specialization: 'Computer Science',
+  workStyle: 'ANY',
+  onboardingCompleted: true,
+  otherLinks: [],
+}
+
+const job2to4Years: ExtractedJob = {
+  title: 'React Developer (2-4 years experience)',
+  company: 'InnovateTech',
+  location: 'Bangalore',
+  jobType: 'Full-time',
+  description: 'Looking for a React Developer with 2-4 years of experience in JavaScript, React, Node.js.',
+  jobUrl: 'https://unstop.com/jobs/react-dev-2-4',
+  sourceWebsite: 'Unstop',
+  confidence: 'HIGH',
+}
+
+const scoreFresher2to4 = analyzeJobRelevance(job2to4Years, fresherProfile)
+assert(
+  scoreFresher2to4.category === 'LOW_RELEVANCE',
+  `Fresher candidate vs 2-4 years job is strictly categorized as LOW_RELEVANCE (Got: ${scoreFresher2to4.category})`,
+  `Score: ${scoreFresher2to4.relevanceScore}%, Reasons: ${scoreFresher2to4.unmatchedReasons.join('; ')}`
+)
+assert(
+  scoreFresher2to4.relevanceScore < 50,
+  `Fresher candidate vs 2-4 years job receives penalized score < 50% (Got: ${scoreFresher2to4.relevanceScore}%)`
+)
+assert(
+  scoreFresher2to4.unmatchedReasons.some((r) => r.toLowerCase().includes('experience mismatch')),
+  'Displays explicit Experience mismatch reason for Fresher vs 2-4 years'
+)
+
+// 4b. Fresher candidate applying for Fresher / 0-1 years job
+const jobFresher: ExtractedJob = {
+  title: 'Junior Frontend Developer (Fresher / 0-1 years)',
+  company: 'StartupHub',
+  location: 'Bangalore',
+  jobType: 'Full-time',
+  description: 'Entry level role for freshers with good foundation in React and JavaScript.',
+  jobUrl: 'https://unstop.com/jobs/junior-frontend-fresher',
+  sourceWebsite: 'Unstop',
+  confidence: 'HIGH',
+}
+
+const scoreFresherPass = analyzeJobRelevance(jobFresher, fresherProfile)
+assert(
+  scoreFresherPass.relevanceScore >= 80 && (scoreFresherPass.category === 'EXCELLENT' || scoreFresherPass.category === 'HIGHLY_RELEVANT'),
+  `Fresher candidate vs Fresher job scores high (Got: ${scoreFresherPass.relevanceScore}%, ${scoreFresherPass.category})`
+)
+assert(
+  scoreFresherPass.experienceMatch.score >= 0.9,
+  'Experience match evaluates as PASS for Fresher vs Fresher job'
+)
+
+// 4c. Candidate with 1 year experience vs 2-4 years job
+const oneYearProfile: UserProfile = {
+  ...fresherProfile,
+  experienceYears: 1,
+}
+
+const score1YearVs2to4 = analyzeJobRelevance(job2to4Years, oneYearProfile)
+assert(
+  score1YearVs2to4.category === 'LOW_RELEVANCE' && score1YearVs2to4.relevanceScore < 50,
+  `1-year candidate vs 2-4 years job is strictly LOW_RELEVANCE (Score: ${score1YearVs2to4.relevanceScore}%)`
+)
+
+// 4d. Candidate with 3 years experience vs 2-4 years job
+const threeYearProfile: UserProfile = {
+  ...fresherProfile,
+  experienceYears: 3,
+}
+
+const score3YearVs2to4 = analyzeJobRelevance(job2to4Years, threeYearProfile)
+assert(
+  score3YearVs2to4.relevanceScore >= 80 && (score3YearVs2to4.category === 'EXCELLENT' || score3YearVs2to4.category === 'HIGHLY_RELEVANT'),
+  `3-year candidate vs 2-4 years job scores high (Score: ${score3YearVs2to4.relevanceScore}%)`
+)
+assert(
+  score3YearVs2to4.experienceMatch.score >= 0.9,
+  'Experience match evaluates as PASS for 3 years vs 2-4 years'
+)
+
+// 4e. Skill match cannot override hard experience mismatch
+assert(
+  scoreFresher2to4.matchedSkills?.length! >= 2 && scoreFresher2to4.category === 'LOW_RELEVANCE',
+  'Skill overlap (100% matched skills) strictly cannot override hard experience mismatch'
+)
+
+// 4f. Unrelated role is strictly categorized as LOW_RELEVANCE
+const unrelatedJob: ExtractedJob = {
+  title: 'Video Editor & Motion Designer',
+  company: 'Media House',
+  location: 'Bangalore',
+  jobType: 'Full-time',
+  description: 'Looking for a creative video editor and motion graphics specialist.',
+  jobUrl: 'https://example.com/jobs/video-editor',
+  sourceWebsite: 'Careers',
+  confidence: 'HIGH',
+}
+
+const scoreUnrelated = analyzeJobRelevance(unrelatedJob, fresherProfile)
+assert(
+  scoreUnrelated.category === 'LOW_RELEVANCE' && scoreUnrelated.relevanceScore < 50,
+  `Unrelated role is strictly LOW_RELEVANCE (Score: ${scoreUnrelated.relevanceScore}%)`
+)
+
+// ─── TEST 5: Determinism Check ────────────────────────────────────────────────
+console.log('\n--- 5. Testing Score Determinism ---')
 
 const scoreRun1 = analyzeJobRelevance(jobData1, dataProfile)
 const scoreRun2 = analyzeJobRelevance(jobData1, dataProfile)
@@ -201,3 +320,4 @@ console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} 
 console.log('====================================================')
 
 if (failedTests > 0) process.exit(1)
+

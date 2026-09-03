@@ -35,6 +35,56 @@ chrome.runtime.onStartup.addListener(async () => {
   await validateStoredToken()
 })
 
+// ─── Extension Action (Icon Click) ────────────────────────────────────────────
+// Flow: Extension icon click -> gets active tab -> sends TALVYN_OPEN_INTELLIGENCE_PANEL
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return
+  const tabId = tab.id
+  console.log('[Talvyn] Extension icon clicked on tab:', tabId, tab.url)
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+      tabUrl: tab.url,
+      tabTitle: tab.title,
+    })
+    console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL responded:', response)
+  } catch (err: any) {
+    console.log('[Talvyn] Content script not reachable directly, attempting programmatic injection:', err?.message || err)
+    if (
+      tab.url?.startsWith('chrome://') ||
+      tab.url?.startsWith('chrome-extension://') ||
+      tab.url?.startsWith('edge://') ||
+      tab.url?.startsWith('about:')
+    ) {
+      console.warn('[Talvyn] Cannot inject content script into browser internal page:', tab.url)
+      return
+    }
+
+    try {
+      if (chrome.scripting?.executeScript) {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['src/content/index.ts'],
+        })
+        setTimeout(async () => {
+          try {
+            await chrome.tabs.sendMessage(tabId, {
+              type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+              tabUrl: tab.url,
+              tabTitle: tab.title,
+            })
+          } catch {
+            /* retry completed */
+          }
+        }, 300)
+      }
+    } catch (injectErr) {
+      console.error('[Talvyn] Failed to inject content script:', injectErr)
+    }
+  }
+})
+
 // ─── Token Validation ─────────────────────────────────────────────────────────
 
 async function validateStoredToken(): Promise<void> {

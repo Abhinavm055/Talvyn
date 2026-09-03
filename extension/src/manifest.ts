@@ -12,9 +12,8 @@ export default defineManifest({
     type: 'module',
   },
 
-  // Popup
+  // Toolbar Action click handler
   action: {
-    default_popup: 'src/popup/index.html',
     default_title: 'Talvyn Browser Extension',
     default_icon: {
       '16':  'icons/icon16.png',

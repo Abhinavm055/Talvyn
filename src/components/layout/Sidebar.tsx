@@ -142,27 +142,38 @@ export function Sidebar() {
 
       {/* User & Sign Out Section */}
       <div className="p-3 border-t border-[#E2E5EC] dark:border-[#252B3A]">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
+        <NavLink
+          to="/profile"
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 px-2.5 py-2 rounded-xl transition-all duration-150 group cursor-pointer border',
+              isActive
+                ? 'bg-primary-50 dark:bg-violet-950/50 border-primary-200/60 dark:border-violet-500/30'
+                : 'border-transparent hover:bg-[#F1F3F8] dark:hover:bg-[#151A29]'
+            )
+          }
+          title="View Profile"
+        >
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt={displayName}
-              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-[#252B3A] shadow-2xs"
+              className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-[#252B3A] shadow-2xs group-hover:ring-primary-400 dark:group-hover:ring-violet-400 transition-all"
             />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-violet-950/70 flex items-center justify-center shrink-0 ring-1 ring-primary-200 dark:ring-violet-800/40">
+            <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-violet-950/70 flex items-center justify-center shrink-0 ring-1 ring-primary-200 dark:ring-violet-800/40 group-hover:ring-primary-400 dark:group-hover:ring-violet-400 transition-all">
               <span className="text-primary-700 dark:text-violet-300 text-xs font-bold uppercase">
                 {displayName.charAt(0)}
               </span>
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-slate-900 dark:text-[#F5F7FF] truncate uppercase tracking-tight">
+            <p className="text-xs font-bold text-slate-900 dark:text-[#F5F7FF] truncate uppercase tracking-tight group-hover:text-primary-600 dark:group-hover:text-violet-300 transition-colors">
               {displayName}
             </p>
             <p className="text-[11px] text-[#858DA0] dark:text-[#737D94] truncate">{user?.email}</p>
           </div>
-        </div>
+        </NavLink>
 
         <button
           type="button"

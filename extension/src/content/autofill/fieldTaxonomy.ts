@@ -427,9 +427,13 @@ export const FIELD_TAXONOMY: FieldDefinition[] = [
     autocompleteTokens: [],
     aliases: [
       'expected salary',
+      'expected ctc',
+      'ctc',
+      'salary',
       'desired salary',
       'salary expectation',
       'compensation expectation',
+      'expected compensation',
       'expected pay',
       'target compensation',
       'desired pay',

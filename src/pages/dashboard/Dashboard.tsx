@@ -21,15 +21,15 @@ import { Job } from '../../types'
 
 const statCards = (jobs: Job[]) => [
   {
-    label: 'Total Saved',
-    value: jobs.length,
+    label: 'Saved',
+    value: jobs.filter((j) => j.status === 'SAVED').length,
     icon: Briefcase,
     color: 'bg-slate-100 dark:bg-[#151A29] text-slate-700 dark:text-[#A8B0C2] border border-slate-200/60 dark:border-[#252B3A]',
     iconColor: 'text-slate-600 dark:text-[#A8B0C2]',
   },
   {
     label: 'Applied',
-    value: jobs.filter((j) => ['APPLIED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'ACCEPTED'].includes(j.status)).length,
+    value: jobs.filter((j) => j.status === 'APPLIED').length,
     icon: Send,
     color: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60',
     iconColor: 'text-indigo-600 dark:text-indigo-400',
@@ -83,14 +83,34 @@ export default function Dashboard() {
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF]">
-            {greeting}, {displayName} 👋
-          </h1>
-          <p className="text-slate-500 dark:text-[#A8B0C2] text-sm mt-1">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
+        <Link
+          to="/profile"
+          className="flex items-center gap-3.5 group cursor-pointer rounded-2xl p-1.5 -ml-1.5 transition-all hover:bg-slate-100/70 dark:hover:bg-[#151A29]/70 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
+          title="View and Edit Profile"
+        >
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={displayName}
+              className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-slate-200 dark:ring-[#252B3A] shadow-xs group-hover:ring-primary-500 dark:group-hover:ring-violet-400 transition-all"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-violet-950/70 flex items-center justify-center shrink-0 ring-2 ring-primary-200 dark:ring-violet-800/50 shadow-xs group-hover:ring-primary-500 dark:group-hover:ring-violet-400 transition-all">
+              <span className="text-primary-700 dark:text-violet-300 text-base font-bold uppercase">
+                {displayName.charAt(0)}
+              </span>
+            </div>
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF] group-hover:text-primary-600 dark:group-hover:text-violet-400 transition-colors flex items-center gap-1.5">
+              <span>{greeting}, {displayName}</span>
+              <span className="text-xl">👋</span>
+            </h1>
+            <p className="text-slate-500 dark:text-[#A8B0C2] text-sm mt-0.5">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+        </Link>
         <Button icon={<Plus />} onClick={() => navigate('/jobs/new')}>
           Add Job
         </Button>

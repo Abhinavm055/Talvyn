@@ -165,6 +165,8 @@ export interface MatchedFormField {
   canAutofill: boolean
   isCustomQuestion: boolean
   isResumeUpload: boolean
+  isSensitive?: boolean
+  requiresReview?: boolean
   isFilled?: boolean
   error?: string
 }
@@ -355,11 +357,15 @@ export interface AnalyzedJob {
   category: RecommendationCategory
   roleMatch: RoleMatchResult
   locationMatch: ComponentScore
-  experienceMatch: ComponentScore
+  experienceMatch: ComponentScore & { isHardMismatch?: boolean; requiredText?: string; profileText?: string; status?: string }
+  educationMatch?: ComponentScore & { isHardMismatch?: boolean; requiredText?: string; status?: string }
+  skillsMatch?: ComponentScore & { matchedSkills?: string[]; missingSkills?: string[]; status?: string }
   jobTypeMatch: ComponentScore
   salaryMatch: ComponentScore
   matchedReasons: string[]
   unmatchedReasons: string[]
+  matchedSkills?: string[]
+  missingSkills?: string[]
   isSaved?: boolean
   savedJobId?: string
 }

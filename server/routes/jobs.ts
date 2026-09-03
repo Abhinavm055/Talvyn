@@ -21,7 +21,7 @@ const jobSchema = z.object({
   jobType: z.string().optional().nullable(),
   salary: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
-  status: z.enum(JOB_STATUSES).optional().nullable(),
+  status: z.enum(JOB_STATUSES).optional(),
   dateSaved: z.string().optional().nullable(),
   dateApplied: z.string().optional().nullable(),
 })
@@ -172,13 +172,19 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       return
     }
 
+    const { dateSaved, dateApplied, ...fields } = parsed.data
+    const updateData: Record<string, unknown> = {
+      ...fields,
+      jobUrl: parsed.data.jobUrl || null,
+    }
+    if (dateSaved) updateData.dateSaved = new Date(dateSaved)
+    if (dateApplied !== undefined) {
+      updateData.dateApplied = dateApplied ? new Date(dateApplied) : null
+    }
+
     const job = await prisma.job.update({
       where: { id },
-      data: {
-        ...parsed.data,
-        jobUrl: parsed.data.jobUrl || null,
-        dateApplied: parsed.data.dateApplied ? new Date(parsed.data.dateApplied) : parsed.data.dateApplied === null ? null : undefined,
-      },
+      data: updateData,
     })
     res.json(job)
   } catch (err) {
@@ -190,30 +196,96 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id as string
-    const existing = await prisma.job.findFirst({ where: { id, userId: req.userId } })
+    const existing = await prisma.job.findUnique({ where: { id } })
     if (!existing) {
-      res.status(404).json({ error: 'Job not found' })
+      res.status(404).json({ success: false, error: 'Job not found' })
+      return
+    }
+
+    if (existing.userId !== req.userId) {
+      res.status(403).json({ success: false, error: 'Unauthorized to modify this job' })
       return
     }
 
     const parsed = statusSchema.safeParse(req.body)
     if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid status' })
+      res.status(422).json({ success: false, error: 'Invalid status', details: parsed.error.flatten() })
       return
     }
 
     const updateData: Record<string, unknown> = { status: parsed.data.status }
     if (parsed.data.status === 'APPLIED' && !existing.dateApplied) {
       updateData.dateApplied = new Date()
+    } else if (parsed.data.status === 'SAVED') {
+      updateData.dateApplied = null
     }
 
     const job = await prisma.job.update({
       where: { id },
       data: updateData,
+      include: {
+        notes: { orderBy: { createdAt: 'desc' }, take: 3 },
+        _count: { select: { notes: true } },
+      },
     })
-    res.json(job)
+    res.json({ success: true, job, ...job })
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update status' })
+    res.status(500).json({ success: false, error: 'Failed to update status' })
+  }
+})
+
+// PATCH /api/jobs/:id
+router.patch('/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string
+    const existing = await prisma.job.findUnique({ where: { id } })
+    if (!existing) {
+      res.status(404).json({ success: false, error: 'Job not found' })
+      return
+    }
+
+    if (existing.userId !== req.userId) {
+      res.status(403).json({ success: false, error: 'Unauthorized to modify this job' })
+      return
+    }
+
+    if (req.body.status !== undefined) {
+      const parsedStatus = statusSchema.safeParse({ status: req.body.status })
+      if (!parsedStatus.success) {
+        res.status(422).json({ success: false, error: 'Invalid status', details: parsedStatus.error.flatten() })
+        return
+      }
+    }
+
+    const parsed = jobSchema.partial().safeParse(req.body)
+    if (!parsed.success) {
+      res.status(422).json({ success: false, error: 'Validation failed', details: parsed.error.flatten() })
+      return
+    }
+
+    const { dateSaved, dateApplied, ...fields } = parsed.data
+    const updateData: Record<string, unknown> = { ...fields }
+    if (dateSaved) updateData.dateSaved = new Date(dateSaved)
+
+    if (parsed.data.status === 'APPLIED' && !existing.dateApplied) {
+      updateData.dateApplied = new Date()
+    } else if (parsed.data.status === 'SAVED') {
+      updateData.dateApplied = null
+    } else if (dateApplied !== undefined) {
+      updateData.dateApplied = dateApplied ? new Date(dateApplied) : null
+    }
+
+    const job = await prisma.job.update({
+      where: { id },
+      data: updateData,
+      include: {
+        notes: { orderBy: { createdAt: 'desc' }, take: 3 },
+        _count: { select: { notes: true } },
+      },
+    })
+    res.json({ success: true, job, ...job })
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to update job' })
   }
 })
 
@@ -591,18 +663,18 @@ function buildJobTimeline(job: any) {
       jobId: job.id,
       stage: 'APPLICATION_STARTED',
       title: 'Application Started',
-      timestamp: milestoneMap.get('APPLICATION_STARTED')?.timestamp || (currentRank >= 2 ? savedDate : ''),
-      note: milestoneMap.get('APPLICATION_STARTED')?.note || (currentRank >= 2 ? 'Application in progress' : undefined),
-      completed: currentRank >= 2 || milestoneMap.has('APPLICATION_STARTED'),
+      timestamp: currentRank >= 2 ? (milestoneMap.get('APPLICATION_STARTED')?.timestamp || savedDate) : '',
+      note: currentRank >= 2 ? (milestoneMap.get('APPLICATION_STARTED')?.note || 'Application in progress') : undefined,
+      completed: currentRank >= 2,
     },
     {
       id: `${job.id}-applied`,
       jobId: job.id,
       stage: 'APPLIED',
       title: 'Application Submitted',
-      timestamp: appliedDate || milestoneMap.get('APPLIED')?.timestamp || '',
-      note: milestoneMap.get('APPLIED')?.note || (appliedDate ? 'Successfully applied' : undefined),
-      completed: currentRank >= 3 || !!appliedDate || milestoneMap.has('APPLIED'),
+      timestamp: currentRank >= 3 ? (appliedDate || milestoneMap.get('APPLIED')?.timestamp || '') : '',
+      note: currentRank >= 3 ? (milestoneMap.get('APPLIED')?.note || (appliedDate ? 'Successfully applied' : undefined)) : undefined,
+      completed: currentRank >= 3,
     },
     {
       id: `${job.id}-assessment`,
@@ -611,7 +683,7 @@ function buildJobTimeline(job: any) {
       title: 'Assessment / Coding Challenge',
       timestamp: milestoneMap.get('ASSESSMENT')?.timestamp || (currentRank >= 4 ? new Date(job.updatedAt).toISOString() : ''),
       note: milestoneMap.get('ASSESSMENT')?.note || undefined,
-      completed: currentRank >= 4 || milestoneMap.has('ASSESSMENT'),
+      completed: currentRank >= 4,
     },
     {
       id: `${job.id}-interview`,
@@ -620,7 +692,7 @@ function buildJobTimeline(job: any) {
       title: 'Interview Stage',
       timestamp: milestoneMap.get('INTERVIEW')?.timestamp || (currentRank >= 5 ? new Date(job.updatedAt).toISOString() : ''),
       note: milestoneMap.get('INTERVIEW')?.note || undefined,
-      completed: currentRank >= 5 || milestoneMap.has('INTERVIEW'),
+      completed: currentRank >= 5,
     },
     {
       id: `${job.id}-offer`,
@@ -629,7 +701,7 @@ function buildJobTimeline(job: any) {
       title: 'Offer Received',
       timestamp: milestoneMap.get('OFFER')?.timestamp || (currentRank >= 6 ? new Date(job.updatedAt).toISOString() : ''),
       note: milestoneMap.get('OFFER')?.note || undefined,
-      completed: currentRank >= 6 || milestoneMap.has('OFFER'),
+      completed: currentRank >= 6,
     },
   ]
 

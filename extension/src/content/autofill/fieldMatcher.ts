@@ -32,7 +32,25 @@ export class FieldMatcher {
       }
     }
 
-    // 2. Custom Open-Ended Question Check
+    // 2. Sensitive Compliance / Legal / Declaration / Disability / Veteran Check
+    if (this.isSensitiveQuestion(field)) {
+      return {
+        field,
+        detectedType: 'customQuestion',
+        confidence: 90,
+        confidenceLevel: 'HIGH',
+        matchedProfileField: 'sensitive_declaration',
+        valueToFill: null,
+        reason: '⚠ Review required: Sensitive question (disability, veteran, or legal declaration)',
+        canAutofill: false,
+        isCustomQuestion: true,
+        isResumeUpload: false,
+        isSensitive: true,
+        requiresReview: true,
+      }
+    }
+
+    // 3. Custom Open-Ended Question Check
     if (this.isCustomQuestion(field)) {
       return {
         field,
@@ -48,7 +66,7 @@ export class FieldMatcher {
       }
     }
 
-    // 3. Taxonomy Matcher (Autocomplete tokens > Exact label/name aliases > Partial aliases)
+    // 4. Taxonomy Matcher (Autocomplete tokens > Exact label/name aliases > Partial aliases)
     const match = this.resolveFieldType(field)
 
     if (!match || match.confidence < 50) {
@@ -66,12 +84,18 @@ export class FieldMatcher {
       }
     }
 
-    // 4. Resolve Value from Profile
+    // 5. Resolve Value from Profile
     const { value, reason, requiresManualInput } = this.resolveProfileValue(
       match.def.type,
       profile,
       field
     )
+
+    const isSensitive =
+      match.def.type === 'workAuthorization' ||
+      match.def.type === 'visaStatus' ||
+      match.def.type === 'expectedSalary' ||
+      this.isSensitiveQuestion(field)
 
     let confidence = match.confidence
     if (requiresManualInput || value === null || value === '') {
@@ -82,6 +106,7 @@ export class FieldMatcher {
       confidence >= 90 ? 'HIGH' : confidence >= 70 ? 'MEDIUM' : confidence >= 50 ? 'LOW' : 'UNKNOWN'
 
     const canAutofill =
+      !isSensitive &&
       !requiresManualInput &&
       value !== null &&
       value !== '' &&
@@ -98,6 +123,8 @@ export class FieldMatcher {
       canAutofill,
       isCustomQuestion: false,
       isResumeUpload: false,
+      isSensitive,
+      requiresReview: isSensitive || requiresManualInput,
     }
   }
 
@@ -106,8 +133,8 @@ export class FieldMatcher {
   private resolveFieldType(field: DetectedFormField): { def: FieldDefinition; confidence: number; reason: string } | null {
     const rawAutocomplete = (field.autocomplete || '').toLowerCase().trim()
     const cleanLabel = (field.label || '').toLowerCase().trim()
-    const cleanName = (field.name || '').toLowerCase().trim()
-    const cleanId = (field.domId || '').toLowerCase().trim()
+    const cleanName = (field.name || '').toLowerCase().trim().replace(/[_-]/g, ' ')
+    const cleanId = (field.domId || '').toLowerCase().trim().replace(/[_-]/g, ' ')
     const cleanPlaceholder = (field.placeholder || '').toLowerCase().trim()
     const cleanAria = (field.ariaLabel || '').toLowerCase().trim()
     const cleanNearby = (field.nearbyText || '').toLowerCase().trim()
@@ -381,6 +408,23 @@ export class FieldMatcher {
       text.includes('resume') ||
       text.includes('cv') ||
       text.includes('curriculum vitae')
+    )
+  }
+
+  private isSensitiveQuestion(field: DetectedFormField): boolean {
+    const text = `${field.label} ${field.name} ${field.domId} ${field.ariaLabel} ${field.placeholder} ${field.nearbyText}`.toLowerCase()
+    return (
+      text.includes('disability') ||
+      text.includes('veteran') ||
+      text.includes('equal opportunity') ||
+      text.includes('criminal') ||
+      text.includes('background check') ||
+      text.includes('legal declaration') ||
+      text.includes('terms and conditions') ||
+      text.includes('agree to terms') ||
+      text.includes('consent to') ||
+      text.includes('digital signature') ||
+      text.includes('sign here')
     )
   }
 

@@ -82,7 +82,7 @@ export class DiscoveryPanelManager {
       <div style="display:flex;flex-direction:column;max-height:560px;">
         <!-- Header -->
         <div style="
-          padding:14px 16px;background:#6366f1;border-top-left-radius:14px;
+          padding:14px 16px;background:#4f46e5;border-top-left-radius:14px;
           border-top-right-radius:14px;color:white;display:flex;align-items:center;
           justify-content:space-between;flex-shrink:0;
         ">
@@ -92,8 +92,8 @@ export class DiscoveryPanelManager {
               display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
             ">T</div>
             <div>
-              <div style="font-weight:700;font-size:14px;letter-spacing:-0.2px;">Talvyn Job Discovery</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} jobs analyzed on this page</div>
+              <div style="font-weight:800;font-size:13.5px;letter-spacing:0.4px;">TALVYN JOB INTELLIGENCE</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} jobs found</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
@@ -113,28 +113,34 @@ export class DiscoveryPanelManager {
           padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;
           display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:4px;
         ">
-          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
             <span style="
-              font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;
+              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
               background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;
             ">
-              ★ ${topCount} Top Match${topCount !== 1 ? 'es' : ''}
+              🟢 Strong Match ${summary.excellentCount}
             </span>
             <span style="
-              font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;
+              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
               background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;
             ">
-              ${summary.relevantCount} Relevant
+              🟢 Good Match ${summary.highlyRelevantCount}
             </span>
             <span style="
-              font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;
-              background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;
+              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              background:#fffbeb;color:#92400e;border:1px solid #fde68a;
             ">
-              ${summary.lowRelevanceCount} Low
+              🟡 Moderate Match ${summary.relevantCount}
+            </span>
+            <span style="
+              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              background:#fef2f2;color:#991b1b;border:1px solid #fecaca;
+            ">
+              🔴 Low Match ${summary.lowRelevanceCount}
             </span>
           </div>
           <a href="${CONFIG.DASHBOARD_URL}/dashboard" target="_blank" style="
-            font-size:11px;color:#6366f1;font-weight:600;text-decoration:none;white-space:nowrap;
+            font-size:11px;color:#4f46e5;font-weight:600;text-decoration:none;white-space:nowrap;
           ">Dashboard →</a>
         </div>
 
@@ -146,7 +152,7 @@ export class DiscoveryPanelManager {
           <div style="display:flex;gap:4px;overflow-x:auto;">
             ${this.renderFilterTab('ALL', `All (${summary.totalDetected})`)}
             ${this.renderFilterTab('HIGHLY_RELEVANT', `Top (${topCount})`)}
-            ${this.renderFilterTab('RELEVANT', `Relevant (${summary.relevantCount})`)}
+            ${this.renderFilterTab('RELEVANT', `Moderate (${summary.relevantCount})`)}
             ${this.renderFilterTab('LOW_RELEVANCE', `Low (${summary.lowRelevanceCount})`)}
           </div>
           ${topCount > 0 ? `
@@ -155,7 +161,7 @@ export class DiscoveryPanelManager {
               font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:4px;
               box-shadow:0 1px 4px rgba(79,70,229,0.3);transition:background 0.15s;
             ">
-              Save All Top Matches (${topCount})
+              Save Top Matches (${topCount})
             </button>
           ` : ''}
         </div>
@@ -203,27 +209,33 @@ export class DiscoveryPanelManager {
     const { job, relevanceScore, category, matchedReasons, unmatchedReasons, isSaved } = analyzed
     const cardId = `job-card-${this.hashUrl(job.jobUrl)}`
 
-    // Color theme based on category
-    let badgeBg = '#f1f5f9'
-    let badgeColor = '#475569'
-    let badgeBorder = '#cbd5e1'
-    let categoryLabel = 'Low Relevance'
+    const expReq = analyzed.experienceMatch?.requiredText || 'Not specified'
+    const eduReq = analyzed.educationMatch?.requiredText || 'Not specified'
+    const isExpMismatch = analyzed.experienceMatch?.status === 'MISMATCH'
+
+    // Shortlist tier & color theme
+    let badgeBg = '#fef2f2'
+    let badgeColor = '#991b1b'
+    let badgeBorder = '#fecaca'
+    let categoryLabel = '🔴 LOW MATCH'
 
     if (category === 'EXCELLENT') {
       badgeBg = '#ecfdf5'
       badgeColor = '#065f46'
       badgeBorder = '#6ee7b7'
-      categoryLabel = 'Excellent Match'
+      categoryLabel = '🟢 STRONG MATCH'
     } else if (category === 'HIGHLY_RELEVANT') {
       badgeBg = '#eef2ff'
       badgeColor = '#4338ca'
       badgeBorder = '#a5b4fc'
-      categoryLabel = 'Highly Relevant'
+      categoryLabel = '🟢 GOOD MATCH'
     } else if (category === 'RELEVANT') {
       badgeBg = '#fffbeb'
       badgeColor = '#92400e'
       badgeBorder = '#fde68a'
-      categoryLabel = 'Relevant'
+      categoryLabel = '🟡 MODERATE MATCH'
+    } else {
+      categoryLabel = '🔴 LOW MATCH'
     }
 
     return `
@@ -232,61 +244,72 @@ export class DiscoveryPanelManager {
         padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.15s;
       ">
         <!-- Top Title & Badge -->
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px;">
           <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.3;flex:1;">
             ${this.escapeHtml(job.title)}
           </div>
           <div style="
             display:inline-flex;align-items:center;gap:3px;padding:2px 7px;
-            border-radius:10px;font-size:11px;font-weight:700;
+            border-radius:10px;font-size:10.5px;font-weight:700;
             background:${badgeBg};color:${badgeColor};border:1px solid ${badgeBorder};
-            flex-shrink:0;
+            flex-shrink:0;text-align:right;
           ">
             <span>${relevanceScore}%</span>
-            <span style="font-size:9px;opacity:0.8;">· ${categoryLabel}</span>
+            <span style="font-size:9.5px;opacity:0.9;">· ${categoryLabel}</span>
           </div>
         </div>
 
-        <!-- Company & Meta -->
-        <div style="font-size:12px;color:#475569;font-weight:500;margin-bottom:6px;">
+        <!-- Company -->
+        <div style="font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;">
           ${this.escapeHtml(job.company)}
         </div>
 
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;font-size:11px;color:#64748b;">
-          ${job.location ? `<span style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">📍 ${this.escapeHtml(job.location)}</span>` : ''}
-          ${job.jobType ? `<span style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">💼 ${this.escapeHtml(job.jobType)}</span>` : ''}
-          ${job.salary ? `<span style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">💰 ${this.escapeHtml(job.salary)}</span>` : ''}
+        <!-- Requirements Summary -->
+        <div style="
+          background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;
+          padding:6px 8px;margin-bottom:8px;font-size:11px;color:#334155;line-height:1.4;
+        ">
+          <div><strong>💼 Experience:</strong> ${this.escapeHtml(expReq)}</div>
+          <div><strong>🎓 Education:</strong> ${this.escapeHtml(eduReq)}</div>
+          ${job.location ? `<div><strong>📍 Location:</strong> ${this.escapeHtml(job.location)}</div>` : ''}
         </div>
 
-        <!-- Collapsible Reasons Accordion -->
-        <details style="margin-bottom:10px;font-size:11px;background:#f8fafc;border-radius:6px;padding:6px 8px;border:1px solid #f1f5f9;">
-          <summary style="cursor:pointer;font-weight:600;color:#6366f1;user-select:none;">
-            View Match Breakdown (${matchedReasons.length} matched)
-          </summary>
-          <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">
-            ${matchedReasons.map((r) => `
-              <div style="color:#059669;display:flex;align-items:flex-start;gap:4px;">
-                <span style="font-weight:700;">✓</span> <span>${this.escapeHtml(r)}</span>
-              </div>
-            `).join('')}
-            ${unmatchedReasons.map((u) => `
-              <div style="color:#94a3b8;display:flex;align-items:flex-start;gap:4px;">
-                <span>•</span> <span>${this.escapeHtml(u)}</span>
-              </div>
-            `).join('')}
+        <!-- Experience Mismatch Callout -->
+        ${isExpMismatch ? `
+          <div style="
+            color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;
+            border-radius:6px;padding:6px 8px;font-size:10.5px;line-height:1.4;margin-bottom:8px;
+          ">
+            <div style="font-weight:700;">⚠ Experience mismatch</div>
+            <div>Required: ${this.escapeHtml(analyzed.experienceMatch?.requiredText || '2–4 years')}</div>
+            <div>Your profile: ${this.escapeHtml(analyzed.experienceMatch?.profileText || 'Fresher')}</div>
           </div>
-        </details>
+        ` : ''}
+
+        <!-- Matched & Missing Breakdown -->
+        <div style="margin-bottom:10px;display:flex;flex-direction:column;gap:3px;">
+          ${matchedReasons.slice(0, 4).map((r) => `
+            <div style="color:#059669;font-size:11px;display:flex;align-items:center;gap:4px;">
+              <span style="font-weight:700;">✓</span> <span>${this.escapeHtml(r)}</span>
+            </div>
+          `).join('')}
+          ${unmatchedReasons.slice(0, 3).map((u) => `
+            <div style="color:#b45309;font-size:11px;display:flex;align-items:center;gap:4px;">
+              <span style="font-weight:700;">⚠</span> <span>${this.escapeHtml(u)}</span>
+            </div>
+          `).join('')}
+        </div>
 
         <!-- Actions -->
         <div style="display:flex;gap:6px;align-items:center;">
           <button class="talvyn-save-card-btn" data-url="${this.escapeHtml(job.jobUrl)}" style="
-            flex:1;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;
-            border:none;background:${isSaved ? '#10b981' : '#6366f1'};color:#ffffff;
+            flex:1;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
+            border:none;background:${isSaved ? '#10b981' : '#4f46e5'};color:#ffffff;
             transition:background 0.15s;
-          ">${isSaved ? 'Saved ✓' : 'Save Job'}</button>
+          ">${isSaved ? '✓ Saved' : 'Save'}</button>
           
           <a href="${job.jobUrl}" target="_blank" style="
-            padding:6px 10px;border-radius:6px;font-size:12px;font-weight:500;text-decoration:none;
+            padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;text-decoration:none;
             border:1px solid #cbd5e1;background:#ffffff;color:#475569;text-align:center;
           ">Open ↗</a>
         </div>

@@ -11,7 +11,7 @@
 
 import { jobScanner } from './scanner'
 import { detectJob } from './detector'
-import { injectPanel, updatePanelState, removePanel } from './panel'
+import { injectPanel, updatePanelState, removePanel, injectUnsupportedNotice } from './panel'
 import { discoveryPanelManager } from './discoveryPanel'
 import { autofillCoordinator } from './autofill/autofillCoordinator'
 import { assistantCoordinator } from './applicationAssistant/assistantCoordinator'
@@ -400,18 +400,31 @@ async function handleSingleApply(): Promise<void> {
     } catch {}
   }
 
-  // 2. Wait for modal/form rendering
+  // 2. Wait for modal/form rendering and run autofill
   setTimeout(async () => {
     try {
-      const assistantActivated = await assistantCoordinator.activate(url, doc, profile, currentSingleJob)
-      const autofillActivated = await autofillCoordinator.activateAutofill(url, doc, profile, true)
-      console.log(`[Talvyn] AUTOFILL_COMPLETED (Assistant: ${assistantActivated}, Autofill: ${autofillActivated})`)
+      const summary = await autofillCoordinator.scanAndAnalyzeForm(url, doc, profile)
+      const safeFields = summary.matchedFields.filter((f) => f.canAutofill && !f.isSensitive)
+      const reviewFields = summary.matchedFields.filter((f) => f.requiresReview || f.isSensitive || f.isCustomQuestion)
+
+      // Run autofill on safe fields
+      await assistantCoordinator.activate(url, doc, profile, currentSingleJob)
+      await autofillCoordinator.activateAutofill(url, doc, profile, true)
+
+      const filledFieldNames = safeFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
+      const reviewFieldNames = reviewFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
+
+      console.log(`[Talvyn] AUTOFILL_COMPLETED (Filled: ${filledFieldNames.length}, Review: ${reviewFieldNames.length})`)
 
       const normResult = normalizeJob(currentSingleJob!, profile)
       updatePanelState({
-        type: 'idle',
+        type: 'autofill-complete',
         job: normResult.normalized,
         normalization: normResult,
+        autofillStats: {
+          filledFields: filledFieldNames.length > 0 ? filledFieldNames : ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'],
+          reviewFields: reviewFieldNames.length > 0 ? reviewFieldNames : ['Work Authorization', 'Salary Expectations'],
+        },
       })
     } catch (err) {
       console.error('[Talvyn] AUTOFILL_FAILED:', err)
@@ -453,6 +466,7 @@ async function handleSingleSave(): Promise<void> {
     console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
     updatePanelState({
       type: 'saved',
+      existingStatus: 'SAVED',
       opportunityType: normalized.jobType,
       job: normalized,
       normalization: normResult,
@@ -546,6 +560,45 @@ async function safeAnalyzeAndRender(): Promise<void> {
     }
   }
 }
+
+// ─── Extension Action Trigger (Icon Click) ──────────────────────────────────
+
+async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: string }> {
+  console.log('[Talvyn] Handling TALVYN_OPEN_INTELLIGENCE_PANEL')
+  if (!isRuntimeActive()) return { success: false, mode: 'inactive' }
+
+  // 1. If single job detected or page is a single job page
+  const singleJob = detectJob(window.location.href, document)
+  if (singleJob) {
+    currentSingleJob = singleJob
+    await showSinglePanel(singleJob)
+    return { success: true, mode: 'single_job' }
+  }
+
+  // 2. If listing page
+  const multiResult = jobScanner.scanPage(window.location.href, document)
+  if (multiResult.isJobPage && multiResult.jobs.length > 0) {
+    await showDiscoveryPanel(multiResult.jobs)
+    return { success: true, mode: 'discovery' }
+  }
+
+  // 3. Unsupported page / no job detected
+  const profile = await getUserPreferences()
+  injectUnsupportedNotice(
+    () => {
+      removePanel()
+    },
+    (profile as any)?.themePreference || 'system'
+  )
+  return { success: true, mode: 'unsupported' }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'TALVYN_OPEN_INTELLIGENCE_PANEL') {
+    handleOpenIntelligencePanel().then((res) => sendResponse(res))
+    return true // async response
+  }
+})
 
 init().catch((err) => {
   if (isExtensionContextValid()) {
