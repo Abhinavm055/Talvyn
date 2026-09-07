@@ -41,6 +41,8 @@ let currentSingleJob: ExtractedJob | null = null
 let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let hasUserRequestedAnalysis = false
+let lastListingSummary: any = null
 
 // Register shutdown cleanup handler for terminal invalidation
 onExtensionShutdown(() => {
@@ -257,6 +259,11 @@ async function analyzeAndRenderPage(): Promise<void> {
   // 3. PRIORITY 3: Multi-Job Listing Page (Phase 2B Smart Analyzer)
   console.log(`[Talvyn] Page classified as: ${classification} (Adapter: ${adapterName})`)
 
+  // Part 14 UX Rule: Do not automatically cover the webpage with floating panel unless requested
+  if (!hasUserRequestedAnalysis) {
+    return
+  }
+
   if (classification === 'JOB_LIST') {
     removePanel()
     isSinglePanelVisible = false
@@ -322,6 +329,7 @@ function startListingObserver(): void {
 }
 
 function renderDiscoveryView(summary: JobListAnalysisSummary): void {
+  lastListingSummary = summary
   isDiscoveryPanelVisible = true
   startListingObserver()
   discoveryPanelManager.render(summary, {
@@ -348,8 +356,22 @@ function renderDiscoveryView(summary: JobListAnalysisSummary): void {
       })
       console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
     },
+    onSelectJob: async (job: ExtractedJob) => {
+      discoveryPanelManager.remove()
+      isDiscoveryPanelVisible = false
+      await showSinglePanel(job, {
+        fromListing: true,
+        onBackToListing: () => {
+          removePanel()
+          if (lastListingSummary) {
+            renderDiscoveryView(lastListingSummary)
+          }
+        },
+      })
+    },
     onDismiss: () => {
       isDiscoveryPanelVisible = false
+      hasUserRequestedAnalysis = false
     },
     onRefresh: async () => {
       console.log('[Talvyn] Re-analyzing listing page on user request')
@@ -360,7 +382,10 @@ function renderDiscoveryView(summary: JobListAnalysisSummary): void {
   })
 }
 
-async function showSinglePanel(job: ExtractedJob): Promise<void> {
+async function showSinglePanel(
+  job: ExtractedJob,
+  extraOptions?: { fromListing?: boolean; onBackToListing?: () => void }
+): Promise<void> {
   const token = await getToken()
   const profile = await getUserPreferences()
 
@@ -398,6 +423,7 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
         await setUser({ ...user, profile: updatedProfile })
       }
     },
+    onBackToListing: extraOptions?.onBackToListing,
   }
 
   if (!token) {
@@ -405,7 +431,10 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
       normResult.normalized,
       (customJob, customProfile) => handleSingleSave(customJob, customProfile),
       handleSingleApply,
-      () => { isSinglePanelVisible = false },
+      () => {
+        isSinglePanelVisible = false
+        hasUserRequestedAnalysis = false
+      },
       panelOptions
     )
     updatePanelState({ type: 'logged-out', opportunityType: opp.type, job: normResult.normalized, normalization: normResult })
@@ -420,7 +449,10 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
         normResult.normalized,
         (customJob, customProfile) => handleSingleSave(customJob, customProfile),
         handleSingleApply,
-        () => { isSinglePanelVisible = false },
+        () => {
+          isSinglePanelVisible = false
+          hasUserRequestedAnalysis = false
+        },
         panelOptions
       )
 
@@ -469,7 +501,10 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     normResult.normalized,
     (customJob, customProfile) => handleSingleSave(customJob, customProfile),
     handleSingleApply,
-    () => { isSinglePanelVisible = false },
+    () => {
+      isSinglePanelVisible = false
+      hasUserRequestedAnalysis = false
+    },
     panelOptions
   )
 }
@@ -669,6 +704,7 @@ async function safeAnalyzeAndRender(): Promise<void> {
 async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: string; detectedJobs?: number }> {
   console.log('[Talvyn] Handling TALVYN_OPEN_INTELLIGENCE_PANEL')
   if (!isRuntimeActive()) return { success: false, mode: 'inactive' }
+  hasUserRequestedAnalysis = true
 
   const url = window.location.href
   const doc = document

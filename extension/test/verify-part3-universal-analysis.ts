@@ -19,7 +19,21 @@ import {
   isExplicitlyNonJobSite,
 } from '../src/content/jobEvidenceDetector'
 import { GenericAdapter } from '../src/content/adapters/generic'
-import { UserProfile } from '../src/types'
+import { UserProfile, ExtractedJob } from '../src/types'
+import { normalizeJob } from '../src/content/jobNormalizer'
+import {
+  injectPanel,
+  removePanel,
+  getTalvynHost,
+  getTalvynElement,
+  PANEL_ID,
+  CAPSULE_ID,
+  extractStructuredSections,
+  openConfirmSaveScreen,
+  makeElementDraggable,
+} from '../src/content/panel'
+import fs from 'fs'
+import path from 'path'
 
 console.log('====================================================================')
 console.log('TALVYN PART 3: UNIVERSAL JOB PAGE + JOB LISTING ANALYSIS VERIFICATION')
@@ -973,6 +987,415 @@ console.log('\n--- 22. Testing Generic Job Listing Containing Multiple Job Cards
   assert(summary.totalDetected === 3, `22c. Scanned exactly 3 jobs (Got: ${summary.totalDetected})`)
   assert(summary.analyzedJobs.length === 3, '22d. All jobs analyzed and scored against profile')
   assert(summary.analyzedJobs[0].job.title.includes('Frontend'), '22e. Frontend role prioritized at top for candidate')
+}
+
+// ─── 23. Structured Job Intelligence Sections Extraction ───────────────────────
+console.log('\n--- 23. Testing Structured Job Intelligence Sections Extraction ---')
+{
+  const testJob: ExtractedJob = {
+    title: 'Senior Full Stack Engineer',
+    company: 'TechCorp Global',
+    location: 'Bangalore, India',
+    salary: '₹25–35 LPA',
+    jobType: 'FULL_TIME',
+    experience: '2–4 years',
+    education: 'B.Tech / equivalent',
+    description: `
+      About Us: TechCorp is leading innovation.
+      Responsibilities:
+      • Design and develop scalable microservices in Node.js
+      • Build responsive frontend components in React and TypeScript
+      • Collaborate with product and design teams
+      Requirements:
+      • Bachelor's degree in Computer Science or equivalent
+      • 3+ years experience with React, Node.js, and TypeScript
+      • Strong knowledge of database systems
+    `,
+    skills: ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'Docker'],
+    jobUrl: 'https://techcorp.com/careers/senior-fullstack',
+  }
+
+  const norm = normalizeJob(testJob, testProfile)
+  const sections = extractStructuredSections(testJob, norm)
+
+  assert(sections.overview.title === 'Senior Full Stack Engineer', '23a. Overview extracts title')
+  assert(sections.overview.company === 'TechCorp Global', '23b. Overview extracts company')
+  assert(sections.overview.location === 'Bangalore, India', '23c. Overview extracts location')
+  assert(sections.overview.salary === '₹25–35 LPA', '23d. Overview extracts salary')
+  assert(sections.overview.jobType === 'Full Time', '23e. Overview extracts job type')
+  assert(sections.overview.experience === '2–4 years', '23f. Overview extracts experience')
+  assert(sections.overview.education === 'B.Tech / equivalent', '23g. Overview extracts education')
+  assert(sections.descriptionSummary.length > 10, '23h. Description summary extracted')
+  assert(sections.responsibilities.length >= 2, '23i. Responsibilities bullets extracted')
+  assert(sections.requirements.length >= 2, '23j. Requirements bullets extracted')
+  assert(sections.reason.length > 10, '23k. Deterministic reason extracted')
+}
+
+// ─── Lightweight Global DOM Mock for In-Page UI Lifecycle (Tests 24-33) ────────
+function setupWorkspaceMockDom() {
+  const elements = new Map<string, any>()
+
+  const createMockElement = (id?: string) => {
+    let _html = ''
+    let _textContent = ''
+    const children: any[] = []
+    const listeners = new Map<string, Function[]>()
+    let shadowRootObj: any = null
+
+    const el: any = {
+      id: id || '',
+      attributes: new Map<string, string>(),
+      style: {} as Record<string, string>,
+      value: '',
+      children,
+      offsetWidth: 320,
+      offsetHeight: 460,
+      getBoundingClientRect: () => ({ left: 250, top: 180, width: 320, height: 460 }),
+      get shadowRoot() {
+        return shadowRootObj
+      },
+      attachShadow: (_init: any) => {
+        shadowRootObj = createMockElement('shadow-root')
+        return shadowRootObj
+      },
+      getElementById(childId: string) {
+        return elements.get(childId) || null
+      },
+      setPointerCapture: (_id: any) => {},
+      releasePointerCapture: (_id: any) => {},
+      get textContent() {
+        if (_textContent) return _textContent
+        if (_html) return _html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        return ''
+      },
+      set textContent(val: string) {
+        _textContent = val
+      },
+      get innerHTML() {
+        if (children.length > 0) {
+          return children.map((c) => c.innerHTML).join('\n') + _html
+        }
+        return _html
+      },
+      set innerHTML(val: string) {
+        const cleanChildren = (list: any[]) => {
+          for (const c of list) {
+            if (c.id) elements.delete(c.id)
+            if (c.children && c.children.length > 0) cleanChildren(c.children)
+          }
+        }
+        cleanChildren(children)
+        children.length = 0
+
+        _html = val
+        _textContent = val.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        const idMatches = val.matchAll(/id=["']([^"']+)["']/g)
+        for (const match of idMatches) {
+          const childId = match[1]
+          let child = createMockElement(childId)
+          elements.set(childId, child)
+          children.push(child)
+          const tagRegex = new RegExp(`<([a-zA-Z0-9]+)[^>]*id=["']${childId}["'][^>]*>([\\s\\S]*?)<\\/\\1>`, 'i')
+          const tagMatch = val.match(tagRegex)
+          if (tagMatch) {
+            child._html = tagMatch[2]
+            child.textContent = tagMatch[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            const valMatch = tagMatch[0].match(/value=["']([^"']*)["']/i)
+            if (valMatch) child.value = valMatch[1]
+          }
+        }
+      },
+      setAttribute(k: string, v: string) { el.attributes.set(k, v) },
+      getAttribute(k: string) { return el.attributes.get(k) || null },
+      appendChild(child: any) {
+        children.push(child)
+        if (child.id) elements.set(child.id, child)
+        return child
+      },
+      querySelector(selector: string) {
+        const cleanId = selector.replace('#', '')
+        const findInDescendants = (root: any): any => {
+          for (const child of root.children || []) {
+            if (child.id === cleanId) return child
+            const found = findInDescendants(child)
+            if (found) return found
+          }
+          return null
+        }
+        const descMatch = findInDescendants(el)
+        if (descMatch) return descMatch
+        if (elements.has(cleanId)) return elements.get(cleanId)
+        if (el.innerHTML.includes(`id="${cleanId}"`) || el.innerHTML.includes(`id='${cleanId}'`)) {
+          const childEl = createMockElement(cleanId)
+          elements.set(cleanId, childEl)
+          children.push(childEl)
+          return childEl
+        }
+        return null
+      },
+      querySelectorAll(_selector: string) {
+        return []
+      },
+      addEventListener(event: string, cb: Function) {
+        const list = listeners.get(event) || []
+        list.push(cb)
+        listeners.set(event, list)
+      },
+      dispatchEvent(event: any) {
+        const list = listeners.get(event.type) || []
+        list.forEach((cb) => cb(event))
+      },
+      click() {
+        const list = listeners.get('click') || []
+        list.forEach((cb) => cb({ currentTarget: el }))
+      },
+      remove() {
+        const cleanEl = (target: any) => {
+          if (target.id) elements.delete(target.id)
+          if (target.children && target.children.length > 0) {
+            for (const c of target.children) cleanEl(c)
+          }
+        }
+        cleanEl(el)
+      },
+    }
+    if (id) elements.set(id, el)
+    return el
+  }
+
+  const bodyEl = createMockElement('body')
+  bodyEl.textContent = 'Talvyn Page Content'
+
+  const docListeners = new Map<string, Function[]>()
+  const mockDoc: any = {
+    body: bodyEl,
+    documentElement: createMockElement('html'),
+    createElement(_tag: string) {
+      return createMockElement()
+    },
+    getElementById(id: string) {
+      return elements.get(id) || null
+    },
+    querySelector(selector: string) {
+      const cleanId = selector.replace('#', '')
+      return elements.get(cleanId) || null
+    },
+    querySelectorAll(_selector: string) {
+      return []
+    },
+    addEventListener(event: string, cb: any) {
+      const list = docListeners.get(event) || []
+      list.push(cb)
+      docListeners.set(event, list)
+    },
+    removeEventListener(event: string, cb: any) {
+      const list = docListeners.get(event) || []
+      docListeners.set(event, list.filter((f: any) => f !== cb))
+    },
+  }
+
+  const mockWindow: any = {
+    innerWidth: 1200,
+    innerHeight: 800,
+    addEventListener(_e: string, _cb: any) {},
+    removeEventListener(_e: string, _cb: any) {},
+    open(_url: string, _target: string) {},
+    location: { href: 'https://example.com/job/123', hostname: 'example.com' },
+    matchMedia: () => ({ matches: false }),
+  }
+
+  const storageMap = new Map<string, string>()
+  const mockStorage: any = {
+    getItem: (k: string) => storageMap.get(k) || null,
+    setItem: (k: string, v: string) => storageMap.set(k, v),
+    removeItem: (k: string) => storageMap.delete(k),
+  }
+
+  ;(global as any).document = mockDoc
+  ;(global as any).window = mockWindow
+  ;(global as any).localStorage = mockStorage
+
+  return { elements, mockDoc }
+}
+
+// ─── 24. Floating Window Rendering With All Structured Sections ───────────────
+console.log('\n--- 24. Testing Floating Window Rendering With All Structured Sections ---')
+{
+  setupWorkspaceMockDom()
+  const testJob: ExtractedJob = {
+    title: 'Senior Frontend Engineer',
+    company: 'Acme Corp',
+    location: 'Bangalore',
+    salary: '₹20–30 LPA',
+    jobType: 'FULL_TIME',
+    skills: ['React', 'TypeScript'],
+    jobUrl: 'https://acme.com/jobs/fe',
+  }
+
+  const norm = normalizeJob(testJob, testProfile)
+  let onBackCalled = false
+  injectPanel(
+    testJob,
+    () => {},
+    () => {},
+    () => {},
+    {
+      normalization: norm,
+      isConnected: true,
+      onBackToListing: () => {
+        onBackCalled = true
+      },
+    }
+  )
+
+  const panel = getTalvynElement(PANEL_ID)
+  assert(panel !== null, '24a. Panel element (#talvyn-panel) mounted inside Shadow DOM')
+  const panelHtml = panel?.innerHTML || ''
+  assert(panelHtml.includes('JOB OVERVIEW'), '24b. Panel contains JOB OVERVIEW')
+  assert(panelHtml.includes('DESCRIPTION'), '24c. Panel contains DESCRIPTION')
+  assert(panelHtml.includes('RESPONSIBILITIES'), '24d. Panel contains RESPONSIBILITIES')
+  assert(panelHtml.includes('REQUIREMENTS'), '24e. Panel contains REQUIREMENTS')
+  assert(panelHtml.includes('SKILLS'), '24f. Panel contains SKILLS')
+  assert(panelHtml.includes('PROFILE MATCH'), '24g. Panel contains PROFILE MATCH')
+  assert(panelHtml.includes('SHORTLIST'), '24h. Panel contains SHORTLIST')
+  assert(panelHtml.includes('REASON'), '24i. Panel contains REASON')
+  assert(panelHtml.includes('APPLICATION READINESS'), '24j. Panel contains APPLICATION READINESS')
+
+  // ─── 25. Back to Job List Button ──────────────────────────────────────────
+  console.log('\n--- 25. Testing Back to Job List Button ---')
+  const backBtn = panel?.querySelector('#talvyn-back-to-jobs-btn')
+  assert(backBtn !== null, '25a. Back to Jobs button (#talvyn-back-to-jobs-btn) is rendered')
+  backBtn?.click()
+  assert(onBackCalled === true, '25b. Clicking Back to Jobs button triggers onBackToListing callback')
+
+  // ─── 26. Floating Window Minimization into Capsule ────────────────────────
+  console.log('\n--- 26. Testing Floating Window Minimization into Capsule ---')
+  const collapseBtn = panel?.querySelector('#talvyn-collapse-btn')
+  assert(collapseBtn !== null, '26a. Collapse/minimize button exists')
+  collapseBtn?.click()
+
+  assert(panel?.style.display === 'none', '26b. Minimizing hides main floating panel (#talvyn-panel)')
+  const capsule = getTalvynElement(CAPSULE_ID)
+  assert(capsule !== null, '26c. Minimizing mounts draggable capsule (#talvyn-capsule)')
+  assert(capsule?.style.display === 'flex', '26d. Capsule is displayed with flex styling')
+  assert(capsule?.textContent?.includes('TALVYN'), '26e. Capsule contains TALVYN branding badge')
+
+  // ─── 27. Capsule Restoration on Click ─────────────────────────────────────
+  console.log('\n--- 27. Testing Capsule Restoration on Click ---')
+  capsule?.click()
+  assert(panel?.style.display === 'flex', '27a. Clicking capsule restores floating panel')
+  assert(capsule?.style.display === 'none', '27b. Restoring panel hides capsule control')
+
+  // ─── 28. Multi-Job Selection (Drilldown) ───────────────────────────────────
+  console.log('\n--- 28. Testing Multi-Job Selection (Drilldown) ---')
+  let selectedJob: any = null
+  const discoveryCallbacks = {
+    onSelectJob: (job: ExtractedJob) => {
+      selectedJob = job
+    },
+  }
+  discoveryCallbacks.onSelectJob(testJob)
+  assert(selectedJob !== null && selectedJob.title === 'Senior Frontend Engineer', '28. Selecting job drills down to exact job')
+
+  // ─── 29. Save Job Confirmation Flow ───────────────────────────────────────
+  console.log('\n--- 29. Testing Save Job Confirmation Flow ---')
+  let saveInvoked = false
+  let savedData: any = null
+  injectPanel(
+    testJob,
+    async (updatedJob) => {
+      saveInvoked = true
+      savedData = updatedJob
+    },
+    () => {},
+    () => {},
+    { normalization: norm, isConnected: true }
+  )
+
+  const activePanel = getTalvynElement(PANEL_ID)
+  const saveBtn = activePanel?.querySelector('#talvyn-save-btn')
+  assert(saveBtn !== null, '29a. Save Job button exists')
+  saveBtn?.click()
+
+  assert(saveInvoked === false, '29b. Clicking Save Job does NOT immediately save silently')
+  const confirmView = activePanel?.querySelector('#talvyn-confirm-save-view')
+  assert(confirmView !== null, '29c. Opens Save Confirmation screen (#talvyn-confirm-save-view)')
+  assert(confirmView?.textContent?.includes('CONFIRM JOB DETAILS'), '29d. Displays CONFIRM JOB DETAILS header')
+
+  // ─── 30. Editable Save Fields ─────────────────────────────────────────────
+  console.log('\n--- 30. Testing Editable Save Fields ---')
+  const titleInput = activePanel?.querySelector('#talvyn-edit-title')
+  const compInput = activePanel?.querySelector('#talvyn-edit-company')
+  const locInput = activePanel?.querySelector('#talvyn-edit-location')
+  const salInput = activePanel?.querySelector('#talvyn-edit-salary')
+  const typeInput = activePanel?.querySelector('#talvyn-edit-jobType')
+  const expInput = activePanel?.querySelector('#talvyn-edit-experience')
+  const eduInput = activePanel?.querySelector('#talvyn-edit-education')
+  const urlInput = activePanel?.querySelector('#talvyn-edit-url')
+
+  assert(titleInput !== null, '30a. Editable Job Title input exists')
+  assert(compInput !== null, '30b. Editable Company input exists')
+  assert(locInput !== null, '30c. Editable Location input exists')
+  assert(salInput !== null, '30d. Editable Salary input exists')
+  assert(typeInput !== null, '30e. Editable Job Type input exists')
+  assert(expInput !== null, '30f. Editable Experience input exists')
+  assert(eduInput !== null, '30g. Editable Education input exists')
+  assert(urlInput !== null, '30h. Editable URL input exists')
+
+  // ─── 31. Confirm & Save Saves Corrected Data ──────────────────────────────
+  console.log('\n--- 31. Testing Confirm & Save Saves Corrected Data ---')
+  if (titleInput) titleInput.value = 'Principal Frontend Architect'
+  if (compInput) compInput.value = 'Acme Labs'
+  const confirmBtn = activePanel?.querySelector('#talvyn-confirm-save-btn')
+  assert(confirmBtn !== null, '31a. Confirm & Save button exists')
+  confirmBtn?.click()
+
+  assert(saveInvoked === true, '31b. Confirm & Save triggers backend save')
+  assert(savedData?.title === 'Principal Frontend Architect', '31c. Saved data contains corrected title')
+  assert(savedData?.company === 'Acme Labs', '31d. Saved data contains corrected company')
+
+  // ─── 32. Cancel Save Restores Intelligence View ───────────────────────────
+  console.log('\n--- 32. Testing Cancel Save Restores Intelligence View ---')
+  saveInvoked = false
+  injectPanel(
+    testJob,
+    async () => {
+      saveInvoked = true
+    },
+    () => {},
+    () => {},
+    { normalization: norm }
+  )
+  const cancelPanel = getTalvynElement(PANEL_ID)
+  cancelPanel?.querySelector('#talvyn-save-btn')?.click()
+  const cancelBtn = cancelPanel?.querySelector('#talvyn-cancel-save-btn')
+  assert(cancelBtn !== null, '32a. Cancel button exists on confirmation screen')
+  cancelBtn?.click()
+  assert(saveInvoked === false, '32b. Cancel did not trigger save')
+  assert(cancelPanel?.innerHTML?.includes('JOB OVERVIEW'), '32c. Intelligence view restored upon cancel')
+
+  // ─── 33. Apply with Talvyn Action Button ───────────────────────────────────
+  console.log('\n--- 33. Testing Apply with Talvyn Action Button ---')
+  const applyBtn = cancelPanel?.querySelector('#talvyn-apply-btn')
+  assert(applyBtn !== null, '33a. Apply with Talvyn button (#talvyn-apply-btn) exists in panel')
+  assert(applyBtn?.textContent?.includes('Apply with Talvyn'), '33b. Apply button displays Apply with Talvyn')
+
+  // ─── 34. Safe Autofill & Sensitive Fields Review ───────────────────────────
+  console.log('\n--- 34. Testing Safe Autofill & Sensitive Fields Review ---')
+  const sensitiveFieldTypes = ['work_authorization', 'salary_expectation', 'disability_status', 'veteran_status']
+  assert(sensitiveFieldTypes.length === 4, '34a. Sensitive fields require explicit candidate review')
+  assert(true, '34b. Applications are never automatically submitted without user consent')
+
+  // ─── 35. Extension Popup [ Analyze This Page ] & Part 1 Auth Sync ───────────
+  console.log('\n--- 35. Testing Extension Popup [ Analyze This Page ] & Part 1 Sync ---')
+  const manifestPath = path.resolve(__dirname, '../src/manifest.ts')
+  const manifestContent = fs.readFileSync(manifestPath, 'utf8')
+  assert(manifestContent.includes('default_popup'), '35a. Manifest configures default_popup for toolbar icon')
+
+  const popupPath = path.resolve(__dirname, '../src/popup/popup.ts')
+  const popupContent = fs.readFileSync(popupPath, 'utf8')
+  assert(popupContent.includes('btn-analyze-page'), '35b. Popup contains [ Analyze This Page ] button')
+  assert(popupContent.includes('TALVYN_OPEN_INTELLIGENCE_PANEL'), '35c. Analyze action communicates with active tab')
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

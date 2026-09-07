@@ -166,7 +166,7 @@ export function normalizeJob(
   const description = (rawJob.description || '').trim() || null
   const sourceWebsite =
     (rawJob.sourceWebsite || '').trim() ||
-    (typeof window !== 'undefined'
+    (typeof window !== 'undefined' && window.location?.hostname
       ? window.location.hostname.replace(/^www\./i, '')
       : 'Web')
 

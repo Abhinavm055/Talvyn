@@ -1,4 +1,4 @@
-import { AnalyzedJob, JobListAnalysisSummary } from '../types'
+import { AnalyzedJob, JobListAnalysisSummary, ExtractedJob } from '../types'
 import { CONFIG } from '../utils/config'
 import { makeElementDraggable, POSITION_STORAGE_KEY, getTalvynHost, getTalvynElement } from './panel'
 
@@ -7,7 +7,8 @@ export const DISCOVERY_PANEL_ID = 'talvyn-discovery-panel'
 export type FilterCategory = 'ALL' | 'STRONG' | 'GOOD' | 'MODERATE' | 'LOW' | 'SAVED'
 
 export interface DiscoveryPanelCallbacks {
-  onSaveJob: (job: AnalyzedJob, btnEl: HTMLButtonElement) => Promise<void>
+  onSelectJob: (job: ExtractedJob) => void
+  onSaveJob: (job: AnalyzedJob, btnEl: HTMLButtonElement, customJob?: ExtractedJob) => Promise<void>
   onDismiss: () => void
   onRefresh?: () => void
 }
@@ -289,9 +290,15 @@ export class DiscoveryPanelManager {
           </div>
         </div>
 
-        <!-- Company & Location -->
-        <div style="font-size:11.5px;color:#475569;font-weight:600;margin-bottom:6px;">
-          ${this.escapeHtml(job.company)}${job.location ? ` · <span style="color:#64748b;font-weight:400;">📍 ${this.escapeHtml(job.location)}</span>` : ''}
+        <!-- Company, Location, Type, Experience, Education -->
+        <div style="font-size:11.5px;color:#475569;font-weight:600;margin-bottom:6px;line-height:1.4;">
+          <div>${this.escapeHtml(job.company)}${job.location ? ` · <span style="color:#64748b;font-weight:400;">📍 ${this.escapeHtml(job.location)}</span>` : ''}</div>
+          <div style="font-size:10.5px;color:#64748b;font-weight:400;margin-top:2px;display:flex;flex-wrap:wrap;gap:6px;">
+            <span><strong>Experience:</strong> ${this.escapeHtml(expReq)}</span>
+            <span><strong>Education:</strong> ${this.escapeHtml(eduReq)}</span>
+            <span><strong>Job Type:</strong> ${this.escapeHtml(job.jobType ? this.formatJobType(job.jobType) : 'Full Time')}</span>
+            ${job.salary ? `<span><strong>Salary:</strong> ${this.escapeHtml(job.salary)}</span>` : ''}
+          </div>
         </div>
 
         <!-- 5 Factor Match Breakdown -->
@@ -328,7 +335,9 @@ export class DiscoveryPanelManager {
             color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;
             border-radius:6px;padding:5px 8px;font-size:10.5px;line-height:1.4;margin-bottom:6px;
           ">
-            <strong>Reason:</strong> Experience mismatch: Required ${this.escapeHtml(expReq)}, Your profile: ${this.escapeHtml(analyzed.experienceMatch?.profileText || 'Fresher')}
+            <div style="font-weight:700;">⚠ Experience mismatch</div>
+            <div>Required: ${this.escapeHtml(expReq)}</div>
+            <div>Your profile: ${this.escapeHtml(analyzed.experienceMatch?.profileText || 'Fresher')}</div>
           </div>
         ` : ''}
 
@@ -337,25 +346,38 @@ export class DiscoveryPanelManager {
             color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;
             border-radius:6px;padding:5px 8px;font-size:10.5px;line-height:1.4;margin-bottom:6px;
           ">
-            <strong>Reason:</strong> Education mismatch: Required ${this.escapeHtml(eduReq)}
+            <div style="font-weight:700;">⚠ Education mismatch</div>
+            <div>Required: ${this.escapeHtml(eduReq)}</div>
           </div>
         ` : ''}
 
         <!-- Actions -->
         <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+          <button class="talvyn-view-details-btn" data-url="${this.escapeHtml(job.jobUrl)}" style="
+            flex:1;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;
+            border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;transition:all 0.15s;
+          ">View Details</button>
+          
           <button class="talvyn-save-card-btn" data-url="${this.escapeHtml(job.jobUrl)}" style="
-            flex:1;padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;
+            flex:1;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;
             border:none;background:${isSaved ? '#10b981' : '#4f46e5'};color:#ffffff;
             transition:background 0.15s;
           ">${isSaved ? '✓ Saved' : 'Save'}</button>
           
           <a href="${job.jobUrl}" target="_blank" style="
-            padding:5px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;
+            padding:5px 9px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;
             border:1px solid #cbd5e1;background:#ffffff;color:#475569;text-align:center;
           ">Open ↗</a>
         </div>
       </div>
     `
+  }
+
+  private formatJobType(type: string): string {
+    return type
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
   }
 
   // ─── Event Handlers ────────────────────────────────────────────────────────
@@ -435,6 +457,19 @@ export class DiscoveryPanelManager {
 
       topBtn.textContent = '✓ Top Matches Saved'
       topBtn.style.background = '#059669'
+    })
+
+    // Individual View Details buttons
+    const viewDetailBtns = panel.querySelectorAll('.talvyn-view-details-btn')
+    viewDetailBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const button = e.currentTarget as HTMLButtonElement
+        const jobUrl = button.getAttribute('data-url')
+        const analyzed = this.summary?.analyzedJobs.find((j) => j.job.jobUrl === jobUrl)
+        if (analyzed && this.callbacks?.onSelectJob) {
+          this.callbacks.onSelectJob(analyzed.job)
+        }
+      })
     })
 
     // Individual Save job buttons

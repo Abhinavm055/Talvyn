@@ -295,6 +295,12 @@ function attachActionListeners(panel: HTMLElement, job?: ExtractedJob, options?:
     openReviewScreen(panel, job || currentJobData!, options || currentOptionsData)
   })
 
+  panel.querySelector('#talvyn-back-to-jobs-btn')?.addEventListener('click', () => {
+    if (options?.onBackToListing) {
+      options.onBackToListing()
+    }
+  })
+
   panel.querySelector('#talvyn-profile-btn')?.addEventListener('click', () => {
     openProfileView(panel, job || currentJobData!, options || currentOptionsData)
   })
@@ -313,193 +319,258 @@ function attachActionListeners(panel: HTMLElement, job?: ExtractedJob, options?:
   })
 }
 
+export const CAPSULE_ID = 'talvyn-capsule'
+
 function toggleCollapse(panel: HTMLElement): void {
   const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
   const collapseBtn = panel.querySelector('#talvyn-collapse-btn') as HTMLElement | null
-  if (!body || !collapseBtn) return
+  const { shadow } = getTalvynHost()
 
-  if (body.style.display === 'none') {
-    body.style.display = 'block'
-    collapseBtn.textContent = '−'
-    collapseBtn.title = 'Minimize'
+  let capsule = getTalvynElement(CAPSULE_ID)
+  if (!capsule) {
+    capsule = document.createElement('div')
+    capsule.id = CAPSULE_ID
+    capsule.setAttribute('data-talvyn-capsule', 'true')
+    capsule.style.display = 'none'
+    capsule.style.pointerEvents = 'auto'
+    capsule.innerHTML = `
+      <div id="talvyn-capsule-handle" style="
+        display:flex;align-items:center;gap:7px;padding:8px 14px;
+        background:linear-gradient(135deg, #4f46e5, #6366f1);
+        color:white;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+        font-size:12px;font-weight:800;letter-spacing:0.5px;
+        box-shadow:0 6px 20px rgba(79,70,229,0.4);cursor:pointer;
+        user-select:none;border:1.5px solid rgba(255,255,255,0.25);
+        transition:transform 0.15s ease;
+      " title="Click to open Talvyn Job Intelligence">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;"></span>
+        <span>TALVYN</span>
+      </div>
+    `
+    Object.assign(capsule.style, {
+      position: 'fixed',
+      zIndex: '2147483647',
+      userSelect: 'none',
+    })
+    shadow.appendChild(capsule)
+    const handle = capsule.querySelector('#talvyn-capsule-handle') as HTMLElement
+    if (handle) {
+      makeElementDraggable(capsule, handle, 'talvyn_capsule_position')
+    }
+
+    capsule.addEventListener('click', () => {
+      restorePanel(panel)
+    })
+  }
+
+  // Toggle between full panel and small capsule
+  if (panel.style.display !== 'none' && (!body || body.style.display !== 'none')) {
+    const rect = panel.getBoundingClientRect()
+    panel.style.display = 'none'
+    if (body) body.style.display = 'none'
+    if (collapseBtn) {
+      collapseBtn.textContent = '+'
+      collapseBtn.title = 'Expand'
+    }
+
+    capsule.style.display = 'flex'
+    capsule.style.left = `${Math.max(10, rect.left)}px`
+    capsule.style.top = `${Math.max(10, rect.top)}px`
   } else {
-    body.style.display = 'none'
-    collapseBtn.textContent = '+'
-    collapseBtn.title = 'Expand'
+    restorePanel(panel)
   }
 }
 
-// ─── Review Before Save Modal / Screen ──────────────────────────────────────
+export function restorePanel(panel: HTMLElement): void {
+  const capsule = getTalvynElement(CAPSULE_ID)
+  if (capsule) {
+    capsule.style.display = 'none'
+  }
+  panel.style.display = 'flex'
+  const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
+  if (body) {
+    body.style.display = 'block'
+  }
+  const collapseBtn = panel.querySelector('#talvyn-collapse-btn') as HTMLElement | null
+  if (collapseBtn) {
+    collapseBtn.textContent = '−'
+    collapseBtn.title = 'Minimize'
+  }
+}
 
-function openReviewScreen(panel: HTMLElement, job: ExtractedJob, options?: any): void {
+// ─── Save Confirmation / Edit Screen (Part 10) ──────────────────────────────
+
+export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, options?: any): void {
   const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
   if (!body) return
 
-  const profile = options?.userProfile
   const norm = options?.normalization
-
-  const givenName = profile?.givenName || profile?.name?.split(' ')[0] || ''
-  const familyName = profile?.familyName || profile?.name?.split(' ').slice(1).join(' ') || ''
-  const email = profile?.email || ''
-  const phone = profile?.phoneNumber || ''
-  const loc = profile?.preferredLocations?.[0] || profile?.location || ''
-  const linkedin = profile?.linkedInUrl || ''
-  const github = profile?.githubUrl || ''
-  const resume = options?.resumeName || 'Default Resume'
-
   const borderCard = isPanelDark ? '#334155' : '#e2e8f0'
   const textPrimary = isPanelDark ? '#f8fafc' : '#0f172a'
   const textSecondary = isPanelDark ? '#cbd5e1' : '#475569'
   const bgCard = isPanelDark ? '#1e293b' : '#f8fafc'
   const bgInput = isPanelDark ? '#0f172a' : '#ffffff'
 
+  const currentExp = job.experience || norm?.experienceRequiredText || ''
+  const currentEdu = job.education || norm?.educationRequiredText || ''
+
   body.innerHTML = `
-    <div id="talvyn-review-view" style="font-size:12px;color:${textPrimary};">
-      <!-- Top Title -->
+    <div id="talvyn-confirm-save-view" style="font-size:12px;color:${textPrimary};">
+      <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${borderCard};">
-        <span style="font-weight:700;font-size:12px;letter-spacing:0.3px;color:#4f46e5;text-transform:uppercase;">
-          REVIEW BEFORE SAVING
-        </span>
-        <button id="talvyn-review-cancel-x" style="background:none;border:none;color:${textSecondary};font-size:14px;cursor:pointer;padding:0 3px;">✕</button>
+        <div>
+          <div style="font-weight:800;font-size:12px;letter-spacing:0.4px;color:#4f46e5;text-transform:uppercase;">
+            CONFIRM JOB DETAILS
+          </div>
+          <div style="font-size:10.5px;color:${textSecondary};">
+            Review and adjust details before saving to your Tracker.
+          </div>
+        </div>
+        <button id="talvyn-save-cancel-x" style="background:none;border:none;color:${textSecondary};font-size:15px;cursor:pointer;padding:0 3px;">✕</button>
       </div>
 
       <div style="max-height:380px;overflow-y:auto;padding-right:2px;display:flex;flex-direction:column;gap:8px;">
-        <!-- JOB SECTION -->
-        <div style="background:${bgCard};border:1px solid ${borderCard};border-radius:8px;padding:8px;">
-          <div style="font-weight:700;font-size:11px;color:${textSecondary};margin-bottom:6px;text-transform:uppercase;">
-            💼 Job Details
+        <!-- Editable Job Fields -->
+        <div style="background:${bgCard};border:1px solid ${borderCard};border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Job Title
+            </label>
+            <input type="text" id="talvyn-edit-title" value="${escapeHtml(job.title || '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " />
           </div>
 
-          ${renderEditableRow('Title', 'job-title', job.title || '', bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Company', 'job-company', job.company || '', bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Location', 'job-location', job.location || '', bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Salary', 'job-salary', job.salary || '', bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Job URL', 'job-url', job.jobUrl || '', bgInput, borderCard, textPrimary)}
-        </div>
-
-        <!-- MATCH SUMMARY SECTION -->
-        <div style="background:${bgCard};border:1px solid ${borderCard};border-radius:8px;padding:8px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-            <span style="font-weight:700;font-size:11px;color:${textSecondary};text-transform:uppercase;">
-              ⚡ Match Summary
-            </span>
-            <span style="font-weight:800;font-size:12px;color:#059669;">
-              ${norm?.matchScore ?? 82}% · ${norm?.recommendationLabel ?? 'GOOD MATCH'}
-            </span>
-          </div>
-          <div style="font-size:11px;color:${textSecondary};line-height:1.4;">
-            <div>Role: ${norm?.roleMatchStatus === 'MATCH' ? '✓ Match' : norm?.roleMatchStatus === 'MISMATCH' ? '⚠ Mismatch' : '— Not specified'}</div>
-            <div>Experience: ${norm?.experienceMatchStatus === 'MATCH' ? '✓ Match' : norm?.experienceMatchStatus === 'MISMATCH' ? '⚠ Mismatch' : '— Not specified'}</div>
-            <div>Education: ${norm?.educationMatchStatus === 'MATCH' ? '✓ Match' : norm?.educationMatchStatus === 'MISMATCH' ? '⚠ Mismatch' : '— Not specified'}</div>
-            <div>Skills: ${norm?.skillsMatchStatus === 'MATCH' ? '✓ Match' : '⚠ Missing some skills'}</div>
-          </div>
-        </div>
-
-        <!-- APPLICATION PROFILE SECTION -->
-        <div style="background:${bgCard};border:1px solid ${borderCard};border-radius:8px;padding:8px;">
-          <div style="font-weight:700;font-size:11px;color:${textSecondary};margin-bottom:6px;text-transform:uppercase;">
-            👤 Application Profile
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Company
+            </label>
+            <input type="text" id="talvyn-edit-company" value="${escapeHtml(job.company || '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " />
           </div>
 
-          ${renderEditableRow('First Name', 'prof-givenName', givenName, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Last Name', 'prof-familyName', familyName, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Email', 'prof-email', email, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Phone', 'prof-phone', phone, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Location', 'prof-location', loc, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('LinkedIn', 'prof-linkedin', linkedin, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('GitHub', 'prof-github', github, bgInput, borderCard, textPrimary)}
-          ${renderEditableRow('Resume', 'prof-resume', resume, bgInput, borderCard, textPrimary)}
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Location
+            </label>
+            <input type="text" id="talvyn-edit-location" value="${escapeHtml(job.location || '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " placeholder="e.g. Bangalore, Remote" />
+          </div>
+
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Salary / Stipend
+            </label>
+            <input type="text" id="talvyn-edit-salary" value="${escapeHtml(job.salary || '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " placeholder="e.g. ₹8–12 LPA, $120,000" />
+          </div>
+
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Job Type
+            </label>
+            <input type="text" id="talvyn-edit-jobType" value="${escapeHtml(job.jobType ? formatJobType(job.jobType) : 'Full Time')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " placeholder="Full Time, Internship, Contract" />
+          </div>
+
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Experience
+            </label>
+            <input type="text" id="talvyn-edit-experience" value="${escapeHtml(currentExp !== 'Not specified' ? currentExp : '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " placeholder="e.g. 2–4 years, Fresher" />
+          </div>
+
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Education
+            </label>
+            <input type="text" id="talvyn-edit-education" value="${escapeHtml(currentEdu !== 'Not specified' ? currentEdu : '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " placeholder="e.g. B.Tech / equivalent, Bachelor's" />
+          </div>
+
+          <div>
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
+              Job URL
+            </label>
+            <input type="text" id="talvyn-edit-url" value="${escapeHtml(job.jobUrl || '')}" style="
+              width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
+              background:${bgInput};color:${textPrimary};outline:none;
+            " />
+          </div>
         </div>
       </div>
 
       <!-- Action Buttons -->
       <div style="display:flex;gap:6px;margin-top:10px;">
-        <button id="talvyn-confirm-save-btn" style="
-          flex:1;padding:8px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
-          color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
-          box-shadow:0 2px 6px rgba(79,70,229,0.25);
-        ">
-          Confirm & Save Job
-        </button>
-        <button id="talvyn-cancel-review-btn" style="
-          padding:8px 12px;background:transparent;color:${textSecondary};
+        <button id="talvyn-cancel-save-btn" style="
+          flex:1;padding:8px 12px;background:transparent;color:${textSecondary};
           border:1px solid ${borderCard};border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
         ">
           Cancel
+        </button>
+        <button id="talvyn-confirm-save-btn" style="
+          flex:1.5;padding:8px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
+          color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
+          box-shadow:0 2px 6px rgba(79,70,229,0.25);
+        ">
+          Confirm & Save
         </button>
       </div>
     </div>
   `
 
-  // Attach Edit toggles
-  body.querySelectorAll('.talvyn-edit-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const fieldId = (e.currentTarget as HTMLElement).getAttribute('data-field')
-      if (!fieldId) return
-      const displaySpan = body.querySelector(`#disp-${fieldId}`) as HTMLElement | null
-      const inputEl = body.querySelector(`#inp-${fieldId}`) as HTMLInputElement | null
-      const toggleBtn = e.currentTarget as HTMLElement
-
-      if (inputEl && displaySpan) {
-        if (inputEl.style.display === 'none') {
-          inputEl.style.display = 'block'
-          displaySpan.style.display = 'none'
-          inputEl.focus()
-          toggleBtn.textContent = 'Done'
-        } else {
-          inputEl.style.display = 'none'
-          displaySpan.style.display = 'block'
-          displaySpan.textContent = inputEl.value.trim() || '—'
-          toggleBtn.textContent = 'Edit'
-        }
-      }
-    })
-  })
-
-  // Cancel buttons
-  const cancelAction = () => {
+  const restoreCurrentView = () => {
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
   }
-  body.querySelector('#talvyn-review-cancel-x')?.addEventListener('click', cancelAction)
-  body.querySelector('#talvyn-cancel-review-btn')?.addEventListener('click', cancelAction)
 
-  // Confirm Save button
-  body.querySelector('#talvyn-confirm-save-btn')?.addEventListener('click', () => {
-    const getValue = (id: string, fallback: string) => {
-      const inp = body.querySelector(`#inp-${id}`) as HTMLInputElement | null
-      return inp ? inp.value.trim() : fallback
-    }
+  body.querySelector('#talvyn-save-cancel-x')?.addEventListener('click', restoreCurrentView)
+  body.querySelector('#talvyn-cancel-save-btn')?.addEventListener('click', restoreCurrentView)
+  body.querySelector('#talvyn-cancel-review-btn')?.addEventListener('click', restoreCurrentView)
 
-    const correctedJob: ExtractedJob = {
+  body.querySelector('#talvyn-confirm-save-btn')?.addEventListener('click', async () => {
+    const titleVal = (body.querySelector('#talvyn-edit-title') as HTMLInputElement)?.value.trim() || job.title
+    const compVal = (body.querySelector('#talvyn-edit-company') as HTMLInputElement)?.value.trim() || job.company
+    const locVal = (body.querySelector('#talvyn-edit-location') as HTMLInputElement)?.value.trim() || job.location
+    const salVal = (body.querySelector('#talvyn-edit-salary') as HTMLInputElement)?.value.trim() || job.salary
+    const typeVal = (body.querySelector('#talvyn-edit-jobType') as HTMLInputElement)?.value.trim() || job.jobType
+    const expVal = (body.querySelector('#talvyn-edit-experience') as HTMLInputElement)?.value.trim() || currentExp
+    const eduVal = (body.querySelector('#talvyn-edit-education') as HTMLInputElement)?.value.trim() || currentEdu
+    const urlVal = (body.querySelector('#talvyn-edit-url') as HTMLInputElement)?.value.trim() || job.jobUrl
+
+    const updatedJob: ExtractedJob = {
       ...job,
-      title: getValue('job-title', job.title || ''),
-      company: getValue('job-company', job.company || ''),
-      location: getValue('job-location', job.location || ''),
-      salary: getValue('job-salary', job.salary || ''),
-      jobUrl: getValue('job-url', job.jobUrl || window.location.href),
+      title: titleVal,
+      company: compVal,
+      location: locVal || undefined,
+      salary: salVal || undefined,
+      jobType: typeVal || undefined,
+      experience: expVal || undefined,
+      education: eduVal || undefined,
+      jobUrl: urlVal,
     }
 
-    const correctedProfile = {
-      givenName: getValue('prof-givenName', givenName),
-      familyName: getValue('prof-familyName', familyName),
-      email: getValue('prof-email', email),
-      phoneNumber: getValue('prof-phone', phone),
-      location: getValue('prof-location', loc),
-      linkedInUrl: getValue('prof-linkedin', linkedin),
-      githubUrl: getValue('prof-github', github),
-    }
-
-    // Restore intelligence view
-    body.innerHTML = buildBodyHTML(correctedJob, options, isPanelDark)
-    attachActionListeners(panel, correctedJob, options)
-
-    // Execute save
     if (currentOnSave) {
-      currentOnSave(correctedJob, correctedProfile)
+      await currentOnSave(updatedJob, options?.userProfile)
     }
   })
 }
+
+export const openReviewScreen = openConfirmSaveScreen
 
 // ─── Controlled Review Before Apply Modal ───────────────────────────────────
 
@@ -927,6 +998,129 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
   `
 }
 
+export interface StructuredJobSections {
+  overview: {
+    title: string
+    company: string
+    location: string
+    jobType: string
+    salary: string
+    experience: string
+    education: string
+  }
+  descriptionSummary: string
+  responsibilities: string[]
+  requirements: string[]
+  reason: string
+}
+
+export function extractStructuredSections(job: ExtractedJob, norm?: JobNormalizationResult): StructuredJobSections {
+  const currentExp = job.experience || norm?.experienceRequiredText || '— Not specified'
+  const currentEdu = job.education || norm?.educationRequiredText || '— Not specified'
+  const location = job.location || '— Not specified'
+  const salary = job.salary || '— Not specified'
+  const jobType = job.jobType ? formatJobType(job.jobType) : '— Not specified'
+
+  // Deterministic description summary
+  let descriptionSummary = '— Not specified'
+  const rawDesc = job.description || ''
+  if (rawDesc.trim()) {
+    const cleanText = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (cleanText.length > 0) {
+      const sentences = cleanText.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 15)
+      if (sentences.length > 0) {
+        descriptionSummary = sentences.slice(0, 2).join(' ')
+        if (descriptionSummary.length > 280) {
+          descriptionSummary = descriptionSummary.substring(0, 280) + '...'
+        }
+      } else {
+        descriptionSummary = cleanText.length > 200 ? cleanText.substring(0, 200) + '...' : cleanText
+      }
+    }
+  }
+
+  // Deterministic responsibilities extraction
+  let responsibilities: string[] = []
+  if (job.description) {
+    const text = job.description
+    const respMatch = text.match(/(?:responsibilities|duties|what you will do|what you'll do|your role)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|benefits|$)/i)
+    const targetText = respMatch ? respMatch[1] : text
+    const lines = targetText
+      .split(/\n|<br\s*\/?>|<li>/i)
+      .map((l) => l.replace(/<[^>]+>/g, '').trim())
+      .filter((l) => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^(design|develop|build|collaborate|lead|manage|maintain|implement|create|deliver|support|coordinate|review|test)\b/i.test(l))
+      .map((l) => l.replace(/^[•\-*]\s*/, '').trim())
+      .filter((l) => l.length > 10 && l.length < 200)
+
+    if (lines.length > 0) {
+      responsibilities = lines.slice(0, 4)
+    }
+  }
+  if (responsibilities.length === 0) {
+    responsibilities = ['— Not specified']
+  }
+
+  // Deterministic requirements extraction
+  let requirements: string[] = []
+  if (job.description) {
+    const text = job.description
+    const reqMatch = text.match(/(?:requirements|qualifications|what we are looking for|what we're looking for|who you are|must have|eligibility)[:\s]+([\s\S]*?)(?:responsibilities|duties|benefits|about us|$)/i)
+    const targetText = reqMatch ? reqMatch[1] : text
+    const lines = targetText
+      .split(/\n|<br\s*\/?>|<li>/i)
+      .map((l) => l.replace(/<[^>]+>/g, '').trim())
+      .filter((l) => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^(bachelor|master|degree|\d+\+?\s*years|experience|proficiency|strong|knowledge|familiarity)\b/i.test(l))
+      .map((l) => l.replace(/^[•\-*]\s*/, '').trim())
+      .filter((l) => l.length > 10 && l.length < 200)
+
+    if (lines.length > 0) {
+      requirements = lines.slice(0, 4)
+    }
+  }
+  if (requirements.length === 0 && (norm?.missingSkills?.length || norm?.matchedSkills?.length)) {
+    requirements = [
+      currentExp !== '— Not specified' ? `Experience: ${currentExp}` : '',
+      currentEdu !== '— Not specified' ? `Education: ${currentEdu}` : '',
+      ...(norm?.missingSkills || []).slice(0, 2).map((s) => `Proficiency in ${s}`),
+    ].filter(Boolean)
+  }
+  if (requirements.length === 0) {
+    requirements = ['— Not specified']
+  }
+
+  // Deterministic recommendation reason
+  let reason = 'Moderate alignment with partial skill and requirement overlap.'
+  if (norm?.experienceMatchStatus === 'MISMATCH') {
+    reason = `Experience mismatch: Requires ${norm.experienceRequiredText || '2–4 years'}, but candidate is ${norm.experienceProfileText || 'Fresher'}.`
+  } else if (norm?.roleMatchStatus === 'MISMATCH') {
+    reason = `Role mismatch: Requires ${norm.roleRequiredText || job.title}, which differs from target role.`
+  } else if (norm?.educationMatchStatus === 'MISMATCH') {
+    reason = `Education mismatch: Requires ${norm.educationRequiredText}, which does not match candidate education.`
+  } else if (norm?.skillsMatchStatus === 'MISMATCH') {
+    reason = `Skills gap: Missing critical skills (${(norm.missingSkills || []).slice(0, 3).join(', ')}).`
+  } else if ((norm?.matchScore ?? 0) >= 85) {
+    reason = 'Strong profile alignment across role, experience, education, and skills.'
+  } else if ((norm?.matchScore ?? 0) >= 70) {
+    reason = 'Good profile match with suitable experience and relevant skills.'
+  }
+
+  return {
+    overview: {
+      title: job.title || '— Not specified',
+      company: job.company || '— Not specified',
+      location,
+      jobType,
+      salary,
+      experience: currentExp,
+      education: currentEdu,
+    },
+    descriptionSummary,
+    responsibilities,
+    requirements,
+    reason,
+  }
+}
+
 function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false): string {
   const norm = options?.normalization
   const matchScore = norm?.matchScore ?? 82
@@ -941,9 +1135,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
   const readinessFactors: string[] = norm?.readinessFactors?.length ? norm.readinessFactors : ['Resume available', 'Profile complete', 'Experience suitable']
   const readinessIssues: string[] = norm?.readinessIssues?.length ? norm.readinessIssues : []
 
-  const locationText = job.location ? `📍 ${job.location}` : '— Location: Not specified'
-  const salaryText = job.salary ? `💰 ${job.salary}` : '— Salary: Not specified'
-  const jobTypeText = job.jobType ? `💼 ${formatJobType(job.jobType)}` : '💼 Full Time'
+  const sections = extractStructuredSections(job, norm)
 
   // Color tokens
   const bgCard = isDark ? '#1e293b' : '#f8fafc'
@@ -975,24 +1167,105 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
   const isLocUnspecified = norm?.locationMatchStatus === 'UNSPECIFIED' || !norm?.locationMatchStatus
 
   return `
-    <!-- 1. JOB Details -->
+    <!-- Back to Job Listing (if drilled down from multi-job view) -->
+    ${options?.onBackToListing ? `
+      <div style="margin-bottom:8px;">
+        <button id="talvyn-back-to-jobs-btn" style="
+          display:inline-flex;align-items:center;gap:4px;background:none;border:none;color:#4f46e5;
+          font-size:11.5px;font-weight:700;cursor:pointer;padding:0;
+        ">
+          ← Back to Jobs
+        </button>
+      </div>
+    ` : ''}
+
+    <!-- 1. JOB OVERVIEW Section -->
     <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        JOB OVERVIEW
+      </div>
       <div style="font-size:13.5px;font-weight:700;color:${textPrimary};line-height:1.3;margin-bottom:3px;">
-        ${escapeHtml(job.title)}
+        ${escapeHtml(sections.overview.title)}
       </div>
       <div style="font-size:12px;color:${textSecondary};font-weight:600;margin-bottom:4px;">
-        ${escapeHtml(job.company)}
+        ${escapeHtml(sections.overview.company)}
       </div>
       <div style="font-size:11px;color:${textMuted};display:flex;flex-wrap:wrap;gap:8px;">
-        <span>${escapeHtml(locationText)}</span>
-        <span>${escapeHtml(salaryText)}</span>
-        <span>${escapeHtml(jobTypeText)}</span>
+        <span>📍 ${escapeHtml(sections.overview.location)}</span>
+        <span>💼 ${escapeHtml(sections.overview.jobType)}</span>
+        <span>💰 ${escapeHtml(sections.overview.salary)}</span>
+      </div>
+      <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;display:flex;flex-wrap:wrap;gap:8px;">
+        <span><strong>Experience:</strong> ${escapeHtml(sections.overview.experience)}</span>
+        <span><strong>Education:</strong> ${escapeHtml(sections.overview.education)}</span>
       </div>
     </div>
 
+    <!-- 2. DESCRIPTION Section -->
     <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        DESCRIPTION
+      </div>
+      <p style="font-size:11px;color:${textSecondary};line-height:1.4;margin:0;">
+        ${escapeHtml(sections.descriptionSummary)}
+      </p>
+    </div>
 
-    <!-- 2. PROFILE MATCH Section -->
+    <!-- 3. RESPONSIBILITIES Section -->
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        RESPONSIBILITIES
+      </div>
+      <ul style="margin:0;padding-left:14px;font-size:11px;color:${textSecondary};line-height:1.4;">
+        ${sections.responsibilities.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}
+      </ul>
+    </div>
+
+    <!-- 4. REQUIREMENTS Section -->
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        REQUIREMENTS
+      </div>
+      <ul style="margin:0;padding-left:14px;font-size:11px;color:${textSecondary};line-height:1.4;">
+        ${sections.requirements.map((req) => `<li>${escapeHtml(req)}</li>`).join('')}
+      </ul>
+    </div>
+
+    <!-- 5. SKILLS Section -->
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        SKILLS
+      </div>
+      <div style="font-size:10.5px;color:${textSecondary};margin-top:2px;">
+        <span style="font-weight:700;color:${textPrimary};">Matched Skills:</span>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
+          ${matchedSkills.length > 0 ? matchedSkills.map((s) => `
+            <span style="
+              font-size:10px;padding:1px 6px;border-radius:4px;
+              background:${isDark ? '#064e3b' : '#ecfdf5'};color:#059669;border:1px solid ${isDark ? '#047857' : '#a7f3d0'};
+            ">✓ ${escapeHtml(s)}</span>
+          `).join('') : `<span style="color:${textMuted};">— None detected</span>`}
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;">
+        <span style="font-weight:700;color:${textPrimary};">Missing Skills:</span>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
+          ${missingSkills.length > 0 ? missingSkills.map((s) => `
+            <span style="
+              font-size:10px;padding:1px 6px;border-radius:4px;
+              background:${isDark ? '#451a03' : '#fffbeb'};color:#d97706;border:1px solid ${isDark ? '#b45309' : '#fde68a'};
+            ">⚠ ${escapeHtml(s)}</span>
+          `).join('') : `<span style="color:${textMuted};">— None</span>`}
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. PROFILE MATCH Section -->
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
     <div style="margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:11px;font-weight:700;color:${textSecondary};letter-spacing:0.3px;text-transform:uppercase;">PROFILE MATCH</span>
@@ -1073,55 +1346,37 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
           <div>Target role: ${escapeHtml(norm.roleProfileText)}</div>
         </div>
       ` : ''}
-
-      <!-- Matched Skills -->
-      ${matchedSkills.length > 0 ? `
-        <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;">
-          <span style="font-weight:700;color:${textPrimary};">Matched:</span>
-          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">
-            ${matchedSkills.map((s) => `
-              <span style="
-                font-size:10px;padding:1px 6px;border-radius:4px;
-                background:${isDark ? '#064e3b' : '#ecfdf5'};color:#059669;border:1px solid ${isDark ? '#047857' : '#a7f3d0'};
-              ">✓ ${escapeHtml(s)}</span>
-            `).join('')}
-          </div>
-        </div>
-      ` : ''}
-
-      <!-- Missing Skills -->
-      ${missingSkills.length > 0 ? `
-        <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;">
-          <span style="font-weight:700;color:${textPrimary};">Missing:</span>
-          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">
-            ${missingSkills.map((s) => `
-              <span style="
-                font-size:10px;padding:1px 6px;border-radius:4px;
-                background:${isDark ? '#451a03' : '#fffbeb'};color:#d97706;border:1px solid ${isDark ? '#b45309' : '#fde68a'};
-              ">⚠ ${escapeHtml(s)}</span>
-            `).join('')}
-          </div>
-        </div>
-      ` : ''}
     </div>
 
+    <!-- 7. SHORTLIST & 8. REASON Section -->
     <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
-
-    <!-- 3. SHORTLIST Recommendation Box -->
-    <div style="
-      background:${bgCard};border:1px solid ${borderCard};border-radius:9px;
-      padding:8px 10px;margin-bottom:10px;
-    ">
-      <div style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:${textPrimary};">
-        <span>${recommendationIcon}</span>
-        <span>${escapeHtml(recommendationLabel)}</span>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        SHORTLIST
       </div>
-      <div style="font-size:11px;color:${textMuted};margin-left:18px;margin-top:1px;">
-        ${escapeHtml(recommendationSubtitle)}
+      <div style="
+        background:${bgCard};border:1px solid ${borderCard};border-radius:9px;
+        padding:8px 10px;margin-bottom:8px;
+      ">
+        <div style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:${textPrimary};">
+          <span>${recommendationIcon}</span>
+          <span>${escapeHtml(recommendationLabel)}</span>
+        </div>
+        <div style="font-size:11px;color:${textMuted};margin-left:18px;margin-top:1px;">
+          ${escapeHtml(recommendationSubtitle)}
+        </div>
+      </div>
+
+      <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
+        REASON
+      </div>
+      <div style="font-size:11px;color:${textSecondary};line-height:1.4;margin-bottom:4px;">
+        ${escapeHtml(sections.reason)}
       </div>
     </div>
 
-    <!-- 4. APPLICATION READINESS Section -->
+    <!-- 9. APPLICATION READINESS Section -->
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
     <div style="margin-bottom:12px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:11px;font-weight:700;color:${textSecondary};letter-spacing:0.3px;text-transform:uppercase;">APPLICATION READINESS</span>
@@ -1144,7 +1399,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
 
     <div id="talvyn-status" style="display:none;margin-bottom:8px;"></div>
 
-    <!-- 5. Action Buttons -->
+    <!-- Action Buttons -->
     <div id="talvyn-actions" style="display:flex;flex-direction:column;gap:6px;">
       <button id="talvyn-save-btn" style="
         width:100%;padding:9px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
@@ -1522,8 +1777,10 @@ export function updatePanelState(state: PanelState): void {
 
 export function removePanel(): void {
   getTalvynElement(PANEL_ID)?.remove()
+  getTalvynElement(CAPSULE_ID)?.remove()
   if (typeof document !== 'undefined') {
     document.getElementById(PANEL_ID)?.remove()
+    document.getElementById(CAPSULE_ID)?.remove()
   }
 }
 

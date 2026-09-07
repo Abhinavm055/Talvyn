@@ -153,11 +153,6 @@ async function init() {
   console.log('[Talvyn] POPUP_AUTH_CHECK_STARTED')
   renderLoading()
 
-  // Immediately trigger floating intelligence window on the active tab so BOTH appear!
-  triggerActiveTabIntelligencePanel().catch((e) => {
-    console.warn('[Talvyn Popup] Auto-trigger floating panel error:', e)
-  })
-
   try {
     const response = await sendBackgroundMessage<{
       success: boolean
@@ -524,15 +519,15 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
           </div>
         </div>
 
-        <!-- Primary Floating Window Action Button -->
-        <button type="button" id="btn-open-floating" style="
-          width:100%;margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg, #4f46e5, #6366f1);
-          color:white;border:none;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
-          display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 1px 3px rgba(79,70,229,0.25);
+        <!-- Primary Action Button: Analyze This Page -->
+        <button type="button" id="btn-analyze-page" style="
+          width:100%;margin-bottom:12px;padding:11px 14px;background:linear-gradient(135deg, #4f46e5, #6366f1);
+          color:white;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 2px 6px rgba(79,70,229,0.3);
           transition:opacity 0.15s;
         ">
-          <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          <span>Open Floating Job Intelligence</span>
+          <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span>Analyze This Page</span>
         </button>
 
         <!-- 4 Core Navigation Route Buttons: Dashboard, Profile, Tracker, Settings -->
@@ -599,7 +594,8 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
     </div>
   `
 
-  document.getElementById('btn-open-floating')?.addEventListener('click', async () => {
+  const analyzeBtn = document.getElementById('btn-analyze-page') || document.getElementById('btn-open-floating')
+  analyzeBtn?.addEventListener('click', async () => {
     await triggerActiveTabIntelligencePanel()
   })
 
