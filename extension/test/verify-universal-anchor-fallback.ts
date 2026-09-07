@@ -22,7 +22,7 @@ function matches(node: Node, selector: string): boolean {
   const s = selector.trim()
   if (s === 'a[href]') return node.tagName === 'A' && Boolean(node.href)
   if (s === 'a') return node.tagName === 'A'
-  if (s === 'h1' || s === 'h2' || s === 'h3' || s === 'h4') return node.tagName === s.toUpperCase()
+  if (/^h[1-4]$/.test(s)) return node.tagName === s.toUpperCase()
   if (s === '[class*="company" i]') return /company/i.test(node.className || '')
   if (s === '[class*="location" i]') return /location/i.test(node.className || '')
   if (s === '[class*="salary" i]') return /salary/i.test(node.className || '')
@@ -37,15 +37,13 @@ function makeNode(tagName: string, textContent = '', opts: Partial<Node> = {}): 
   const node: Node = {
     tagName: tagName.toUpperCase(), textContent, children: opts.children || [], href: opts.href,
     className: opts.className || '', parentElement: null,
-    querySelector(selector) {
-      const all = this.querySelectorAll(selector)
-      return all[0] || null
-    },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null },
     querySelectorAll(selector) {
       const out: Node[] = []
+      const selectors = selector.split(',').map((s) => s.trim())
       const walk = (n: Node) => {
         for (const child of n.children) {
-          if (matches(child, selector)) out.push(child)
+          if (selectors.some((s) => matches(child, s))) out.push(child)
           walk(child)
         }
       }
@@ -63,11 +61,7 @@ function makeNode(tagName: string, textContent = '', opts: Partial<Node> = {}): 
 }
 
 function makeDoc(body: Node): any {
-  return {
-    body,
-    querySelector(selector: string) { return body.querySelector(selector) },
-    querySelectorAll(selector: string) { return body.querySelectorAll(selector) },
-  }
+  return { body, querySelector: (s: string) => body.querySelector(s), querySelectorAll: (s: string) => body.querySelectorAll(s) }
 }
 
 const jobLink = makeNode('A', 'Senior Software Engineer', { href: 'https://example.com/careers/senior-software-engineer' })
