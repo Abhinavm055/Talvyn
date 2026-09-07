@@ -29,11 +29,14 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+import { notifyExtensionDisconnect } from '../utils/extensionSync'
+
 // Handle 401 — clear auth and redirect to login
 apiClient.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
+      await notifyExtensionDisconnect()
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }

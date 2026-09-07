@@ -89,7 +89,7 @@ function verifyZipFile(filePath: string, label: string) {
   assert(entries.includes('manifest.json'), `Archive contains manifest.json at root level`)
   assert(entries.some((e) => e.startsWith('icons/')), `Archive contains extension icons`)
   assert(entries.some((e) => e.includes('icon16.png') || e.includes('icon48.png') || e.includes('logotalvyn.png')), `Archive contains PNG icons`)
-  assert(entries.some((e) => e.includes('popup')), `Archive contains popup UI`)
+  assert(entries.some((e) => e.includes('src/popup/index.html') || e.includes('popup')), `Archive contains popup UI`)
   assert(entries.some((e) => e.includes('assets/')), `Archive contains transpiled script bundles`)
 
   // Security checks: no secrets or private keys inside package

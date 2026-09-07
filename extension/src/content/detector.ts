@@ -1,4 +1,5 @@
 import { ExtractedJob } from '../types'
+import { isExplicitlyNonJobSite, isLikelyJobPage } from './jobEvidenceDetector'
 
 /**
  * Job Page Detector
@@ -79,9 +80,9 @@ function detectSourceWebsite(url: string): string {
 }
 
 // ─── JSON-LD structured data extraction ──────────────────────────────────────
-function extractFromJsonLd(): Partial<ExtractedJob> | null {
-  const scripts = document.querySelectorAll('script[type="application/ld+json"]')
-  for (const script of scripts) {
+function extractFromJsonLd(doc: Document = document): Partial<ExtractedJob> | null {
+  const scripts = doc.querySelectorAll ? doc.querySelectorAll('script[type="application/ld+json"]') : []
+  for (const script of Array.from(scripts)) {
     try {
       const data = JSON.parse(script.textContent || '{}')
       const items = Array.isArray(data) ? data : [data]
@@ -91,7 +92,8 @@ function extractFromJsonLd(): Partial<ExtractedJob> | null {
             title: item.title || item.name,
             company:
               item.hiringOrganization?.name ||
-              item.employerOverview,
+              item.employerOverview ||
+              item.author?.name,
             location:
               typeof item.jobLocation === 'string'
                 ? item.jobLocation
@@ -102,7 +104,8 @@ function extractFromJsonLd(): Partial<ExtractedJob> | null {
               (item.baseSalary?.value?.minValue && item.baseSalary?.value?.maxValue
                 ? `${item.baseSalary.value.minValue}–${item.baseSalary.value.maxValue} ${item.baseSalary.value.unitText || ''}`
                 : undefined),
-            description: item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000),
+            jobType: item.employmentType,
+            description: item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000),
           }
         }
       }
@@ -115,7 +118,7 @@ function extractFromJsonLd(): Partial<ExtractedJob> | null {
 
 function extractJsonLdCompany(doc: Document = document): string | undefined {
   try {
-    const scripts = doc.querySelectorAll('script[type="application/ld+json"]')
+    const scripts = doc.querySelectorAll ? doc.querySelectorAll('script[type="application/ld+json"]') : []
     for (const script of Array.from(scripts)) {
       const text = script.textContent
       if (!text) continue
@@ -136,92 +139,208 @@ function extractJsonLdCompany(doc: Document = document): string | undefined {
   return undefined
 }
 
-
 // ─── Meta tag extraction ──────────────────────────────────────────────────────
-function extractFromMeta(): Partial<ExtractedJob> {
+function extractFromMeta(doc: Document = document): Partial<ExtractedJob> {
   const get = (name: string) =>
-    (document.querySelector(`meta[property="${name}"], meta[name="${name}"]`) as HTMLMetaElement | null)?.content
+    (doc.querySelector ? (doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`) as HTMLMetaElement | null)?.content : undefined)
 
   return {
-    title: get('og:title') || get('title') || undefined,
+    title: get('og:title') || get('twitter:title') || get('title') || undefined,
     company: get('og:site_name') || undefined,
+    description: get('og:description') || get('description') || undefined,
   }
 }
 
 // ─── DOM heuristic extraction ─────────────────────────────────────────────────
-function extractFromDom(): Partial<ExtractedJob> {
+function extractFromDom(doc: Document = document, url: string = ''): Partial<ExtractedJob> {
   const result: Partial<ExtractedJob> = {}
+  if (!doc || typeof doc.querySelector !== 'function') return result
+
+  const hostname = (() => {
+    try {
+      return new URL(url).hostname.toLowerCase()
+    } catch {
+      return typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : ''
+    }
+  })()
 
   // LinkedIn-specific
-  if (window.location.hostname.includes('linkedin.com')) {
+  if (hostname.includes('linkedin.com')) {
     result.title =
-      document.querySelector('.job-details-jobs-unified-top-card__job-title, .topcard__title')?.textContent?.trim()
+      doc.querySelector('.job-details-jobs-unified-top-card__job-title, .topcard__title')?.textContent?.trim()
     result.company =
-      document.querySelector('.job-details-jobs-unified-top-card__company-name a, .topcard__org-name-link')?.textContent?.trim()
+      doc.querySelector('.job-details-jobs-unified-top-card__company-name a, .topcard__org-name-link')?.textContent?.trim()
     result.location =
-      document.querySelector('.job-details-jobs-unified-top-card__bullet, .topcard__flavor--bullet')?.textContent?.trim()
+      doc.querySelector('.job-details-jobs-unified-top-card__bullet, .topcard__flavor--bullet')?.textContent?.trim()
+    result.description =
+      doc.querySelector('.jobs-description__content, #job-details, .description__text')?.textContent?.trim()
   }
 
   // Indeed-specific
-  if (window.location.hostname.includes('indeed.com')) {
+  if (hostname.includes('indeed.com')) {
     result.title =
-      document.querySelector('[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"]')?.textContent?.trim()
+      doc.querySelector('[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"]')?.textContent?.trim()
     result.company =
-      document.querySelector('[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, .icl-u-lg-mr--sm, [class*="companyName"]')?.textContent?.trim() ||
-      extractJsonLdCompany(document) ||
+      doc.querySelector('[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, .icl-u-lg-mr--sm, [class*="companyName"]')?.textContent?.trim() ||
+      extractJsonLdCompany(doc) ||
       'Unknown Company'
     result.location =
-      document.querySelector('[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation')?.textContent?.trim()
+      doc.querySelector('[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation')?.textContent?.trim()
     result.salary =
-      document.querySelector('[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType, [class*="salary-snippet"]')?.textContent?.trim()
+      doc.querySelector('[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType, [class*="salary-snippet"]')?.textContent?.trim()
+    result.description =
+      doc.querySelector('#jobDescriptionText, [data-testid="jobDescriptionText"]')?.textContent?.trim()
   }
 
-
   // Greenhouse
-  if (window.location.hostname.includes('greenhouse.io') || window.location.hostname.includes('boards.greenhouse.io')) {
-    result.title = document.querySelector('.app-title, h1.heading')?.textContent?.trim()
-    result.company = document.querySelector('.company-name, .logo span')?.textContent?.trim()
-    result.location = document.querySelector('.location')?.textContent?.trim()
+  if (hostname.includes('greenhouse.io') || hostname.includes('boards.greenhouse.io')) {
+    result.title = doc.querySelector('.app-title, h1.heading')?.textContent?.trim()
+    result.company = doc.querySelector('.company-name, .logo span')?.textContent?.trim()
+    result.location = doc.querySelector('.location')?.textContent?.trim()
+    result.description = doc.querySelector('#content, .job-post-content')?.textContent?.trim()
   }
 
   // Lever
-  if (window.location.hostname.includes('lever.co') || window.location.hostname.includes('jobs.lever.co')) {
-    result.title = document.querySelector('.posting-headline h2')?.textContent?.trim()
+  if (hostname.includes('lever.co') || hostname.includes('jobs.lever.co')) {
+    result.title = doc.querySelector('.posting-headline h2')?.textContent?.trim()
     result.company =
-      document.querySelector('.posting-headline .posting-categories .sort-by-team')?.textContent?.trim() ||
-      document.querySelector('.main-header-logo img')?.getAttribute('alt') || undefined
-    result.location = document.querySelector('.location, .posting-categories .sort-by-location')?.textContent?.trim()
+      doc.querySelector('.posting-headline .posting-categories .sort-by-team')?.textContent?.trim() ||
+      doc.querySelector('.main-header-logo img')?.getAttribute('alt') || undefined
+    result.location = doc.querySelector('.location, .posting-categories .sort-by-location')?.textContent?.trim()
+    result.description = doc.querySelector('.section-wrapper, .posting-page')?.textContent?.trim()
   }
 
-  // Generic fallback — look for the first prominent h1 or h2
+  // Generic fallback — look for prominent headings
   if (!result.title) {
-    const h1 = document.querySelector('h1')
-    if (h1) {
-      const text = h1.textContent?.trim() || ''
-      // Only use if it looks like a job title (not a site name, etc.)
-      if (text.length > 3 && text.length < 120) {
-        result.title = text
+    const headingSelectors = [
+      'h1[class*="job" i]',
+      'h1[class*="title" i]',
+      'h1[class*="position" i]',
+      'h1[class*="role" i]',
+      '[class*="job-title" i]',
+      '[class*="position-title" i]',
+      'h1',
+      'h2[class*="job" i]',
+      'h2[class*="title" i]',
+    ]
+    for (const sel of headingSelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.trim() || ''
+        if (text.length > 3 && text.length < 140 && !/^(home|careers|jobs|search|openings|login)$/i.test(text)) {
+          result.title = text
+          break
+        }
       }
     }
   }
 
-  // Generic company fallback — look for structured selectors
+  // Generic company fallback
   if (!result.company) {
-    const companyEl = document.querySelector(
-      '[class*="company"], [class*="employer"], [class*="org-name"], [itemprop="name"]'
-    )
-    if (companyEl) {
-      result.company = companyEl.textContent?.trim()
+    const companySelectors = [
+      '[class*="company-name" i]',
+      '[class*="companyName" i]',
+      '[class*="employer" i]',
+      '[class*="org-name" i]',
+      '[class*="organization" i]',
+      '[itemprop="hiringOrganization"]',
+      '[itemprop="name"]',
+      '[class*="sub-title" i]',
+    ]
+    for (const sel of companySelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.trim()
+        if (text && text.length > 1 && text.length < 100) {
+          result.company = text
+          break
+        }
+      }
     }
   }
 
   // Generic location fallback
   if (!result.location) {
-    const locationEl = document.querySelector(
-      '[class*="location"], [class*="city"], [itemprop="addressLocality"]'
-    )
-    if (locationEl) {
-      result.location = locationEl.textContent?.trim()
+    const locSelectors = [
+      '[class*="location" i]',
+      '[class*="city" i]',
+      '[class*="workplace" i]',
+      '[itemprop="addressLocality"]',
+      '[class*="address" i]',
+    ]
+    for (const sel of locSelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.trim()
+        if (text && text.length > 1 && text.length < 100) {
+          result.location = text
+          break
+        }
+      }
+    }
+  }
+
+  // Generic salary fallback
+  if (!result.salary) {
+    const salSelectors = [
+      '[class*="salary" i]',
+      '[class*="compensation" i]',
+      '[class*="stipend" i]',
+      '[class*="pay" i]',
+      '[class*="remuneration" i]',
+    ]
+    for (const sel of salSelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.trim()
+        if (text && text.length > 1 && text.length < 80) {
+          result.salary = text
+          break
+        }
+      }
+    }
+  }
+
+  // Generic job type fallback
+  if (!result.jobType) {
+    const typeSelectors = [
+      '[class*="job-type" i]',
+      '[class*="jobType" i]',
+      '[class*="employment-type" i]',
+      '[class*="work-type" i]',
+    ]
+    for (const sel of typeSelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.trim()
+        if (text && text.length > 2 && text.length < 40) {
+          result.jobType = text
+          break
+        }
+      }
+    }
+  }
+
+  // Generic description fallback
+  if (!result.description) {
+    const descSelectors = [
+      '[class*="job-description" i]',
+      '[class*="jobDescription" i]',
+      '[class*="description" i]',
+      '[class*="posting-requirements" i]',
+      '[class*="job-details" i]',
+      'article',
+      'main',
+    ]
+    for (const sel of descSelectors) {
+      const el = doc.querySelector(sel)
+      if (el) {
+        const text = el.textContent?.replace(/\s+/g, ' ').trim()
+        if (text && text.length > 50) {
+          result.description = text.slice(0, 3000)
+          break
+        }
+      }
     }
   }
 
@@ -229,8 +348,8 @@ function extractFromDom(): Partial<ExtractedJob> {
 }
 
 // ─── Page title fallback ───────────────────────────────────────────────────────
-function parsePageTitle(): Partial<ExtractedJob> {
-  const title = document.title
+function parsePageTitle(doc: Document = document): Partial<ExtractedJob> {
+  const title = doc.title || (typeof document !== 'undefined' ? document.title : '')
   // Common pattern: "Job Title at Company | Board" or "Job Title - Company"
   const atMatch = title.match(/^(.+?)\s+at\s+(.+?)(?:\s*[|\-–]|$)/i)
   if (atMatch) {
@@ -245,9 +364,26 @@ function parsePageTitle(): Partial<ExtractedJob> {
 
 // ─── Main detection function ──────────────────────────────────────────────────
 
-export function detectJob(doc: Document = (typeof document !== 'undefined' ? document : ({} as Document))): ExtractedJob | null {
-  const url = typeof window !== 'undefined' ? window.location.href : ''
+export function detectJob(
+  urlOrDoc?: string | Document,
+  maybeDoc?: Document
+): ExtractedJob | null {
+  let doc: Document = typeof document !== 'undefined' ? document : ({} as Document)
+  let url: string = typeof window !== 'undefined' ? window.location.href : ''
+
+  if (typeof urlOrDoc === 'string') {
+    url = urlOrDoc
+    if (maybeDoc && typeof maybeDoc.querySelectorAll === 'function') {
+      doc = maybeDoc
+    }
+  } else if (urlOrDoc && typeof (urlOrDoc as Document).querySelectorAll === 'function') {
+    doc = urlOrDoc as Document
+  }
+
   if (!url || typeof doc.querySelectorAll !== 'function') return null
+
+  // Safety Gate: Explicit non-job sites (YouTube, Google search, social media)
+  if (isExplicitlyNonJobSite(url)) return null
 
   // Step 1: URL pattern check — is this likely a job page?
   const urlMatch = JOB_URL_PATTERNS.some((p) => p.test(url))
@@ -258,14 +394,34 @@ export function detectJob(doc: Document = (typeof document !== 'undefined' ? doc
     .join(' ')
   const headingMatch = JOB_HEADING_PATTERNS.some((p) => p.test(allHeadings))
 
-  // If neither URL nor heading matches, not a job page
-  if (!urlMatch && !headingMatch) return null
-
   // Step 3: Extract data from multiple sources, merge with priority
-  const jsonLd = extractFromJsonLd()
-  const meta = extractFromMeta()
-  const dom = extractFromDom()
-  const pageTitleParsed = parsePageTitle()
+  const jsonLd = extractFromJsonLd(doc)
+  const meta = extractFromMeta(doc)
+  const dom = extractFromDom(doc, url)
+  const pageTitleParsed = parsePageTitle(doc)
+
+  // If JSON-LD JobPosting is found, it is definitely a job page
+  const hasJsonLdJob = Boolean(jsonLd?.title)
+
+  // If neither URL, heading, nor JSON-LD matches, not a confident job page
+  if (!urlMatch && !headingMatch && !hasJsonLdJob) return null
+
+  // On generic pages (non-ATS, non-verified portal), gate with multi-signal evidence
+  const isKnownJobBoard =
+    /linkedin\.com\/jobs/i.test(url) ||
+    /indeed\.com\/(viewjob|rc\/clk)/i.test(url) ||
+    /unstop\.com\/(jobs|internships|competitions)/i.test(url) ||
+    /greenhouse\.io/i.test(url) ||
+    /lever\.co/i.test(url) ||
+    /workable\.com/i.test(url) ||
+    /ashbyhq\.com/i.test(url) ||
+    /smartrecruiters\.com/i.test(url)
+
+  if (!hasJsonLdJob && !isKnownJobBoard) {
+    if (!isLikelyJobPage(doc, url)) {
+      return null
+    }
+  }
 
   // Merge: JSON-LD > DOM > meta > page title
   const merged = {
@@ -273,7 +429,8 @@ export function detectJob(doc: Document = (typeof document !== 'undefined' ? doc
     company: jsonLd?.company || dom?.company || meta?.company || pageTitleParsed?.company,
     location: jsonLd?.location || dom?.location,
     salary: jsonLd?.salary || dom?.salary,
-    description: jsonLd?.description,
+    jobType: jsonLd?.jobType || dom?.jobType,
+    description: jsonLd?.description || dom?.description || meta?.description,
   }
 
   // A job requires at minimum a title
@@ -290,6 +447,7 @@ export function detectJob(doc: Document = (typeof document !== 'undefined' ? doc
     company: merged.company || 'Unknown Company',
     location: merged.location,
     salary: merged.salary,
+    jobType: merged.jobType,
     description: merged.description,
     jobUrl: url,
     sourceWebsite: detectSourceWebsite(url),

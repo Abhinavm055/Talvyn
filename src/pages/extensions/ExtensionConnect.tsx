@@ -111,6 +111,12 @@ export default function ExtensionConnect() {
           }
 
           if (response && response.success) {
+            try {
+              localStorage.setItem('talvyn_connected_extension_id', extensionId)
+              document.documentElement.setAttribute('data-talvyn-extension-id', extensionId)
+            } catch {
+              /* ignore */
+            }
             setStatus('success')
           } else {
             setStatus('error')

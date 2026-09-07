@@ -93,36 +93,57 @@ export class UnstopAdapter implements SiteAdapter {
 
   isJobDetailPage(url: string, doc?: Document): boolean {
     const clean = url.toLowerCase()
+
+    // If it is clearly a listing page or has multiple opportunity cards, it is NOT a detail page
+    if (this.isJobListingPage(url, doc)) {
+      return false
+    }
+
+    const cardCount = doc?.querySelectorAll?.(
+      '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity'
+    )?.length || 0
+
+    if (cardCount >= 2) {
+      return false
+    }
+
     const isDetailUrl =
-      /\/jobs\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/internships\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/competitions\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/hackathons\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/workshops\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/conferences\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/quizzes\/[a-zA-Z0-9_-]+/i.test(clean) ||
-      /\/p\/[a-zA-Z0-9_-]+/i.test(clean)
+      /\/jobs\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/internships\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/competitions\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/hackathons\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/workshops\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/conferences\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/quizzes\/[a-zA-Z0-9_-]+-\d+/i.test(clean) ||
+      /\/p\/[a-zA-Z0-9_-]+/i.test(clean) ||
+      (/\/(jobs|internships|competitions)\/[a-zA-Z0-9_-]{4,}/i.test(clean) && !/\/(jobs|internships|competitions)\/(search|all|\?|$)/i.test(clean))
 
     const hasTitle = Boolean(doc?.querySelector?.('h1, h1.title, [class*="job-title" i], [class*="opp_title" i], [class*="opp-title" i]'))
     const hasApplyOrRegBtn = Boolean(doc?.querySelector?.('button[class*="apply" i], a[class*="apply" i], button[class*="register" i], a[class*="register" i]'))
 
-    return isDetailUrl || (hasTitle && hasApplyOrRegBtn)
+    if (isDetailUrl) {
+      return true
+    }
+
+    return Boolean(hasTitle && hasApplyOrRegBtn)
   }
 
   isJobListingPage(url: string, doc?: Document): boolean {
     const clean = url.toLowerCase()
     const isListUrl =
       /\/jobs\/?(\?.*)?$/i.test(clean) ||
+      /\/jobs\/search/i.test(clean) ||
       /\/internships\/?(\?.*)?$/i.test(clean) ||
+      /\/internships\/search/i.test(clean) ||
       /\/competitions\/?(\?.*)?$/i.test(clean) ||
       /\/all-opportunities/i.test(clean) ||
       clean.includes('opportunity=')
 
     const cardCount = doc?.querySelectorAll?.(
-      '[class*="opportunity_card" i], [class*="opp-card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity'
+      '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], [class*="opportunity" i], .single_opportunity'
     )?.length || 0
 
-    return isListUrl || cardCount >= 2
+    return Boolean(isListUrl || cardCount >= 1)
   }
 
   extractJobList(doc: Document): ExtractedJob[] {
@@ -131,11 +152,16 @@ export class UnstopAdapter implements SiteAdapter {
 
     const cardElements = Array.from(
       doc.querySelectorAll(
-        '[class*="opportunity_card" i], [class*="opp-card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity'
+        '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity, [class*="opportunity" i]'
       )
     )
 
     for (const card of cardElements) {
+      // Filter out non-card parent containers if matching [class*="opportunity" i] broadly
+      if (card.children.length > 25 && card.querySelectorAll('[class*="opportunity" i]').length > 1) {
+        continue
+      }
+
       const titleEl = card.querySelector(
         'h2, h3, h4, h1, [class*="title" i], [class*="opp_title" i], [class*="heading" i], a'
       )
@@ -164,6 +190,7 @@ export class UnstopAdapter implements SiteAdapter {
         location = location.replace(/\s+/g, ' ').trim()
       }
 
+      // Reject non-job items (e.g. pure generic cards or empty titles)
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)
         jobs.push({

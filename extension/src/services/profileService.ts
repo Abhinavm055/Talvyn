@@ -6,4 +6,5 @@ import { UserProfile } from '../types'
  */
 export const profileService = {
   get: (): Promise<UserProfile> => api.get<UserProfile>('/api/profile'),
+  update: (data: Partial<UserProfile>): Promise<UserProfile> => api.put<UserProfile>('/api/profile', data),
 }

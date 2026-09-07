@@ -1,6 +1,7 @@
 import { ExtractedJob, UserProfile, AnalyzedJob, JobListAnalysisSummary } from '../types'
 import { adapterRegistry } from './adapters/registry'
 import { analyzeJobRelevance } from '../services/relevanceScorer'
+import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing } from './jobEvidenceDetector'
 
 export type PageClassification = 'SINGLE_JOB' | 'JOB_LIST' | 'OTHER'
 
@@ -20,16 +21,29 @@ export class JobScanner {
    * Classifies current page as SINGLE_JOB, JOB_LIST, or OTHER
    */
   classifyPage(url: string, doc: Document): { classification: PageClassification; adapterName: string } {
+    if (isExplicitlyNonJobSite(url)) {
+      return { classification: 'OTHER', adapterName: 'None' }
+    }
+
     const adapter = adapterRegistry.getAdapter(url, doc)
 
-    // Check detail page first
+    // Check listing page first to prevent multi-job pages from misclassifying
+    if (adapter.isJobListingPage(url, doc)) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
+    }
+
+    // Check detail page
     if (adapter.isJobDetailPage(url, doc)) {
       return { classification: 'SINGLE_JOB', adapterName: adapter.name }
     }
 
-    // Check listing page
-    if (adapter.isJobListingPage(url, doc)) {
+    // High-confidence fallback checks
+    if (isLikelyJobListing(doc, url)) {
       return { classification: 'JOB_LIST', adapterName: adapter.name }
+    }
+
+    if (isLikelyJobPage(doc, url)) {
+      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
     }
 
     return { classification: 'OTHER', adapterName: adapter.name }
@@ -39,6 +53,7 @@ export class JobScanner {
    * Scans a single job detail page
    */
   scanSingleJob(url: string, doc: Document): ExtractedJob | null {
+    if (isExplicitlyNonJobSite(url)) return null
     const adapter = adapterRegistry.getAdapter(url, doc)
     return adapter.extractSingleJob(doc)
   }
@@ -53,6 +68,19 @@ export class JobScanner {
     userProfile: UserProfile,
     existingSavedUrls: Set<string> = new Set()
   ): JobListAnalysisSummary {
+    if (isExplicitlyNonJobSite(url)) {
+      return {
+        totalDetected: 0,
+        excellentCount: 0,
+        highlyRelevantCount: 0,
+        relevantCount: 0,
+        lowRelevanceCount: 0,
+        analyzedJobs: [],
+        pageUrl: url,
+        scannedAt: new Date().toISOString(),
+      }
+    }
+
     const adapter = adapterRegistry.getAdapter(url, doc)
     const rawJobs = adapter.extractJobList(doc)
 

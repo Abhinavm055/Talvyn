@@ -57,12 +57,16 @@ export interface JobNormalizationResult {
   missingSkills: string[]
   roleMatchStatus: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
   roleMatchReason: string
+  roleRequiredText?: string
+  roleProfileText?: string
   experienceMatchStatus: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
   experienceMatchReason: string
   experienceRequiredText?: string
   experienceProfileText?: string
   educationMatchStatus: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
   educationMatchReason: string
+  educationRequiredText?: string
+  educationProfileText?: string
   skillsMatchStatus: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
   skillsMatchReason: string
   locationMatchStatus: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
@@ -414,12 +418,16 @@ export function normalizeJob(
     missingSkills,
     roleMatchStatus,
     roleMatchReason,
+    roleRequiredText: title,
+    roleProfileText: profile.preferredRoles?.length ? profile.preferredRoles.join(', ') : 'Not specified',
     experienceMatchStatus,
     experienceMatchReason,
     experienceRequiredText: experienceMatch.requiredText,
     experienceProfileText: experienceMatch.profileText,
     educationMatchStatus,
     educationMatchReason,
+    educationRequiredText: educationMatch.requiredText,
+    educationProfileText: profile.degree ? `${profile.degree}${profile.specialization ? ` (${profile.specialization})` : ''}` : 'Not specified',
     skillsMatchStatus,
     skillsMatchReason,
     locationMatchStatus,

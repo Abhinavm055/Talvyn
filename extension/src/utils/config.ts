@@ -27,3 +27,27 @@ export const CONFIG = {
 } as const
 
 export type Config = typeof CONFIG
+
+export type DashboardRoute = 'dashboard' | 'profile' | 'tracker' | 'settings' | 'signup' | 'connect'
+
+export function getDashboardRouteUrl(route: DashboardRoute, extensionId?: string): string {
+  const base = CONFIG.DASHBOARD_URL.replace(/\/+$/, '')
+  switch (route) {
+    case 'dashboard':
+      return `${base}/dashboard`
+    case 'profile':
+      return `${base}/profile`
+    case 'tracker':
+      return `${base}/tracker`
+    case 'settings':
+      return `${base}/extensions`
+    case 'signup':
+      return `${base}/signup`
+    case 'connect':
+      return extensionId
+        ? `${base}/extension/connect?extId=${encodeURIComponent(extensionId)}`
+        : `${base}/extension/connect`
+    default:
+      return `${base}/dashboard`
+  }
+}

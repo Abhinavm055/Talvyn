@@ -261,12 +261,16 @@ export default function Tracker() {
     const activeId = active.id as string
     const overId = over.id as string
 
-    // 1. Hovered over a column directly
-    const overColumn = TRACKER_COLUMNS.find((c) => c.id === overId)
-    if (overColumn) {
+    // 1. Hovered over a column directly or via droppable data
+    const overColStatus =
+      over.data?.current?.type === 'column'
+        ? (over.data.current.status as JobStatus)
+        : TRACKER_COLUMNS.find((c) => c.id === overId)?.id
+
+    if (overColStatus) {
       setLocalJobs((prev) => {
         const base = prev || serverJobs
-        return base.map((j) => (j.id === activeId ? { ...j, status: overColumn.id } : j))
+        return base.map((j) => (j.id === activeId ? { ...j, status: overColStatus } : j))
       })
       return
     }
@@ -295,13 +299,17 @@ export default function Tracker() {
     const overId = over.id as string
 
     // Determine target column
-    const directCol = TRACKER_COLUMNS.find((c) => c.id === overId)
+    const overColStatus =
+      over.data?.current?.type === 'column'
+        ? (over.data.current.status as JobStatus)
+        : TRACKER_COLUMNS.find((c) => c.id === overId)?.id
+
     const overJob = (localJobs || serverJobs).find((j) => j.id === overId)
     const currentMovedJob = localJobs?.find((j) => j.id === activeId)
 
     let targetStatus: JobStatus | undefined
-    if (directCol) {
-      targetStatus = directCol.id
+    if (overColStatus) {
+      targetStatus = overColStatus
     } else if (overJob) {
       targetStatus = normalizeStatusForColumn(overJob.status)
     } else if (currentMovedJob) {

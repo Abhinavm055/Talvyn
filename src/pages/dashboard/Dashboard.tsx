@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -76,6 +77,13 @@ export default function Dashboard() {
     user?.profile?.legalFullName?.split(' ')[0] ||
     'there'
 
+  const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [avatarUrl])
+
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -88,10 +96,11 @@ export default function Dashboard() {
           className="flex items-center gap-3.5 group cursor-pointer rounded-2xl p-1.5 -ml-1.5 transition-all hover:bg-slate-100/70 dark:hover:bg-[#151A29]/70 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
           title="View and Edit Profile"
         >
-          {user?.avatarUrl ? (
+          {avatarUrl && !imgError ? (
             <img
-              src={user.avatarUrl}
+              src={avatarUrl}
               alt={displayName}
+              onError={() => setImgError(true)}
               className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-slate-200 dark:ring-[#252B3A] shadow-xs group-hover:ring-primary-500 dark:group-hover:ring-violet-400 transition-all"
             />
           ) : (

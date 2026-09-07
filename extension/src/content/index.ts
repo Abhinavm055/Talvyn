@@ -28,12 +28,14 @@ import { profileService } from '../services/profileService'
 import { ExtractedJob, UserProfile, AnalyzedJob, Resume } from '../types'
 import {
   isRuntimeActive,
+  isExtensionContextValid,
   setRuntimeReady,
   onExtensionShutdown,
   shutdownExtensionRuntime,
 } from '../utils/extensionContext'
 
 import { normalizeJob } from './jobNormalizer'
+import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing } from './jobEvidenceDetector'
 
 let currentSingleJob: ExtractedJob | null = null
 let isSinglePanelVisible = false
@@ -57,9 +59,48 @@ onExtensionShutdown(() => {
 try {
   if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
     document.documentElement.setAttribute('data-talvyn-extension-id', chrome.runtime.id)
+    try {
+      window.localStorage.setItem('talvyn_connected_extension_id', chrome.runtime.id)
+    } catch {}
     window.dispatchEvent(new CustomEvent('talvyn:extension-ready', { detail: { extensionId: chrome.runtime.id } }))
     console.log('[Talvyn] EXTENSION_READY')
   }
+} catch {
+  /* ignore */
+}
+
+// Listen for logout events dispatched by the Talvyn web dashboard to synchronize logout
+try {
+  window.addEventListener('talvyn:auth-logout', () => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'DISCONNECT_TALVYN' }, () => {
+          if (chrome.runtime?.lastError) {
+            /* ignore */
+          }
+        })
+      }
+    } catch {
+      /* ignore */
+    }
+  })
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return
+    if (event.data?.type === 'TALVYN_DISCONNECT_EXTENSION') {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: 'DISCONNECT_TALVYN' }, () => {
+            if (chrome.runtime?.lastError) {
+              /* ignore */
+            }
+          })
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  })
 } catch {
   /* ignore */
 }
@@ -224,34 +265,7 @@ async function analyzeAndRenderPage(): Promise<void> {
     const summary = jobScanner.scanJobListing(url, doc, profile)
 
     if (summary.totalDetected > 0) {
-      isDiscoveryPanelVisible = true
-      discoveryPanelManager.render(summary, {
-        onSaveJob: async (analyzed: AnalyzedJob) => {
-          const token = await getToken()
-          if (!token) {
-            alert('Please connect your Talvyn account via the extension popup to save jobs.')
-            throw new Error('Not authenticated')
-          }
-          const normResult = normalizeJob(analyzed.job, profile)
-          const normalized = normResult.normalized
-          console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
-          const saved = await jobsService.save({
-            title: normalized.title,
-            company: normalized.company,
-            jobUrl: normalized.jobUrl,
-            sourceWebsite: normalized.sourceWebsite,
-            location: normalized.location || undefined,
-            salary: normalized.salary || undefined,
-            description: normalized.description || undefined,
-            jobType: normalized.jobType,
-            status: 'SAVED',
-          })
-          console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
-        },
-        onDismiss: () => {
-          isDiscoveryPanelVisible = false
-        },
-      })
+      renderDiscoveryView(summary)
     } else {
       discoveryPanelManager.remove()
       isDiscoveryPanelVisible = false
@@ -265,7 +279,7 @@ async function analyzeAndRenderPage(): Promise<void> {
     autofillCoordinator.dismiss()
     isDiscoveryPanelVisible = false
 
-    currentSingleJob = jobScanner.scanSingleJob(url, doc) || detectJob()
+    currentSingleJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
     if (!currentSingleJob) return
 
     console.log(`[Talvyn] JOB_DETECTED: ${currentSingleJob.title} at ${currentSingleJob.company}`)
@@ -280,6 +294,70 @@ async function analyzeAndRenderPage(): Promise<void> {
   autofillCoordinator.dismiss()
   isSinglePanelVisible = false
   isDiscoveryPanelVisible = false
+}
+
+let listingObserver: MutationObserver | null = null
+function startListingObserver(): void {
+  if (listingObserver || typeof MutationObserver === 'undefined') return
+  listingObserver = new MutationObserver(() => {
+    if (!isDiscoveryPanelVisible || !isRuntimeActive()) return
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(async () => {
+      if (!isDiscoveryPanelVisible || !isRuntimeActive()) return
+      const url = window.location.href
+      const doc = document
+      const { classification } = jobScanner.classifyPage(url, doc)
+      if (classification === 'JOB_LIST') {
+        const profile = await getUserPreferences()
+        const summary = jobScanner.scanJobListing(url, doc, profile)
+        if (summary.totalDetected > 0) {
+          discoveryPanelManager.updateSummary(summary)
+        }
+      }
+    }, 1200)
+  })
+  if (document.body) {
+    listingObserver.observe(document.body, { childList: true, subtree: true })
+  }
+}
+
+function renderDiscoveryView(summary: JobListAnalysisSummary): void {
+  isDiscoveryPanelVisible = true
+  startListingObserver()
+  discoveryPanelManager.render(summary, {
+    onSaveJob: async (analyzed: AnalyzedJob) => {
+      const token = await getToken()
+      if (!token) {
+        alert('Please connect your Talvyn account via the extension popup to save jobs.')
+        throw new Error('Not authenticated')
+      }
+      const profile = await getUserPreferences()
+      const normResult = normalizeJob(analyzed.job, profile)
+      const normalized = normResult.normalized
+      console.log(`[Talvyn] JOB_SAVE_STARTED: ${normalized.title} at ${normalized.company}`)
+      const saved = await jobsService.save({
+        title: normalized.title,
+        company: normalized.company,
+        jobUrl: normalized.jobUrl,
+        sourceWebsite: normalized.sourceWebsite,
+        location: normalized.location || undefined,
+        salary: normalized.salary || undefined,
+        description: normalized.description || undefined,
+        jobType: normalized.jobType,
+        status: 'SAVED',
+      })
+      console.log(`[Talvyn] JOB_SAVE_SUCCESS: ${saved.id} (Title: ${saved.title})`)
+    },
+    onDismiss: () => {
+      isDiscoveryPanelVisible = false
+    },
+    onRefresh: async () => {
+      console.log('[Talvyn] Re-analyzing listing page on user request')
+      const profile = await getUserPreferences()
+      const freshSummary = jobScanner.scanJobListing(window.location.href, document, profile)
+      discoveryPanelManager.updateSummary(freshSummary)
+    },
+  })
 }
 
 async function showSinglePanel(job: ExtractedJob): Promise<void> {
@@ -304,15 +382,32 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
   }
   const readiness = readinessScorer.calculateReadiness(profile, resumes)
 
+  const panelOptions = {
+    opportunityType: opp.type,
+    readiness,
+    deadline: opp.deadline,
+    normalization: normResult,
+    isConnected: Boolean(token),
+    theme: (profile as any)?.themePreference || 'system',
+    userProfile: profile,
+    resumeName: resumes[0]?.fileName || 'Default Resume',
+    onProfileUpdated: async (updatedProfile: UserProfile) => {
+      console.log('[Talvyn] Profile updated from intelligence window:', updatedProfile)
+      const user = await getUser()
+      if (user) {
+        await setUser({ ...user, profile: updatedProfile })
+      }
+    },
+  }
+
   if (!token) {
-    injectPanel(normResult.normalized, () => {}, handleSingleApply, () => { isSinglePanelVisible = false }, {
-      opportunityType: opp.type,
-      readiness,
-      deadline: opp.deadline,
-      normalization: normResult,
-      isConnected: false,
-      theme: (profile as any)?.themePreference || 'system',
-    })
+    injectPanel(
+      normResult.normalized,
+      (customJob, customProfile) => handleSingleSave(customJob, customProfile),
+      handleSingleApply,
+      () => { isSinglePanelVisible = false },
+      panelOptions
+    )
     updatePanelState({ type: 'logged-out', opportunityType: opp.type, job: normResult.normalized, normalization: normResult })
     return
   }
@@ -321,14 +416,13 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     const check = await jobsService.checkDuplicate(job.jobUrl)
     if (check.exists && check.job) {
       console.log(`[Talvyn] JOB_ALREADY_SAVED: ${check.job.id} (${check.job.title})`)
-      injectPanel(normResult.normalized, handleSingleSave, handleSingleApply, () => { isSinglePanelVisible = false }, {
-        opportunityType: opp.type,
-        readiness,
-        deadline: opp.deadline,
-        normalization: normResult,
-        isConnected: true,
-        theme: (profile as any)?.themePreference || 'system',
-      })
+      injectPanel(
+        normResult.normalized,
+        (customJob, customProfile) => handleSingleSave(customJob, customProfile),
+        handleSingleApply,
+        () => { isSinglePanelVisible = false },
+        panelOptions
+      )
 
       const status = check.job.status
       if (status === 'APPLIED') {
@@ -371,14 +465,13 @@ async function showSinglePanel(job: ExtractedJob): Promise<void> {
     /* proceed */
   }
 
-  injectPanel(normResult.normalized, handleSingleSave, handleSingleApply, () => { isSinglePanelVisible = false }, {
-    opportunityType: opp.type,
-    readiness,
-    deadline: opp.deadline,
-    normalization: normResult,
-    isConnected: true,
-    theme: (profile as any)?.themePreference || 'system',
-  })
+  injectPanel(
+    normResult.normalized,
+    (customJob, customProfile) => handleSingleSave(customJob, customProfile),
+    handleSingleApply,
+    () => { isSinglePanelVisible = false },
+    panelOptions
+  )
 }
 
 async function handleSingleApply(): Promise<void> {
@@ -436,12 +529,14 @@ async function handleSingleApply(): Promise<void> {
   }, 600)
 }
 
-async function handleSingleSave(): Promise<void> {
-  if (!currentSingleJob) return
+async function handleSingleSave(customJob?: ExtractedJob, customProfile?: any): Promise<void> {
+  if (!currentSingleJob && !customJob) return
+  const jobToSave = customJob || currentSingleJob!
+  currentSingleJob = jobToSave
   updatePanelState({ type: 'loading' })
 
   const profile = await getUserPreferences()
-  const normResult = normalizeJob(currentSingleJob, profile)
+  const normResult = normalizeJob(jobToSave, profile)
   const normalized = normResult.normalized
 
   const payload = {
@@ -454,6 +549,14 @@ async function handleSingleSave(): Promise<void> {
     description: normalized.description || undefined,
     jobType: normalized.jobType,
     status: 'SAVED' as const,
+  }
+
+  if (customProfile && Object.keys(customProfile).length > 0) {
+    try {
+      await profileService.update(customProfile)
+    } catch {
+      /* non-fatal profile update */
+    }
   }
 
   console.log('[Talvyn] JOB_NORMALIZED:', JSON.stringify(payload, null, 2))
@@ -563,34 +666,80 @@ async function safeAnalyzeAndRender(): Promise<void> {
 
 // ─── Extension Action Trigger (Icon Click) ──────────────────────────────────
 
-async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: string }> {
+async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: string; detectedJobs?: number }> {
   console.log('[Talvyn] Handling TALVYN_OPEN_INTELLIGENCE_PANEL')
   if (!isRuntimeActive()) return { success: false, mode: 'inactive' }
 
-  // 1. If single job detected or page is a single job page
-  const singleJob = detectJob(window.location.href, document)
-  if (singleJob) {
-    currentSingleJob = singleJob
-    await showSinglePanel(singleJob)
-    return { success: true, mode: 'single_job' }
-  }
-
-  // 2. If listing page
-  const multiResult = jobScanner.scanPage(window.location.href, document)
-  if (multiResult.isJobPage && multiResult.jobs.length > 0) {
-    await showDiscoveryPanel(multiResult.jobs)
-    return { success: true, mode: 'discovery' }
-  }
-
-  // 3. Unsupported page / no job detected
+  const url = window.location.href
+  const doc = document
   const profile = await getUserPreferences()
+
+  // Safety Gate: Explicit non-job sites (YouTube, Google SERP, social media)
+  if (isExplicitlyNonJobSite(url)) {
+    discoveryPanelManager.remove()
+    isDiscoveryPanelVisible = false
+    injectUnsupportedNotice(
+      () => {
+        removePanel()
+      },
+      () => {
+        handleOpenIntelligencePanel()
+      },
+      (profile as any)?.themePreference || 'system'
+    )
+    return { success: true, mode: 'not-job-page' }
+  }
+
+  // 1. Classification check
+  const { classification } = jobScanner.classifyPage(url, doc)
+
+  // A. Job Listing Page (Prioritize listing if classified or likely)
+  if (classification === 'JOB_LIST' || isLikelyJobListing(doc, url)) {
+    removePanel()
+    isSinglePanelVisible = false
+    const summary = jobScanner.scanJobListing(url, doc, profile)
+    if (summary.totalDetected >= 1) {
+      renderDiscoveryView(summary)
+      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
+    }
+  }
+
+  // B. Single Job Detail Page
+  if (classification === 'SINGLE_JOB' || isLikelyJobPage(doc, url)) {
+    const job = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
+    if (job && isLikelyJobPage(doc, url)) {
+      currentSingleJob = job
+      discoveryPanelManager.remove()
+      isDiscoveryPanelVisible = false
+      await showSinglePanel(job)
+      return { success: true, mode: 'single-job' }
+    }
+  }
+
+  // C. Fallback: Re-verify if any valid job listing cards exist
+  if (isLikelyJobListing(doc, url)) {
+    const fallbackSummary = jobScanner.scanJobListing(url, doc, profile)
+    if (fallbackSummary.totalDetected >= 1) {
+      removePanel()
+      isSinglePanelVisible = false
+      renderDiscoveryView(fallbackSummary)
+      return { success: true, mode: 'job-listing', detectedJobs: fallbackSummary.totalDetected }
+    }
+  }
+
+  // D. Could not detect job on this page
+  discoveryPanelManager.remove()
+  isDiscoveryPanelVisible = false
   injectUnsupportedNotice(
     () => {
       removePanel()
     },
+    () => {
+      handleOpenIntelligencePanel()
+    },
     (profile as any)?.themePreference || 'system'
   )
-  return { success: true, mode: 'unsupported' }
+  return { success: true, mode: 'not-job-page' }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

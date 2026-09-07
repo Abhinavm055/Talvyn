@@ -11,6 +11,8 @@ interface AuthState {
   logout: () => void
 }
 
+import { notifyExtensionDisconnect } from '../utils/extensionSync'
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -19,7 +21,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       setAuth: (token, user) => set({ token, user, isAuthenticated: true }),
       setUser: (user) => set({ user }),
-      logout: () => set({ token: null, user: null, isAuthenticated: false }),
+      logout: () => {
+        notifyExtensionDisconnect().catch(() => {})
+        set({ token: null, user: null, isAuthenticated: false })
+      },
     }),
     {
       name: 'talvyn-auth',

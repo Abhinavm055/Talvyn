@@ -105,6 +105,8 @@ function setupDomMock() {
       getElementById(id: string) {
         return elements.get(id) || null
       },
+      addEventListener(_event: string, _cb: any) {},
+      removeEventListener(_event: string, _cb: any) {},
     }
 
     ;(global as any).document = mockDoc

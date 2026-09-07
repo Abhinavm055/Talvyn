@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -16,6 +17,8 @@ import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { cn } from '../../lib/utils'
 
+import { notifyExtensionDisconnect } from '../../utils/extensionSync'
+
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/jobs', icon: Briefcase, label: 'My Jobs' },
@@ -30,7 +33,14 @@ export function Sidebar() {
   const { theme, setTheme } = useThemeStore()
   const navigate = useNavigate()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Notify extension through multiple channels (chrome.runtime, DOM event, postMessage)
+    try {
+      await notifyExtensionDisconnect()
+    } catch {
+      /* ignore messaging errors during logout */
+    }
+
     logout()
     navigate('/login')
   }
@@ -43,6 +53,11 @@ export function Sidebar() {
     'User'
 
   const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [avatarUrl])
 
   return (
     <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-white dark:bg-[#0D101A] border-r border-[#E2E5EC] dark:border-[#252B3A] transition-colors duration-150 select-none">
@@ -154,10 +169,11 @@ export function Sidebar() {
           }
           title="View Profile"
         >
-          {avatarUrl ? (
+          {avatarUrl && !imgError ? (
             <img
               src={avatarUrl}
               alt={displayName}
+              onError={() => setImgError(true)}
               className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-[#252B3A] shadow-2xs group-hover:ring-primary-400 dark:group-hover:ring-violet-400 transition-all"
             />
           ) : (

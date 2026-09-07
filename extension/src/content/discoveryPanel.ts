@@ -1,9 +1,10 @@
 import { AnalyzedJob, JobListAnalysisSummary } from '../types'
 import { CONFIG } from '../utils/config'
+import { makeElementDraggable, POSITION_STORAGE_KEY, getTalvynHost, getTalvynElement } from './panel'
 
-const DISCOVERY_PANEL_ID = 'talvyn-discovery-panel'
+export const DISCOVERY_PANEL_ID = 'talvyn-discovery-panel'
 
-export type FilterCategory = 'ALL' | 'HIGHLY_RELEVANT' | 'RELEVANT' | 'LOW_RELEVANCE' | 'SAVED'
+export type FilterCategory = 'ALL' | 'STRONG' | 'GOOD' | 'MODERATE' | 'LOW' | 'SAVED'
 
 export interface DiscoveryPanelCallbacks {
   onSaveJob: (job: AnalyzedJob, btnEl: HTMLButtonElement) => Promise<void>
@@ -16,7 +17,6 @@ export class DiscoveryPanelManager {
   private currentFilter: FilterCategory = 'ALL'
   private summary: JobListAnalysisSummary | null = null
   private callbacks: DiscoveryPanelCallbacks | null = null
-  private savingJobIds = new Set<string>()
 
   render(summary: JobListAnalysisSummary, callbacks: DiscoveryPanelCallbacks): void {
     this.summary = summary
@@ -26,20 +26,27 @@ export class DiscoveryPanelManager {
     const panel = document.createElement('div')
     panel.id = DISCOVERY_PANEL_ID
     panel.setAttribute('data-talvyn', 'true')
+    panel.style.pointerEvents = 'auto'
 
     panel.innerHTML = this.isMinimized
       ? this.buildMinimizedHTML(summary)
       : this.buildExpandedHTML(summary)
 
     this.applyStyles(panel, this.isMinimized)
-    document.body.appendChild(panel)
+    const { shadow } = getTalvynHost()
+    shadow.appendChild(panel)
+
+    const header = panel.querySelector('#talvyn-discovery-header') as HTMLElement | null
+    if (header) {
+      makeElementDraggable(panel, header, POSITION_STORAGE_KEY)
+    }
 
     this.attachEventListeners(panel)
   }
 
   updateSummary(summary: JobListAnalysisSummary): void {
     this.summary = summary
-    const panel = document.getElementById(DISCOVERY_PANEL_ID)
+    const panel = getTalvynElement(DISCOVERY_PANEL_ID)
     if (!panel || !this.callbacks) return
 
     panel.innerHTML = this.isMinimized
@@ -47,11 +54,18 @@ export class DiscoveryPanelManager {
       : this.buildExpandedHTML(summary)
 
     this.applyStyles(panel, this.isMinimized)
+    const header = panel.querySelector('#talvyn-discovery-header') as HTMLElement | null
+    if (header) {
+      makeElementDraggable(panel, header, POSITION_STORAGE_KEY)
+    }
     this.attachEventListeners(panel)
   }
 
   remove(): void {
-    document.getElementById(DISCOVERY_PANEL_ID)?.remove()
+    getTalvynElement(DISCOVERY_PANEL_ID)?.remove()
+    if (typeof document !== 'undefined') {
+      document.getElementById(DISCOVERY_PANEL_ID)?.remove()
+    }
   }
 
   // ─── HTML Builders ─────────────────────────────────────────────────────────
@@ -80,20 +94,20 @@ export class DiscoveryPanelManager {
 
     return `
       <div style="display:flex;flex-direction:column;max-height:560px;">
-        <!-- Header -->
-        <div style="
-          padding:14px 16px;background:#4f46e5;border-top-left-radius:14px;
+        <!-- Header (Draggable Handle) -->
+        <div id="talvyn-discovery-header" style="
+          padding:12px 14px;background:#4f46e5;border-top-left-radius:14px;
           border-top-right-radius:14px;color:white;display:flex;align-items:center;
-          justify-content:space-between;flex-shrink:0;
-        ">
-          <div style="display:flex;align-items:center;gap:9px;">
+          justify-content:space-between;flex-shrink:0;cursor:grab;user-select:none;
+        " title="Drag to move panel">
+          <div style="display:flex;align-items:center;gap:8px;">
             <div style="
-              width:26px;height:26px;background:rgba(255,255,255,0.2);border-radius:8px;
-              display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+              width:24px;height:24px;background:rgba(255,255,255,0.2);border-radius:6px;
+              display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;
             ">T</div>
             <div>
-              <div style="font-weight:800;font-size:13.5px;letter-spacing:0.4px;">TALVYN JOB INTELLIGENCE</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} jobs found</div>
+              <div style="font-weight:800;font-size:13px;letter-spacing:0.3px;">TALVYN JOB INTELLIGENCE</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} jobs analyzed</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
@@ -108,67 +122,77 @@ export class DiscoveryPanelManager {
           </div>
         </div>
 
-        <!-- Metrics Bar -->
+        <!-- Metrics Breakdown Bar -->
         <div style="
-          padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;
+          padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;
           display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:4px;
         ">
           <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
             <span style="
-              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;
               background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;
             ">
-              🟢 Strong Match ${summary.excellentCount}
+              Strong Match: ${summary.excellentCount}
             </span>
             <span style="
-              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;
               background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;
             ">
-              🟢 Good Match ${summary.highlyRelevantCount}
+              Good Match: ${summary.highlyRelevantCount}
             </span>
             <span style="
-              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;
               background:#fffbeb;color:#92400e;border:1px solid #fde68a;
             ">
-              🟡 Moderate Match ${summary.relevantCount}
+              Moderate Match: ${summary.relevantCount}
             </span>
             <span style="
-              font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+              font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;
               background:#fef2f2;color:#991b1b;border:1px solid #fecaca;
             ">
-              🔴 Low Match ${summary.lowRelevanceCount}
+              Low Match: ${summary.lowRelevanceCount}
             </span>
           </div>
-          <a href="${CONFIG.DASHBOARD_URL}/dashboard" target="_blank" style="
-            font-size:11px;color:#4f46e5;font-weight:600;text-decoration:none;white-space:nowrap;
-          ">Dashboard →</a>
+        </div>
+
+        <!-- Action & Control Bar: [ Analyze This Page ] and [ Save Top Matches ] -->
+        <div style="
+          display:flex;padding:8px 12px;gap:6px;background:#ffffff;
+          border-bottom:1px solid #f1f5f9;align-items:center;justify-content:space-between;flex-shrink:0;
+        ">
+          <button id="talvyn-reanalyze-page-btn" style="
+            padding:5px 10px;background:#f8fafc;color:#4f46e5;border:1px solid #c7d2fe;
+            border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;
+            transition:all 0.15s;
+          ">
+            <span>🔄</span> Analyze This Page
+          </button>
+
+          <button id="talvyn-save-all-top-btn" ${topCount === 0 ? 'disabled' : ''} style="
+            padding:5px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);color:white;border:none;border-radius:8px;
+            font-size:11px;font-weight:700;cursor:${topCount === 0 ? 'not-allowed' : 'pointer'};white-space:nowrap;
+            opacity:${topCount === 0 ? '0.6' : '1'};box-shadow:0 1px 4px rgba(79,70,229,0.3);transition:background 0.15s;
+          ">
+            ★ Save Top Matches (${topCount})
+          </button>
         </div>
 
         <!-- Filter Tabs -->
         <div style="
-          display:flex;padding:8px 12px;gap:4px;background:#ffffff;
-          border-bottom:1px solid #f1f5f9;overflow-x:auto;flex-shrink:0;align-items:center;justify-content:space-between;
+          display:flex;padding:6px 12px;gap:4px;background:#f8fafc;
+          border-bottom:1px solid #e2e8f0;overflow-x:auto;flex-shrink:0;align-items:center;
         ">
-          <div style="display:flex;gap:4px;overflow-x:auto;">
-            ${this.renderFilterTab('ALL', `All (${summary.totalDetected})`)}
-            ${this.renderFilterTab('HIGHLY_RELEVANT', `Top (${topCount})`)}
-            ${this.renderFilterTab('RELEVANT', `Moderate (${summary.relevantCount})`)}
-            ${this.renderFilterTab('LOW_RELEVANCE', `Low (${summary.lowRelevanceCount})`)}
-          </div>
-          ${topCount > 0 ? `
-            <button id="talvyn-save-all-top-btn" style="
-              padding:4px 10px;background:#4f46e5;color:white;border:none;border-radius:12px;
-              font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:4px;
-              box-shadow:0 1px 4px rgba(79,70,229,0.3);transition:background 0.15s;
-            ">
-              Save Top Matches (${topCount})
-            </button>
-          ` : ''}
+          ${this.renderFilterTab('ALL', `All (${summary.totalDetected})`)}
+          ${this.renderFilterTab('STRONG', `Strong (${summary.excellentCount})`)}
+          ${this.renderFilterTab('GOOD', `Good (${summary.highlyRelevantCount})`)}
+          ${this.renderFilterTab('MODERATE', `Moderate (${summary.relevantCount})`)}
+          ${this.renderFilterTab('LOW', `Low (${summary.lowRelevanceCount})`)}
+          ${this.renderFilterTab('SAVED', 'Saved')}
         </div>
 
         <!-- Scrollable Job List -->
         <div id="talvyn-cards-container" style="
-          padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;
+          padding:10px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;
           background:#f8fafc;
         ">
           ${filteredJobs.length === 0 ? `
@@ -180,13 +204,13 @@ export class DiscoveryPanelManager {
 
         <!-- Footer -->
         <div style="
-          padding:8px 14px;background:#ffffff;border-top:1px solid #e2e8f0;
+          padding:8px 12px;background:#ffffff;border-top:1px solid #e2e8f0;
           display:flex;align-items:center;justify-content:space-between;flex-shrink:0;font-size:11px;
         ">
           <span style="color:#94a3b8;">Deterministic relevance score</span>
-          <a href="${CONFIG.DASHBOARD_URL}/profile" target="_blank" style="
-            color:#6366f1;text-decoration:none;font-weight:500;
-          ">Edit Preferences ⚙</a>
+          <a href="${CONFIG.DASHBOARD_URL}/tracker" target="_blank" style="
+            color:#4f46e5;text-decoration:none;font-weight:600;
+          ">View in Tracker →</a>
         </div>
       </div>
     `
@@ -196,7 +220,7 @@ export class DiscoveryPanelManager {
     const isActive = this.currentFilter === category
     return `
       <button class="talvyn-tab-btn" data-filter="${category}" style="
-        padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600;cursor:pointer;
+        padding:3px 9px;border-radius:10px;font-size:10.5px;font-weight:600;cursor:pointer;
         border:1px solid ${isActive ? '#6366f1' : '#e2e8f0'};
         background:${isActive ? '#6366f1' : '#ffffff'};
         color:${isActive ? '#ffffff' : '#64748b'};
@@ -206,110 +230,127 @@ export class DiscoveryPanelManager {
   }
 
   private renderJobCard(analyzed: AnalyzedJob): string {
-    const { job, relevanceScore, category, matchedReasons, unmatchedReasons, isSaved } = analyzed
+    const { job, relevanceScore, category, isSaved } = analyzed
     const cardId = `job-card-${this.hashUrl(job.jobUrl)}`
 
     const expReq = analyzed.experienceMatch?.requiredText || 'Not specified'
     const eduReq = analyzed.educationMatch?.requiredText || 'Not specified'
+
+    const isRoleMatch = analyzed.roleMatch?.score !== undefined ? analyzed.roleMatch.score >= 0.6 : true
+    const isExpMatch = analyzed.experienceMatch?.status === 'MATCH'
     const isExpMismatch = analyzed.experienceMatch?.status === 'MISMATCH'
+    const isEduMatch = analyzed.educationMatch?.status === 'MATCH'
+    const isEduMismatch = analyzed.educationMatch?.status === 'MISMATCH'
+    const isSkillsMatch = analyzed.skillsMatch?.status !== 'MISMATCH'
+    const isLocMatch = analyzed.locationMatch?.score !== undefined ? analyzed.locationMatch.score >= 0.7 : true
 
     // Shortlist tier & color theme
     let badgeBg = '#fef2f2'
     let badgeColor = '#991b1b'
     let badgeBorder = '#fecaca'
-    let categoryLabel = '🔴 LOW MATCH'
+    let shortlistLabel = '🔴 LOW MATCH'
 
     if (category === 'EXCELLENT') {
       badgeBg = '#ecfdf5'
       badgeColor = '#065f46'
       badgeBorder = '#6ee7b7'
-      categoryLabel = '🟢 STRONG MATCH'
+      shortlistLabel = '🟢 STRONG MATCH'
     } else if (category === 'HIGHLY_RELEVANT') {
       badgeBg = '#eef2ff'
       badgeColor = '#4338ca'
       badgeBorder = '#a5b4fc'
-      categoryLabel = '🟢 GOOD MATCH'
+      shortlistLabel = '🟢 GOOD MATCH'
     } else if (category === 'RELEVANT') {
       badgeBg = '#fffbeb'
       badgeColor = '#92400e'
       badgeBorder = '#fde68a'
-      categoryLabel = '🟡 MODERATE MATCH'
+      shortlistLabel = '🟡 MODERATE MATCH'
     } else {
-      categoryLabel = '🔴 LOW MATCH'
+      shortlistLabel = '🔴 LOW MATCH'
     }
 
     return `
       <div id="${cardId}" style="
         background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;
-        padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.15s;
+        padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.15s;
       ">
-        <!-- Top Title & Badge -->
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px;">
-          <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.3;flex:1;">
+        <!-- Top Title & Match % -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:2px;">
+          <div style="font-weight:700;font-size:12.5px;color:#0f172a;line-height:1.3;flex:1;">
             ${this.escapeHtml(job.title)}
           </div>
           <div style="
-            display:inline-flex;align-items:center;gap:3px;padding:2px 7px;
-            border-radius:10px;font-size:10.5px;font-weight:700;
+            display:inline-flex;align-items:center;gap:3px;padding:2px 6px;
+            border-radius:8px;font-size:10px;font-weight:800;
             background:${badgeBg};color:${badgeColor};border:1px solid ${badgeBorder};
-            flex-shrink:0;text-align:right;
+            flex-shrink:0;
           ">
-            <span>${relevanceScore}%</span>
-            <span style="font-size:9.5px;opacity:0.9;">· ${categoryLabel}</span>
+            <span>PROFILE MATCH: ${relevanceScore}%</span>
           </div>
         </div>
 
-        <!-- Company -->
-        <div style="font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;">
-          ${this.escapeHtml(job.company)}
+        <!-- Company & Location -->
+        <div style="font-size:11.5px;color:#475569;font-weight:600;margin-bottom:6px;">
+          ${this.escapeHtml(job.company)}${job.location ? ` · <span style="color:#64748b;font-weight:400;">📍 ${this.escapeHtml(job.location)}</span>` : ''}
         </div>
 
-        <!-- Requirements Summary -->
+        <!-- 5 Factor Match Breakdown -->
         <div style="
           background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;
-          padding:6px 8px;margin-bottom:8px;font-size:11px;color:#334155;line-height:1.4;
+          padding:6px 8px;margin-bottom:6px;font-size:10.5px;display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;
         ">
-          <div><strong>💼 Experience:</strong> ${this.escapeHtml(expReq)}</div>
-          <div><strong>🎓 Education:</strong> ${this.escapeHtml(eduReq)}</div>
-          ${job.location ? `<div><strong>📍 Location:</strong> ${this.escapeHtml(job.location)}</div>` : ''}
+          <div style="color:${isRoleMatch ? '#059669' : '#dc2626'};display:flex;align-items:center;gap:3px;">
+            <span>${isRoleMatch ? '✓' : '⚠'}</span> <span>Role</span>
+          </div>
+          <div style="color:${isExpMismatch ? '#dc2626' : isExpMatch ? '#059669' : '#64748b'};display:flex;align-items:center;gap:3px;">
+            <span>${isExpMismatch ? '⚠' : isExpMatch ? '✓' : '—'}</span> <span>Experience</span>
+          </div>
+          <div style="color:${isEduMismatch ? '#dc2626' : isEduMatch ? '#059669' : '#64748b'};display:flex;align-items:center;gap:3px;">
+            <span>${isEduMismatch ? '⚠' : isEduMatch ? '✓' : '—'}</span> <span>Education</span>
+          </div>
+          <div style="color:${isSkillsMatch ? '#059669' : '#dc2626'};display:flex;align-items:center;gap:3px;">
+            <span>${isSkillsMatch ? '✓' : '⚠'}</span> <span>Skills</span>
+          </div>
+          <div style="color:${isLocMatch ? '#059669' : '#64748b'};display:flex;align-items:center;gap:3px;grid-column:1 / -1;">
+            <span>${isLocMatch ? '✓' : '—'}</span> <span>Location</span>
+          </div>
         </div>
 
-        <!-- Experience Mismatch Callout -->
+        <!-- Shortlist Tier Callout -->
+        <div style="margin-bottom:6px;font-size:11px;font-weight:700;">
+          <span style="color:#64748b;font-size:10px;text-transform:uppercase;">SHORTLIST: </span>
+          <span>${shortlistLabel}</span>
+        </div>
+
+        <!-- Exact Mismatch Callout -->
         ${isExpMismatch ? `
           <div style="
             color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;
-            border-radius:6px;padding:6px 8px;font-size:10.5px;line-height:1.4;margin-bottom:8px;
+            border-radius:6px;padding:5px 8px;font-size:10.5px;line-height:1.4;margin-bottom:6px;
           ">
-            <div style="font-weight:700;">⚠ Experience mismatch</div>
-            <div>Required: ${this.escapeHtml(analyzed.experienceMatch?.requiredText || '2–4 years')}</div>
-            <div>Your profile: ${this.escapeHtml(analyzed.experienceMatch?.profileText || 'Fresher')}</div>
+            <strong>Reason:</strong> Experience mismatch: Required ${this.escapeHtml(expReq)}, Your profile: ${this.escapeHtml(analyzed.experienceMatch?.profileText || 'Fresher')}
           </div>
         ` : ''}
 
-        <!-- Matched & Missing Breakdown -->
-        <div style="margin-bottom:10px;display:flex;flex-direction:column;gap:3px;">
-          ${matchedReasons.slice(0, 4).map((r) => `
-            <div style="color:#059669;font-size:11px;display:flex;align-items:center;gap:4px;">
-              <span style="font-weight:700;">✓</span> <span>${this.escapeHtml(r)}</span>
-            </div>
-          `).join('')}
-          ${unmatchedReasons.slice(0, 3).map((u) => `
-            <div style="color:#b45309;font-size:11px;display:flex;align-items:center;gap:4px;">
-              <span style="font-weight:700;">⚠</span> <span>${this.escapeHtml(u)}</span>
-            </div>
-          `).join('')}
-        </div>
+        ${isEduMismatch && eduReq !== 'Not specified' ? `
+          <div style="
+            color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;
+            border-radius:6px;padding:5px 8px;font-size:10.5px;line-height:1.4;margin-bottom:6px;
+          ">
+            <strong>Reason:</strong> Education mismatch: Required ${this.escapeHtml(eduReq)}
+          </div>
+        ` : ''}
 
         <!-- Actions -->
-        <div style="display:flex;gap:6px;align-items:center;">
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
           <button class="talvyn-save-card-btn" data-url="${this.escapeHtml(job.jobUrl)}" style="
-            flex:1;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
+            flex:1;padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;
             border:none;background:${isSaved ? '#10b981' : '#4f46e5'};color:#ffffff;
             transition:background 0.15s;
           ">${isSaved ? '✓ Saved' : 'Save'}</button>
           
           <a href="${job.jobUrl}" target="_blank" style="
-            padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;text-decoration:none;
+            padding:5px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;
             border:1px solid #cbd5e1;background:#ffffff;color:#475569;text-align:center;
           ">Open ↗</a>
         </div>
@@ -336,6 +377,13 @@ export class DiscoveryPanelManager {
     panel.querySelector('#talvyn-close-btn')?.addEventListener('click', () => {
       this.remove()
       this.callbacks?.onDismiss()
+    })
+
+    // Analyze this page button
+    panel.querySelector('#talvyn-reanalyze-page-btn')?.addEventListener('click', () => {
+      if (this.callbacks?.onRefresh) {
+        this.callbacks.onRefresh()
+      }
     })
 
     // Filter tab clicks
@@ -389,7 +437,7 @@ export class DiscoveryPanelManager {
       topBtn.style.background = '#059669'
     })
 
-    // Save job buttons
+    // Individual Save job buttons
     const saveBtns = panel.querySelectorAll('.talvyn-save-card-btn')
     saveBtns.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
@@ -407,7 +455,7 @@ export class DiscoveryPanelManager {
             button.style.background = '#10b981'
           } catch {
             button.disabled = false
-            button.textContent = 'Save Job'
+            button.textContent = 'Save'
           }
         }
       })
@@ -418,11 +466,13 @@ export class DiscoveryPanelManager {
 
   private filterJobs(jobs: AnalyzedJob[]): AnalyzedJob[] {
     switch (this.currentFilter) {
-      case 'HIGHLY_RELEVANT':
-        return jobs.filter((j) => j.category === 'EXCELLENT' || j.category === 'HIGHLY_RELEVANT')
-      case 'RELEVANT':
+      case 'STRONG':
+        return jobs.filter((j) => j.category === 'EXCELLENT')
+      case 'GOOD':
+        return jobs.filter((j) => j.category === 'HIGHLY_RELEVANT')
+      case 'MODERATE':
         return jobs.filter((j) => j.category === 'RELEVANT')
-      case 'LOW_RELEVANCE':
+      case 'LOW':
         return jobs.filter((j) => j.category === 'LOW_RELEVANCE')
       case 'SAVED':
         return jobs.filter((j) => j.isSaved)
@@ -432,21 +482,46 @@ export class DiscoveryPanelManager {
   }
 
   private applyStyles(panel: HTMLElement, isMinimized: boolean): void {
+    let savedPos: { x: number; y: number } | null = null
+    try {
+      const raw = localStorage.getItem(POSITION_STORAGE_KEY)
+      if (raw) savedPos = JSON.parse(raw)
+    } catch {}
+
+    const width = 380
+    const height = 580
+    const viewWidth = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 1200
+    const viewHeight = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 800
+
+    let left = Math.max(16, viewWidth - width - 24)
+    let top = Math.max(16, viewHeight - height - 24)
+
+    if (savedPos && typeof savedPos.x === 'number' && typeof savedPos.y === 'number') {
+      const maxLeft = Math.max(0, viewWidth - width)
+      const maxTop = Math.max(0, viewHeight - 200)
+      left = Math.max(0, Math.min(savedPos.x, maxLeft))
+      top = Math.max(0, Math.min(savedPos.y, maxTop))
+    }
+
     if (isMinimized) {
       Object.assign(panel.style, {
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
+        left: `${left}px`,
+        top: `${top}px`,
+        bottom: 'auto',
+        right: 'auto',
         zIndex: '2147483647',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       })
     } else {
       Object.assign(panel.style, {
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
-        width: '380px',
-        maxHeight: '580px',
+        left: `${left}px`,
+        top: `${top}px`,
+        bottom: 'auto',
+        right: 'auto',
+        width: `${width}px`,
+        maxHeight: `${height}px`,
         zIndex: '2147483647',
         background: '#ffffff',
         borderRadius: '14px',

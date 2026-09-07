@@ -17,7 +17,7 @@ import {
   getUser,
 } from '../utils/storage'
 import { authService } from '../services/authService'
-import { CONFIG } from '../utils/config'
+import { CONFIG, DashboardRoute, getDashboardRouteUrl } from '../utils/config'
 import { ExtensionMessage } from '../types'
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -63,21 +63,25 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     try {
       if (chrome.scripting?.executeScript) {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ['src/content/index.ts'],
-        })
-        setTimeout(async () => {
-          try {
-            await chrome.tabs.sendMessage(tabId, {
-              type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
-              tabUrl: tab.url,
-              tabTitle: tab.title,
-            })
-          } catch {
-            /* retry completed */
-          }
-        }, 300)
+        const manifest = chrome.runtime.getManifest()
+        const contentScriptFiles = manifest.content_scripts?.[0]?.js || []
+        if (contentScriptFiles.length > 0) {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            files: contentScriptFiles,
+          })
+          setTimeout(async () => {
+            try {
+              await chrome.tabs.sendMessage(tabId, {
+                type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+                tabUrl: tab.url,
+                tabTitle: tab.title,
+              })
+            } catch {
+              /* retry completed */
+            }
+          }, 300)
+        }
       }
     } catch (injectErr) {
       console.error('[Talvyn] Failed to inject content script:', injectErr)
@@ -87,12 +91,35 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 // ─── Token Validation ─────────────────────────────────────────────────────────
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return false
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(base64))
+    if (payload && typeof payload.exp === 'number') {
+      return Date.now() >= payload.exp * 1000
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 async function validateStoredToken(): Promise<void> {
   const session = await getAuthSession()
   if (!session?.token) {
     setBadge('off')
     return
   }
+
+  if (isTokenExpired(session.token)) {
+    console.warn('[Talvyn] Stored token expired by expiry timestamp, clearing auth')
+    await clearAuth()
+    setBadge('off')
+    return
+  }
+
   try {
     const user = await authService.me()
     await setAuthSession({
@@ -103,8 +130,18 @@ async function validateStoredToken(): Promise<void> {
     setBadge('on')
     console.log('[Talvyn] Token valid, logged in as', user.email)
   } catch (err: any) {
-    // Only clear if 401 or 403 unauthorized
-    if (err?.status === 401 || err?.status === 403) {
+    const isAuthFailure =
+      err?.status === 401 ||
+      err?.status === 403 ||
+      err?.status === 404 ||
+      err?.statusCode === 401 ||
+      err?.statusCode === 403 ||
+      err?.statusCode === 404 ||
+      err?.message?.includes('expired') ||
+      err?.message?.includes('unauthorized') ||
+      err?.message?.includes('Invalid or expired token')
+
+    if (isAuthFailure) {
       console.warn('[Talvyn] Stored token expired/invalid, clearing auth')
       await clearAuth()
       setBadge('off')
@@ -323,7 +360,7 @@ async function handleInternalMessage(msg: any): Promise<any> {
     }
   }
 
-  // 4. GET_AUTH
+  // 4. GET_AUTH / GET_AUTH_STATUS
   if (msg.type === 'GET_AUTH') {
     const session = await getAuthSession()
     return {
@@ -333,6 +370,115 @@ async function handleInternalMessage(msg: any): Promise<any> {
         user: session?.user || null,
       },
     }
+  }
+
+  if (msg.type === 'GET_AUTH_STATUS') {
+    const session = await getAuthSession()
+    if (!session?.token) {
+      setBadge('off')
+      return {
+        success: true,
+        state: 'disconnected',
+        user: null,
+        token: null,
+      }
+    }
+
+    if (isTokenExpired(session.token)) {
+      console.warn('[Talvyn] Auth token mathematically expired during status check, clearing session')
+      await clearAuth()
+      setBadge('off')
+      return {
+        success: true,
+        state: 'expired',
+        user: null,
+        token: null,
+      }
+    }
+
+    try {
+      // Validate live token against backend
+      const user = await authService.me()
+      await setAuthSession({
+        token: session.token,
+        user,
+        connectedAt: session.connectedAt || new Date().toISOString(),
+      })
+      setBadge('on')
+      return {
+        success: true,
+        state: 'connected',
+        user,
+        token: session.token,
+      }
+    } catch (err: any) {
+      const isAuthFailure =
+        err?.status === 401 ||
+        err?.status === 403 ||
+        err?.status === 404 ||
+        err?.statusCode === 401 ||
+        err?.statusCode === 403 ||
+        err?.statusCode === 404 ||
+        err?.message?.includes('expired') ||
+        err?.message?.includes('unauthorized') ||
+        err?.message?.includes('Invalid or expired token')
+
+      if (isAuthFailure) {
+        console.warn('[Talvyn] Auth token expired/invalid during status check, clearing session')
+        await clearAuth()
+        setBadge('off')
+        return {
+          success: true,
+          state: 'expired',
+          user: null,
+          token: null,
+        }
+      }
+
+      // Backend validation failed / network error: never trust local storage alone
+      console.warn('[Talvyn] Auth status check could not validate token with backend:', err?.message || err)
+      return {
+        success: false,
+        state: 'error',
+        error: 'Unable to verify authentication with Talvyn server. Please check your connection or reconnect.',
+      }
+    }
+  }
+
+  // 5. OPEN_DASHBOARD_ROUTE
+  if (msg.type === 'OPEN_DASHBOARD_ROUTE') {
+    const route = msg.route as DashboardRoute
+    const extId = chrome.runtime?.id || ''
+    const url = getDashboardRouteUrl(route, extId)
+
+    try {
+      const tab = await chrome.tabs.create({ url })
+      return { success: true, tabId: tab.id, url }
+    } catch (err: any) {
+      console.error('[Talvyn] Failed to open tab for route:', route, err)
+      return { success: false, error: err?.message || 'Failed to open route tab' }
+    }
+  }
+
+  // 6. CONNECT_TALVYN
+  if (msg.type === 'CONNECT_TALVYN') {
+    const extId = chrome.runtime?.id || ''
+    const url = getDashboardRouteUrl('connect', extId)
+
+    try {
+      const tab = await chrome.tabs.create({ url })
+      return { success: true, tabId: tab.id, url }
+    } catch (err: any) {
+      console.error('[Talvyn] Failed to open connect tab:', err)
+      return { success: false, error: err?.message || 'Failed to open connect tab' }
+    }
+  }
+
+  // 7. DISCONNECT_TALVYN
+  if (msg.type === 'DISCONNECT_TALVYN') {
+    await clearAuth()
+    setBadge('off')
+    return { success: true, state: 'disconnected' }
   }
 
   return { success: false, error: `Unknown internal message type: ${msg.type}` }
