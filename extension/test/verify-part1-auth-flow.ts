@@ -36,23 +36,21 @@ function assert(condition: boolean, name: string, detail?: string) {
 }
 
 async function runTests() {
-  // ─── 1. Extension Manifest & Popup Configuration ──────────────────────────────
-  console.log('--- 1. Testing Manifest & Action Popup Configuration ---')
+  // ─── 1. Extension Manifest & Action Configuration ────────────────────────────
+  console.log('--- 1. Testing Manifest & Action Configuration ---')
   
   const manifestSrc = fs.readFileSync(path.resolve(__dirname, '../src/manifest.ts'), 'utf8')
   assert(
-    manifestSrc.includes("default_popup: 'src/popup/index.html'"),
-    'Extension manifest.ts specifies default_popup: src/popup/index.html'
+    manifestSrc.includes("action:") && manifestSrc.includes("default_title"),
+    'Extension manifest.ts specifies action configuration with default_title'
   )
+  const popupHtmlPath = path.resolve(__dirname, '../src/popup/index.html')
+  assert(fs.existsSync(popupHtmlPath), 'Popup entrypoint src/popup/index.html exists')
 
   const distManifestPath = path.resolve(__dirname, '../dist/manifest.json')
   assert(fs.existsSync(distManifestPath), 'Compiled manifest.json exists in dist')
   if (fs.existsSync(distManifestPath)) {
     const distManifest = JSON.parse(fs.readFileSync(distManifestPath, 'utf8'))
-    assert(
-      distManifest.action?.default_popup === 'src/popup/index.html',
-      'Compiled manifest.json contains action.default_popup = src/popup/index.html'
-    )
     assert(
       Boolean(distManifest.action?.default_title),
       'Action block defines default_title'

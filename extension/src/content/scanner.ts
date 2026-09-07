@@ -27,23 +27,23 @@ export class JobScanner {
 
     const adapter = adapterRegistry.getAdapter(url, doc)
 
-    // Check listing page first to prevent multi-job pages from misclassifying
-    if (adapter.isJobListingPage(url, doc)) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // Check detail page
+    // Check detail page first when on a specific job posting
     if (adapter.isJobDetailPage(url, doc)) {
       return { classification: 'SINGLE_JOB', adapterName: adapter.name }
     }
 
-    // High-confidence fallback checks
-    if (isLikelyJobListing(doc, url)) {
+    // Check listing page for search results / collections
+    if (adapter.isJobListingPage(url, doc)) {
       return { classification: 'JOB_LIST', adapterName: adapter.name }
     }
 
+    // High-confidence fallback checks: detail page first
     if (isLikelyJobPage(doc, url)) {
       return { classification: 'SINGLE_JOB', adapterName: adapter.name }
+    }
+
+    if (isLikelyJobListing(doc, url)) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
     }
 
     return { classification: 'OTHER', adapterName: adapter.name }

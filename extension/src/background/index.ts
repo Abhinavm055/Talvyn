@@ -55,6 +55,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       tab.url?.startsWith('chrome://') ||
       tab.url?.startsWith('chrome-extension://') ||
       tab.url?.startsWith('edge://') ||
+      tab.url?.startsWith('brave://') ||
       tab.url?.startsWith('about:')
     ) {
       console.warn('[Talvyn] Cannot inject content script into browser internal page:', tab.url)

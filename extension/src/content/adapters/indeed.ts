@@ -41,6 +41,9 @@ export class IndeedAdapter implements SiteAdapter {
   }
 
   isJobListingPage(url: string, doc: Document): boolean {
+    if (this.isJobDetailPage(url, doc)) {
+      return false
+    }
     return (
       /\/jobs/i.test(url) ||
       doc.querySelectorAll('.job_seen_beacon, .resultContent, div[class*="cardOutline"]').length >= 2
@@ -59,7 +62,7 @@ export class IndeedAdapter implements SiteAdapter {
       const titleEl = card.querySelector(
         '[data-testid="jobsearch-JobInfoHeader-title"], h2.jobTitle, a[data-jk], a[id^="job_"], span[id^="jobTitle"]'
       )
-      const linkEl = (titleEl?.tagName === 'A' ? titleEl : card.querySelector('a[data-jk], a[id^="job_"]')) as HTMLAnchorElement | null
+      const linkEl = (titleEl?.tagName === 'A' ? titleEl : card.querySelector('a[data-jk], a[id^="job_"], a[href*="viewjob" i], a[href*="/rc/clk" i], a')) as HTMLAnchorElement | null
       const companyEl = card.querySelector(
         '[data-testid="company-name"], [data-testid="inlineHeader-companyName"], span[data-testid="company-name"], a[data-testid="company-name"], .companyName, .company-name, [class*="companyName"], [class*="company_location"] span, .icl-u-lg-mr--sm'
       )
@@ -71,9 +74,10 @@ export class IndeedAdapter implements SiteAdapter {
       )
 
       const title = titleEl?.textContent?.trim()
-      const jobUrl = linkEl?.href || window.location.href
       const rawCompany = companyEl?.textContent?.trim()
       const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
+      const rawJobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
+      const jobUrl = rawJobUrl || `https://www.indeed.com/viewjob?key=${encodeURIComponent(title || '')}-${encodeURIComponent(company)}`
 
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)

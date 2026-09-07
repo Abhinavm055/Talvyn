@@ -6,6 +6,7 @@ import { GreenhouseAdapter } from './greenhouse'
 import { LeverAdapter } from './lever'
 import { AshbyAdapter } from './ashby'
 import { SmartRecruitersAdapter } from './smartrecruiters'
+import { WorkdayAdapter } from './workday'
 import { UnstopAdapter } from './unstop'
 
 export class AdapterRegistry {
@@ -23,6 +24,7 @@ export class AdapterRegistry {
       new LeverAdapter(),
       new AshbyAdapter(),
       new SmartRecruitersAdapter(),
+      new WorkdayAdapter(),
     ]
   }
 

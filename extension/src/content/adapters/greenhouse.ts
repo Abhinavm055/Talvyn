@@ -35,7 +35,7 @@ export class GreenhouseAdapter implements SiteAdapter {
       const linkEl = opening.querySelector('a') as HTMLAnchorElement | null
       const title = linkEl?.textContent?.trim()
       const locationEl = opening.querySelector('.location')
-      const jobUrl = linkEl?.href || window.location.href
+      const jobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
 
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)
@@ -69,7 +69,7 @@ export class GreenhouseAdapter implements SiteAdapter {
       company,
       location,
       description,
-      jobUrl: window.location.href,
+      jobUrl: typeof window !== 'undefined' ? window.location.href : '',
       sourceWebsite: 'Greenhouse',
       confidence: 'HIGH',
     }

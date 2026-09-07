@@ -94,11 +94,6 @@ export class UnstopAdapter implements SiteAdapter {
   isJobDetailPage(url: string, doc?: Document): boolean {
     const clean = url.toLowerCase()
 
-    // If it is clearly a listing page or has multiple opportunity cards, it is NOT a detail page
-    if (this.isJobListingPage(url, doc)) {
-      return false
-    }
-
     const cardCount = doc?.querySelectorAll?.(
       '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity'
     )?.length || 0
@@ -129,6 +124,9 @@ export class UnstopAdapter implements SiteAdapter {
   }
 
   isJobListingPage(url: string, doc?: Document): boolean {
+    if (this.isJobDetailPage(url, doc)) {
+      return false
+    }
     const clean = url.toLowerCase()
     const isListUrl =
       /\/jobs\/?(\?.*)?$/i.test(clean) ||
@@ -143,7 +141,7 @@ export class UnstopAdapter implements SiteAdapter {
       '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], [class*="opportunity" i], .single_opportunity'
     )?.length || 0
 
-    return Boolean(isListUrl || cardCount >= 1)
+    return Boolean(isListUrl || cardCount >= 2)
   }
 
   extractJobList(doc: Document): ExtractedJob[] {
@@ -179,11 +177,13 @@ export class UnstopAdapter implements SiteAdapter {
         '[class*="job-type" i], [class*="opp-type" i], [class*="timing" i], [class*="type" i]'
       )
 
-      const title = titleEl?.textContent?.trim()
-      const rawJobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
-      const jobUrl = cleanUrl(rawJobUrl)
+      const rawTitle = titleEl?.textContent?.trim() || ''
+      const title = rawTitle.replace(/\s+/g, ' ').trim()
       const rawCompany = companyEl?.textContent?.trim()
       const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
+
+      const rawJobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
+      const jobUrl = cleanUrl(rawJobUrl) || `https://unstop.com/jobs/${encodeURIComponent(title || '')}-${encodeURIComponent(company || '')}`
 
       let location = locationEl?.textContent?.trim() || undefined
       if (location && (location.includes('Bengaluru') || location.includes('Bangalore'))) {

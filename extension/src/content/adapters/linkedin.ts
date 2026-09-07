@@ -17,6 +17,9 @@ export class LinkedInAdapter implements SiteAdapter {
   }
 
   isJobListingPage(url: string, doc: Document): boolean {
+    if (this.isJobDetailPage(url, doc)) {
+      return false
+    }
     return (
       /\/jobs\/search/i.test(url) ||
       /\/jobs\/collections/i.test(url) ||

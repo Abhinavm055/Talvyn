@@ -888,6 +888,7 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
           <span style="font-weight:700;font-size:13px;color:${textPrimary};">Talvyn</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
+          ${options?.isConnected !== false ? `
           <span style="
             font-size:10.5px;font-weight:700;color:#059669;background:${isDark ? '#064e3b' : '#ecfdf5'};
             padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
@@ -895,6 +896,15 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
             <span style="width:5px;height:5px;border-radius:50%;background:#10b981;display:inline-block;"></span>
             ● Connected
           </span>
+          ` : `
+          <span style="
+            font-size:10.5px;font-weight:700;color:${isDark ? '#94a3b8' : '#64748b'};background:${isDark ? '#1e293b' : '#f1f5f9'};
+            padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
+          ">
+            <span style="width:5px;height:5px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
+            Guest
+          </span>
+          `}
           <button id="talvyn-profile-btn" style="
             background:none;border:1px solid ${borderCard};border-radius:6px;
             padding:2px 6px;cursor:pointer;color:${textPrimary};font-size:11px;font-weight:600;

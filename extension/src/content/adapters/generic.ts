@@ -36,12 +36,25 @@ export class GenericAdapter implements SiteAdapter {
 
     const jobs: ExtractedJob[] = []
     const seenUrls = new Set<string>()
+    const seenJobKeys = new Set<string>()
+
+    const isDuplicate = (j: ExtractedJob): boolean => {
+      const normTitle = j.title.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
+      const normCompany = j.company.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
+      const key = `${normTitle}|${normCompany}`
+      if (seenJobKeys.has(key)) return true
+      seenJobKeys.add(key)
+      if (j.jobUrl && j.jobUrl !== currentUrl) {
+        if (seenUrls.has(j.jobUrl)) return true
+        seenUrls.add(j.jobUrl)
+      }
+      return false
+    }
 
     // 1. Try structured JSON-LD data first
     const jsonLdJobs = this.extractFromJsonLd(doc)
     for (const j of jsonLdJobs) {
-      if (j.jobUrl && !seenUrls.has(j.jobUrl)) {
-        seenUrls.add(j.jobUrl)
+      if (!isDuplicate(j)) {
         jobs.push(j)
       }
     }
@@ -58,26 +71,37 @@ export class GenericAdapter implements SiteAdapter {
       '[class*="job-result" i]',
       '[data-job-id]',
       '[data-testid*="job" i]',
+      '[data-automation-id*="job" i]',
+      '[data-automation-id*="composite" i]',
       'article[class*="job" i]',
       'li[class*="job" i]',
       'div[class*="opening" i]',
       'div[class*="posting" i]',
+      'div[class*="vacancy" i]',
+      'div[class*="position" i]',
+      'div[class*="career" i]',
+      'div[class*="role" i]',
       '.card[class*="job" i]',
       'tr[class*="job" i]',
+      'tr.job',
       '.resultContent',
+      '.job-search-card',
+      '.base-card',
+      '.opportunity-card',
+      '.opp-card',
+      'li[class*="opening" i]',
     ]
 
     for (const sel of cardSelectors) {
       const cards = Array.from(doc.querySelectorAll(sel))
-      if (cards.length >= 2) {
+      if (cards.length >= 1) {
         for (const card of cards) {
           const cardEl = card as HTMLElement
           const validation = isValidJobCard(cardEl)
           if (!validation.isValid) continue
 
           const extracted = this.extractCardData(cardEl)
-          if (extracted && extracted.title && !seenUrls.has(extracted.jobUrl)) {
-            seenUrls.add(extracted.jobUrl)
+          if (extracted && extracted.title && !isDuplicate(extracted)) {
             jobs.push(extracted)
           }
         }

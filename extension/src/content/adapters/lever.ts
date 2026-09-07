@@ -40,7 +40,7 @@ export class LeverAdapter implements SiteAdapter {
       const commitmentEl = posting.querySelector('.sort-by-commitment, .posting-categories .commitment')
 
       const title = titleEl?.textContent?.trim() || linkEl?.textContent?.trim()
-      const jobUrl = linkEl?.href || window.location.href
+      const jobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
 
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)
@@ -77,7 +77,7 @@ export class LeverAdapter implements SiteAdapter {
       location,
       jobType,
       description,
-      jobUrl: window.location.href,
+      jobUrl: typeof window !== 'undefined' ? window.location.href : '',
       sourceWebsite: 'Lever',
       confidence: 'HIGH',
     }

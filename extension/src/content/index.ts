@@ -693,18 +693,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   // 1. Classification check
   const { classification } = jobScanner.classifyPage(url, doc)
 
-  // A. Job Listing Page (Prioritize listing if classified or likely)
-  if (classification === 'JOB_LIST' || isLikelyJobListing(doc, url)) {
-    removePanel()
-    isSinglePanelVisible = false
-    const summary = jobScanner.scanJobListing(url, doc, profile)
-    if (summary.totalDetected >= 1) {
-      renderDiscoveryView(summary)
-      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
-    }
-  }
-
-  // B. Single Job Detail Page
+  // A. Single Job Detail Page (First Priority: analyze specific job detail and open floating window)
   if (classification === 'SINGLE_JOB' || isLikelyJobPage(doc, url)) {
     const job = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
     if (job && isLikelyJobPage(doc, url)) {
@@ -716,7 +705,28 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     }
   }
 
-  // C. Fallback: Re-verify if any valid job listing cards exist
+  // B. Job Listing Page (When on a multi-job search or directory page)
+  if (classification === 'JOB_LIST' || isLikelyJobListing(doc, url)) {
+    removePanel()
+    isSinglePanelVisible = false
+    const summary = jobScanner.scanJobListing(url, doc, profile)
+    if (summary.totalDetected >= 1) {
+      renderDiscoveryView(summary)
+      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
+    }
+  }
+
+  // C. Fallback: Re-verify if single job is evident
+  const fallbackJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
+  if (fallbackJob && isLikelyJobPage(doc, url)) {
+    currentSingleJob = fallbackJob
+    discoveryPanelManager.remove()
+    isDiscoveryPanelVisible = false
+    await showSinglePanel(fallbackJob)
+    return { success: true, mode: 'single-job' }
+  }
+
+  // D. Fallback: Re-verify if any valid job listing cards exist
   if (isLikelyJobListing(doc, url)) {
     const fallbackSummary = jobScanner.scanJobListing(url, doc, profile)
     if (fallbackSummary.totalDetected >= 1) {

@@ -107,7 +107,7 @@ export class DiscoveryPanelManager {
             ">T</div>
             <div>
               <div style="font-weight:800;font-size:13px;letter-spacing:0.3px;">TALVYN JOB INTELLIGENCE</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} jobs analyzed</div>
+              <div id="talvyn-discovery-job-count" style="font-size:11px;color:rgba(255,255,255,0.85);">${summary.totalDetected} Jobs Found</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
