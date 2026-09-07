@@ -1,10 +1,9 @@
 /**
- * Job Evidence Detector
+ * Universal Job Evidence Detector
  *
- * High-confidence job detection gate.
- * Evaluates whether a page or card is genuinely a job posting or listing
- * based on verified structural, semantic, and contextual evidence.
- * Explicitly rejects non-job pages (YouTube, Google search, social media, articles).
+ * Evidence-first gate used before Talvyn analyzes the current page.
+ * It must distinguish single jobs, job listings, and non-job pages without
+ * relying on one site's CSS classes or URL alone.
  */
 
 export interface ConfidenceReport {
@@ -15,29 +14,17 @@ export interface ConfidenceReport {
   rejectionReason?: string
 }
 
-// ─── Non-Job Domain & Page Safety Layer ───────────────────────────────────────
-
 const NON_JOB_DOMAINS: { domain: string; allowedSubdomains?: string[] }[] = [
-  { domain: 'youtube.com' },
-  { domain: 'youtu.be' },
+  { domain: 'youtube.com' }, { domain: 'youtu.be' },
   { domain: 'google.com', allowedSubdomains: ['careers.google.com'] },
   { domain: 'facebook.com', allowedSubdomains: ['metacareers.com'] },
-  { domain: 'instagram.com' },
-  { domain: 'twitter.com' },
-  { domain: 'x.com' },
-  { domain: 'reddit.com' },
-  { domain: 'wikipedia.org' },
+  { domain: 'instagram.com' }, { domain: 'twitter.com' }, { domain: 'x.com' },
+  { domain: 'reddit.com' }, { domain: 'wikipedia.org' },
   { domain: 'amazon.com', allowedSubdomains: ['amazon.jobs'] },
   { domain: 'netflix.com', allowedSubdomains: ['jobs.netflix.com'] },
-  { domain: 'nytimes.com' },
-  { domain: 'cnn.com' },
-  { domain: 'bbc.com' },
-  { domain: 'medium.com' },
-  { domain: 'substack.com' },
-  { domain: 'twitch.tv' },
-  { domain: 'vimeo.com' },
-  { domain: 'tiktok.com' },
-  { domain: 'quora.com' },
+  { domain: 'nytimes.com' }, { domain: 'cnn.com' }, { domain: 'bbc.com' },
+  { domain: 'medium.com' }, { domain: 'substack.com' }, { domain: 'twitch.tv' },
+  { domain: 'vimeo.com' }, { domain: 'tiktok.com' }, { domain: 'quora.com' },
 ]
 
 export function isExplicitlyNonJobSite(url: string): boolean {
@@ -45,331 +32,121 @@ export function isExplicitlyNonJobSite(url: string): boolean {
     const parsed = new URL(url)
     const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '')
     const pathname = parsed.pathname.toLowerCase()
-
     for (const rule of NON_JOB_DOMAINS) {
       if (hostname === rule.domain || hostname.endsWith(`.${rule.domain}`)) {
-        if (rule.allowedSubdomains) {
-          const isAllowed = rule.allowedSubdomains.some(
-            (allowed) => hostname === allowed || hostname.endsWith(`.${allowed}`)
-          )
-          if (isAllowed) return false
-        }
-        // Specific path exceptions (e.g. google.com/about/careers)
-        if (rule.domain === 'google.com' && pathname.startsWith('/about/careers')) {
-          return false
-        }
+        if (rule.allowedSubdomains?.some((allowed) => hostname === allowed || hostname.endsWith(`.${allowed}`))) return false
+        if (rule.domain === 'google.com' && pathname.startsWith('/about/careers')) return false
         return true
       }
     }
-
     return false
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-// ─── Verified Career URL Patterns ─────────────────────────────────────────────
-
 const VERIFIED_CAREER_URL_PATTERNS = [
-  /\/jobs?\/\d+/i,
-  /\/jobs?\/[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+/i,
-  /\/careers?\/[a-zA-Z0-9_-]+/i,
-  /\/positions?\/[a-zA-Z0-9_-]+/i,
-  /\/openings?\/[a-zA-Z0-9_-]+/i,
-  /\/vacancies?\/[a-zA-Z0-9_-]+/i,
-  /\/viewjob/i,
-  /linkedin\.com\/jobs\/view/i,
+  /\/jobs?\/\d+/i, /\/jobs?\/[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+/i,
+  /\/careers?\/[a-zA-Z0-9_-]+/i, /\/positions?\/[a-zA-Z0-9_-]+/i,
+  /\/openings?\/[a-zA-Z0-9_-]+/i, /\/vacancies?\/[a-zA-Z0-9_-]+/i,
+  /\/viewjob/i, /linkedin\.com\/jobs\/view/i,
   /indeed\.com\/(viewjob|rc\/clk)/i,
-  /unstop\.com\/(jobs|internships|competitions)\/[a-zA-Z0-9_-]+/i,
-  /glassdoor\.com\/job-listing/i,
-  /boards\.greenhouse\.io\/[^/]+\/jobs/i,
+  /unstop\.com\/(jobs|internships)\/[a-zA-Z0-9_-]+/i,
+  /glassdoor\.com\/job-listing/i, /boards\.greenhouse\.io\/[^/]+\/jobs/i,
   /jobs\.lever\.co\/[^/]+\/[a-f0-9-]+/i,
   /jobs\.ashbyhq\.com\/[^/]+\/[a-f0-9-]+/i,
   /myworkdayjobs\.com\/[^/]+\/job\//i,
   /smartrecruiters\.com\/[^/]+\/[a-f0-9-]+/i,
 ]
 
-// ─── Single Job Page Evidence Scoring ────────────────────────────────────────
+function hasJobPostingJsonLd(doc: Document): { valid: boolean; title?: string } {
+  const scripts = doc.querySelectorAll?.('script[type="application/ld+json"]') || []
+  for (const script of Array.from(scripts)) {
+    try {
+      const parsed = JSON.parse(script.textContent || '{}')
+      const roots = Array.isArray(parsed) ? parsed : [parsed]
+      const candidates: any[] = []
+      for (const root of roots) {
+        if (root?.['@type'] === 'JobPosting') candidates.push(root)
+        if (Array.isArray(root?.['@graph'])) candidates.push(...root['@graph'].filter((x: any) => x?.['@type'] === 'JobPosting'))
+      }
+      const job = candidates.find((x) => typeof x?.title === 'string' && x.title.trim().length >= 3)
+      if (job) return { valid: true, title: job.title.trim() }
+    } catch { /* malformed JSON-LD */ }
+  }
+  return { valid: false }
+}
 
 export function calculateJobConfidence(doc: Document, url: string): ConfidenceReport {
   const signals: string[] = []
   const disqualifiers: string[] = []
   let score = 0
 
-  // 1. Check Non-Job Domain Safety Gate
   if (isExplicitlyNonJobSite(url)) {
-    disqualifiers.push('Domain is identified as non-job platform (video, social, news, or search engine)')
-    return {
-      score: 0,
-      isConfidentJob: false,
-      signals,
-      disqualifiers,
-      rejectionReason: 'Page is on a known non-job domain.',
-    }
+    return { score: 0, isConfidentJob: false, signals, disqualifiers: ['Known non-job platform'], rejectionReason: 'Page is on a known non-job domain.' }
   }
 
-  // 2. Negative Signals Check
-  // Video page (-50)
-  if (
-    doc.querySelector(
-      'ytd-watch-flexy, ytd-search, ytd-app, #movie_player, video.html5-main-video, .vjs-tech'
-    )
-  ) {
-    disqualifiers.push('Contains primary video player / stream elements')
-    score -= 50
+  if (doc.querySelector?.('ytd-watch-flexy, ytd-search, #movie_player, video.html5-main-video, .vjs-tech')) {
+    disqualifiers.push('Contains primary video player / stream elements'); score -= 50
+  }
+  if (doc.querySelector?.('#rso, #search, .g .rc, div[data-sokoban-container]')) {
+    disqualifiers.push('Contains search engine SERP elements'); score -= 50
+  }
+  if (doc.querySelector?.('#add-to-cart-button, [name="submit.add-to-cart"], button[class*="add-to-cart" i], [class*="product-price" i]')) {
+    disqualifiers.push('Contains e-commerce shopping cart elements'); score -= 50
+  }
+  if (doc.querySelector?.('[data-testid="tweet"], [data-testid="primaryColumn"], article[role="article"] button[aria-label*="Like" i]')) {
+    disqualifiers.push('Contains social media feed elements'); score -= 40
+  }
+  if (doc.querySelector?.('.article-body, article.article, .byline, [rel="author"]') && !doc.querySelector?.('button[class*="apply" i], a[class*="apply" i], [data-automation-id="applyButton"]')) {
+    disqualifiers.push('Identified as news or editorial article'); score -= 40
   }
 
-  // Search engine result page (-50)
-  if (doc.querySelector('#rso, #search, .g .rc, div[data-sokoban-container], form[action*="search"]')) {
-    disqualifiers.push('Contains search engine SERP elements')
-    score -= 50
+  const parsed = (() => { try { return new URL(url) } catch { return null } })()
+  if (parsed && (parsed.pathname === '/' || parsed.pathname === '') && !doc.querySelector?.('[class*="job" i], [data-automation-id*="job" i], script[type="application/ld+json"]')) {
+    disqualifiers.push('Generic root homepage without job postings'); score -= 30
   }
 
-  // Shopping / product page (-50)
-  if (
-    doc.querySelector(
-      '#add-to-cart-button, [name="submit.add-to-cart"], button[class*="add-to-cart" i], [class*="product-price" i]'
-    )
-  ) {
-    disqualifiers.push('Contains e-commerce shopping cart elements')
-    score -= 50
-  }
+  const jsonLd = hasJobPostingJsonLd(doc)
+  if (jsonLd.valid) { score += 80; signals.push(`Schema.org JobPosting found with title: "${jsonLd.title}"`) }
 
-  // Social media feed (-40)
-  if (
-    doc.querySelector(
-      '[data-testid="tweet"], [data-testid="primaryColumn"], article[role="article"] button[aria-label*="Like" i]'
-    )
-  ) {
-    disqualifiers.push('Contains social media feed elements')
-    score -= 40
-  }
-
-  // News article (-40)
-  if (
-    doc.querySelector('.article-body, article.article, .byline, [rel="author"]') &&
-    !doc.querySelector('button[class*="apply" i], a[class*="apply" i], [data-automation-id="applyButton"]')
-  ) {
-    disqualifiers.push('Identified as news or editorial article')
-    score -= 40
-  }
-
-  // Generic homepage (-30)
-  try {
-    const parsed = new URL(url)
-    const isRoot = parsed.pathname === '/' || parsed.pathname === ''
-    if (
-      isRoot &&
-      !doc.querySelector('h1, [class*="job" i], [data-automation-id*="job" i], script[type="application/ld+json"]')
-    ) {
-      disqualifiers.push('Generic root homepage without job postings')
-      score -= 30
-    }
-  } catch {}
-
-  // 3. Positive Evidence: Schema.org JSON-LD JobPosting (+80)
-  const scripts = doc.querySelectorAll ? doc.querySelectorAll('script[type="application/ld+json"]') : []
-  let hasValidJsonLdJob = false
-
-  for (const script of Array.from(scripts)) {
-    try {
-      const data = JSON.parse(script.textContent || '{}')
-      const items = Array.isArray(data) ? data : [data]
-      for (const item of items) {
-        if (
-          item['@type'] === 'JobPosting' &&
-          typeof item.title === 'string' &&
-          item.title.trim().length >= 3
-        ) {
-          hasValidJsonLdJob = true
-          signals.push(`Schema.org JobPosting found with title: "${item.title.trim()}"`)
-          score += 80
-          break
-        }
-      }
-    } catch {
-      /* ignore JSON parse errors */
-    }
-    if (hasValidJsonLdJob) break
-  }
-
-  // 4. Positive Evidence: Valid job title + company (+25)
-  const titleEl = doc.querySelector(
-    'h1, [class*="job-title" i], [class*="jobTitle" i], [class*="posting-header" i], [data-automation-id="jobPostingHeader"], [class*="app-title" i]'
-  )
-  const metaTitle = (doc.querySelector('meta[property="og:title"]') as HTMLMetaElement)?.content || ''
+  const titleEl = doc.querySelector?.('h1, [class*="job-title" i], [class*="jobTitle" i], [class*="posting-header" i], [data-automation-id="jobPostingHeader"], [class*="app-title" i]')
+  const metaTitle = (doc.querySelector?.('meta[property="og:title"]') as HTMLMetaElement)?.content || ''
   const rawTitle = titleEl?.textContent?.trim() || metaTitle
-  const companyEl = doc.querySelector(
-    '[class*="company" i], [class*="employer" i], [class*="org" i], [data-automation-id="companyName"]'
-  )
-  const metaCompany = (doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement)?.content || ''
+  const companyEl = doc.querySelector?.('[class*="company" i], [class*="employer" i], [class*="org" i], [data-automation-id="companyName"]')
+  const metaCompany = (doc.querySelector?.('meta[property="og:site_name"]') as HTMLMetaElement)?.content || ''
   const rawCompany = companyEl?.textContent?.trim() || metaCompany
+  const hasTitleAndCompany = Boolean(rawTitle && rawTitle.length >= 3 && rawTitle.length <= 140 && !/^(home|careers|jobs|search|about|login|sign in)$/i.test(rawTitle)) && Boolean(rawCompany && rawCompany.length >= 2)
+  if (hasTitleAndCompany) { score += 25; signals.push(`Valid job title and company detected: "${rawTitle}" / "${rawCompany}"`) }
 
-  const hasTitleAndCompany =
-    Boolean(rawTitle && rawTitle.length >= 3 && rawTitle.length <= 140 && !/^(home|careers|jobs|search|about|login|sign in)$/i.test(rawTitle)) &&
-    Boolean(rawCompany && rawCompany.length >= 2)
+  const controls = Array.from(doc.querySelectorAll?.('a, button, input[type="submit"], input[type="button"], [role="button"], [data-automation-id="applyButton"]') || [])
+  const applyPattern = /^(apply(\s+now|\s+online|\s+for\s+this\s+job|\s+here)?|submit\s+application|easy\s+apply|start\s+application|application\s+form|apply\s+with\s+talvyn)$/i
+  const hasApply = controls.some((el) => applyPattern.test(el.textContent?.trim() || (el as HTMLInputElement).value?.trim() || '') || el.getAttribute('data-automation-id') === 'applyButton')
+  if (hasApply) { score += 20; signals.push('Apply control found') }
 
-  if (hasTitleAndCompany) {
-    signals.push(`Valid job title ("${rawTitle}") and company ("${rawCompany}") detected`)
-    score += 25
-  }
+  const headings = Array.from(doc.querySelectorAll?.('h1, h2, h3, h4, h5, [class*="heading" i], [class*="title" i], strong') || [])
+  const hasRequirements = headings.some((h) => /qualifications|requirements|eligibility|what you('ll| will) need|who you are|required skills|minimum qualifications/i.test(h.textContent?.trim() || ''))
+  if (hasRequirements) { score += 15; signals.push('Requirements/Qualifications section found') }
+  const hasResponsibilities = headings.some((h) => /responsibilities|what you('ll| will) do|duties|role overview|key responsibilities|about the (role|position|job)|primary duties/i.test(h.textContent?.trim() || ''))
+  if (hasResponsibilities) { score += 15; signals.push('Responsibilities section found') }
 
-  // 5. Positive Evidence: Apply Button (+20)
-  const applyControls = doc.querySelectorAll
-    ? Array.from(
-        doc.querySelectorAll(
-          'a, button, input[type="submit"], input[type="button"], [role="button"], [data-automation-id="applyButton"]'
-        )
-      )
-    : []
+  const bodyText = doc.body?.textContent || ''
+  const hasExp = /\b(\d+\+?\s*years?(\s+of)?\s+experience|\d+\s*-\s*\d+\s*years?(\s+of)?\s+experience|fresher|entry[ -]level|bachelor'?s|master'?s|b\.?tech|b\.?e\.)\b/i.test(bodyText)
+  const hasEmployment = /\b(full[ -]time|part[ -]time|internship|contract|temporary|permanent|remote|hybrid|on-site)\b/i.test(bodyText)
+  const hasSalary = /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|k|usd|eur|gbp|inr)\b|\bper\s+(year|annum|month|hour)\b|\b(salary|stipend|compensation)\b)/i.test(bodyText)
+  const hasLocation = Boolean(doc.querySelector?.('[class*="location" i], [data-automation-id*="location" i], [itemprop="addressLocality"]')) || /\b(remote|work from home|hybrid|office location)\b/i.test(bodyText)
+  if (hasExp) { score += 10; signals.push('Experience requirement mentioned') }
+  if (hasEmployment) { score += 10; signals.push('Employment type detected') }
+  if (hasSalary) { score += 10; signals.push('Salary/stipend detected') }
+  if (hasLocation) { score += 10; signals.push('Location detected') }
+  if (VERIFIED_CAREER_URL_PATTERNS.some((p) => p.test(url))) { score += 10; signals.push('Verified career/ATS URL pattern') }
 
-  const applyPattern =
-    /^(apply(\s+now|\s+online|\s+for\s+this\s+job|\s+here)?|submit\s+application|easy\s+apply|start\s+application|application\s+form|apply\s+with\s+talvyn)$/i
-
-  let hasApplyControl = false
-  for (const el of applyControls) {
-    const text = el.textContent?.trim() || (el as HTMLInputElement).value?.trim() || ''
-    if (applyPattern.test(text) || el.getAttribute('data-automation-id') === 'applyButton') {
-      hasApplyControl = true
-      signals.push(`Apply button found: "${text || 'Apply'}"`)
-      score += 20
-      break
-    }
-  }
-
-  // 6. Positive Evidence: Requirements / Qualifications (+15)
-  const headings = doc.querySelectorAll ? Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, [class*="heading" i], [class*="title" i], strong')) : []
-  const reqPatterns = [
-    /qualifications/i,
-    /requirements/i,
-    /eligibility/i,
-    /what you('ll| will) need/i,
-    /who you are/i,
-    /required skills/i,
-    /basic qualifications/i,
-    /minimum qualifications/i,
-  ]
-
-  let hasRequirements = false
-  for (const h of headings) {
-    const text = h.textContent?.trim() || ''
-    if (reqPatterns.some((p) => p.test(text))) {
-      hasRequirements = true
-      signals.push('Requirements/Qualifications section found')
-      score += 15
-      break
-    }
-  }
-
-  // 7. Positive Evidence: Responsibilities (+15)
-  const respPatterns = [
-    /responsibilities/i,
-    /what you('ll| will) do/i,
-    /duties/i,
-    /role overview/i,
-    /key responsibilities/i,
-    /about the (role|position|job)/i,
-    /primary duties/i,
-  ]
-
-  let hasResponsibilities = false
-  for (const h of headings) {
-    const text = h.textContent?.trim() || ''
-    if (respPatterns.some((p) => p.test(text))) {
-      hasResponsibilities = true
-      signals.push('Responsibilities section found')
-      score += 15
-      break
-    }
-  }
-
-  // 8. Positive Evidence: Experience Requirement (+10)
-  const bodyText = doc.body ? doc.body.textContent || '' : ''
-  const hasExpReq = /\b(\d+\+?\s*years?(\s+of)?\s+experience|\d+\s*-\s*\d+\s*years?(\s+of)?\s+experience|fresher|entry[ -]level|bachelor'?s(\s+degree)?|master'?s|b\.?tech|b\.?e\.)\b/i.test(
-    bodyText
-  )
-  if (hasExpReq) {
-    signals.push('Experience requirement mentioned')
-    score += 10
-  }
-
-  // 9. Positive Evidence: Employment Type (+10)
-  const hasEmploymentType = /\b(full[ -]time|part[ -]time|internship|contract|temporary|permanent|remote|hybrid|on-site)\b/i.test(
-    bodyText
-  )
-  if (hasEmploymentType) {
-    signals.push('Employment type keywords detected')
-    score += 10
-  }
-
-  // 10. Positive Evidence: Salary / Stipend (+10)
-  const hasSalaryCues = /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|k|usd|eur|gbp|inr)\b|\bper\s+(year|annum|month|hour)\b|\b(salary|stipend|compensation)\b)/i.test(
-    bodyText
-  )
-  if (hasSalaryCues) {
-    signals.push('Salary/stipend cues detected')
-    score += 10
-  }
-
-  // 11. Positive Evidence: Location (+10)
-  const hasLocation =
-    !!doc.querySelector('[class*="location" i], [data-automation-id*="location" i], [itemprop="addressLocality"]') ||
-    /\b(remote|work from home|hybrid|office location|[A-Z][a-zA-Z]+,\s*[A-Z]{2})\b/i.test(bodyText)
-  if (hasLocation) {
-    signals.push('Location details detected')
-    score += 10
-  }
-
-  // 12. Positive Evidence: Career/ATS URL pattern (+10)
-  const matchesCareerUrl = VERIFIED_CAREER_URL_PATTERNS.some((p) => p.test(url))
-  if (matchesCareerUrl) {
-    signals.push('URL matches verified career/ATS pattern')
-    score += 10
-  }
-
-  // Final Gate Check:
-  // URL pattern alone MUST NEVER classify page as job (score would only be 10).
-  // Without JSON-LD: requires score >= 50 AND disqualifiers.length === 0 AND at least 2 distinct positive job content signals.
-  const positiveJobSignalsCount = [
-    hasValidJsonLdJob,
-    hasTitleAndCompany,
-    hasApplyControl,
-    hasRequirements,
-    hasResponsibilities,
-    hasExpReq,
-    hasEmploymentType,
-    hasSalaryCues,
-    hasLocation,
-  ].filter(Boolean).length
-
-  const isConfidentJob =
-    disqualifiers.length === 0 &&
-    score >= 50 &&
-    (hasValidJsonLdJob || positiveJobSignalsCount >= 2)
-
-  return {
-    score,
-    isConfidentJob,
-    signals,
-    disqualifiers,
-    rejectionReason: !isConfidentJob
-      ? disqualifiers.length > 0
-        ? disqualifiers.join('; ')
-        : 'Insufficient verified job signals (minimum confidence score not met).'
-      : undefined,
-  }
+  const positiveCount = [jsonLd.valid, hasTitleAndCompany, hasApply, hasRequirements, hasResponsibilities, hasExp, hasEmployment, hasSalary, hasLocation].filter(Boolean).length
+  const isConfidentJob = disqualifiers.length === 0 && score >= 50 && (jsonLd.valid || positiveCount >= 2)
+  return { score, isConfidentJob, signals, disqualifiers, rejectionReason: !isConfidentJob ? (disqualifiers.join('; ') || 'Insufficient verified job signals.') : undefined }
 }
 
-/**
- * Gate check for single job detail pages
- */
 export function isLikelyJobPage(doc: Document, url: string): boolean {
-  if (isExplicitlyNonJobSite(url)) return false
-  const report = calculateJobConfidence(doc, url)
-  return report.isConfidentJob
+  return !isExplicitlyNonJobSite(url) && calculateJobConfidence(doc, url).isConfidentJob
 }
-
-// ─── Listing Page Job Card Validation ─────────────────────────────────────────
 
 export interface CardValidationResult {
   isValid: boolean
@@ -379,235 +156,104 @@ export interface CardValidationResult {
   reason?: string
 }
 
-/**
- * Validates whether an individual DOM card element is genuinely a job posting card.
- * Requires:
- * 1. Valid job title (not video title, article headline, or nav link)
- * 2. Company / employer
- * 3. At least ONE verified job signal:
- *    - Location
- *    - Experience
- *    - Salary / compensation
- *    - Job type (Full Time, Internship, etc.)
- *    - Application link
- *    - Job description / snippet
- * 4. MUST NOT contain video metrics, shopping carts, or article author bylines
- */
 export function isValidJobCard(card: HTMLElement): CardValidationResult {
-  const cardText = card.textContent?.trim() || ''
-  if (cardText.length < 15) {
-    return { isValid: false, signals: [], reason: 'Card content too brief' }
-  }
+  const cardText = card.textContent?.replace(/\s+/g, ' ').trim() || ''
+  if (cardText.length < 15) return { isValid: false, signals: [], reason: 'Card content too brief' }
+  if (/\b\d+(\.\d+)?[KM]?\s+views\b|\b(subscribers?|playlist|episodes?|season\s+\d+)\b/i.test(cardText) || card.querySelector?.('ytd-thumbnail, ytd-video-renderer, #video-title')) return { isValid: false, signals: [], reason: 'Video/media indicators' }
+  if (/\b(add to cart|buy now|in stock|free delivery)\b/i.test(cardText) || card.querySelector?.('[class*="add-to-cart" i]')) return { isValid: false, signals: [], reason: 'E-commerce indicators' }
+  if (/\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?|festivals?|conferences?)\b/i.test(cardText) && !/\b(jobs?|internships?|hiring|recruitment|trainee|developer|engineer|analyst)\b/i.test(cardText)) return { isValid: false, signals: [], reason: 'Competition/event card' }
+  if (/\b(sponsored|advertisement|promoted)\b/i.test(cardText) || card.querySelector?.('[class*="sponsored" i], [class*="ad-" i], [data-ad]')) return { isValid: false, signals: [], reason: 'Advertisement' }
 
-  // 1. Negative Disqualifiers inside card
-  // Video metrics: e.g. "12:34", "1.2M views", "3 days ago", "Subscribed"
-  if (
-    /\b\d+(\.\d+)?[KM]?\s+views\b/i.test(cardText) ||
-    /\b(subscribers?|playlist|episodes?|season\s+\d+)\b/i.test(cardText) ||
-    card.querySelector('ytd-thumbnail, .ytd-thumbnail, ytd-video-renderer, #video-title')
-  ) {
-    return { isValid: false, signals: [], reason: 'Card contains video player / view count indicators' }
-  }
+  const titleEl = card.querySelector?.('h1, h2, h3, h4, [class*="job-title" i], [class*="title" i], a[class*="job" i]')
+  const titleLink = (titleEl?.tagName === 'A' ? titleEl : card.querySelector?.('a')) as HTMLAnchorElement | null
+  const rawTitle = titleEl?.textContent?.replace(/\s+/g, ' ').trim() || titleLink?.textContent?.replace(/\s+/g, ' ').trim() || ''
+  if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 140 || /^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending)$/i.test(rawTitle)) return { isValid: false, signals: [], reason: 'No valid job title' }
 
-  // E-commerce items: "Add to cart", "In Stock", star ratings without job context
-  if (
-    /\b(add to cart|buy now|in stock|free delivery|eligible for free)\b/i.test(cardText) ||
-    card.querySelector('[class*="add-to-cart" i]')
-  ) {
-    return { isValid: false, signals: [], reason: 'Card contains e-commerce purchase indicators' }
-  }
-
-  // Competitions / hackathons / non-job events
-  if (
-    /\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?|festivals?|conferences?)\b/i.test(cardText) &&
-    !/\b(jobs?|internships?|hiring|recruitment|trainee|developer|engineer|analyst)\b/i.test(cardText)
-  ) {
-    return { isValid: false, signals: [], reason: 'Card represents a competition, hackathon, or event rather than employment' }
-  }
-
-  // Advertisements / Sponsored promotional content
-  if (
-    /\b(sponsored|advertisement|promoted)\b/i.test(cardText) ||
-    card.querySelector('[class*="sponsored" i], [class*="ad-" i], [data-ad]')
-  ) {
-    return { isValid: false, signals: [], reason: 'Card contains advertisement or sponsored content markers' }
-  }
-
-  // 2. Extract Candidate Title
-  const titleEl = card.querySelector(
-    'h1, h2, h3, h4, [class*="job-title" i], [class*="title" i], a[class*="job" i]'
-  )
-  const titleLink = (titleEl?.tagName === 'A' ? titleEl : card.querySelector('a')) as HTMLAnchorElement | null
-  const rawTitle = titleEl?.textContent?.trim() || titleLink?.textContent?.trim() || ''
-
-  if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 140) {
-    return { isValid: false, signals: [], reason: 'No valid title element found in card' }
-  }
-
-  // Reject generic navigation or media titles
-  const invalidTitles = /^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending)$/i
-  if (invalidTitles.test(rawTitle)) {
-    return { isValid: false, signals: [], reason: 'Title matches generic navigation/media keyword' }
-  }
-
-  if (
-    /\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?)\b/i.test(rawTitle) &&
-    !/\b(jobs?|internships?|hiring|recruitment|trainee)\b/i.test(rawTitle)
-  ) {
-    return { isValid: false, signals: [], reason: 'Title indicates competition or event' }
-  }
-
-  // 3. Extract Candidate Company
-  const companyEl = card.querySelector(
-    '[class*="company" i], [class*="employer" i], [class*="org" i], [class*="hiring" i]'
-  )
-  let rawCompany = companyEl?.textContent?.trim() || ''
-
-  // Fallback: check schema.org hiringOrganization or meta if present
-  if (!rawCompany) {
-    const parentContainer = card.closest('[class*="job" i], [id*="job" i]')
-    const parentCompanyEl = parentContainer?.querySelector('[class*="company" i], [class*="employer" i]')
-    rawCompany = parentCompanyEl?.textContent?.trim() || ''
-  }
-
-  // 4. Check for Verified Job Signals
+  const companyEl = card.querySelector?.('[class*="company" i], [class*="employer" i], [class*="organization" i], [class*="org" i], [class*="hiring" i], [class*="recruiter" i]')
+  const rawCompany = companyEl?.textContent?.replace(/\s+/g, ' ').trim() || ''
   const signals: string[] = []
-
-  // Factor A: Location
-  const hasLocation =
-    !!card.querySelector('[class*="location" i], [class*="city" i], [class*="place" i]') ||
-    /\b(remote|hybrid|on-site|in-office|[A-Z][a-zA-Z]+,\s*[A-Z]{2})\b/i.test(cardText)
+  const hasLocation = Boolean(card.querySelector?.('[class*="location" i], [class*="city" i], [class*="place" i]')) || /\b(remote|hybrid|on-site|in-office|work from home)\b/i.test(cardText)
+  const hasExperience = /\b(\d+\+?\s*years?|fresher|entry[ -]level|mid[ -]level|senior|intern)\b/i.test(cardText)
+  const hasSalary = Boolean(card.querySelector?.('[class*="salary" i], [class*="stipend" i], [class*="pay" i]')) || /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|k)\b|\bper\s+(month|year|hr)\b)/i.test(cardText)
+  const hasJobType = /\b(full[ -]time|part[ -]time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary)\b/i.test(cardText)
+  const href = titleLink?.href || (card.querySelector?.('a') as HTMLAnchorElement | null)?.href || ''
+  const hasJobLink = /\/jobs?\//i.test(href) || /\/careers?\//i.test(href) || /\/positions?\//i.test(href) || /\/openings?\//i.test(href) || /\/apply/i.test(href) || /viewjob/i.test(href) || /boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com/i.test(href)
+  const hasSnippet = Boolean(card.querySelector?.('[class*="snippet" i], [class*="summary" i], [class*="description" i]')) || /\b(responsibilities|qualifications|skills|requirements|eligibility|apply\s+by)\b/i.test(cardText)
+  const hasEducation = /\b(bachelor'?s|master'?s|b\.?tech|b\.?e\.?|degree|phd|diploma)\b/i.test(cardText)
+  const hasApply = Boolean(card.querySelector?.('button[class*="apply" i], a[class*="apply" i]')) || /\b(apply|easy apply|apply now)\b/i.test(cardText)
   if (hasLocation) signals.push('location')
-
-  // Factor B: Experience
-  const hasExperience = /\b(\d+\+?\s*years?|fresher|entry[ -]level|mid[ -]senior|intern|0-2 years|2-4 years|3\+ years)\b/i.test(cardText)
   if (hasExperience) signals.push('experience')
-
-  // Factor C: Salary / Stipend
-  const hasSalary =
-    !!card.querySelector('[class*="salary" i], [class*="stipend" i], [class*="pay" i]') ||
-    /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|k)\b|\bper\s+(month|year|hr)\b)/i.test(cardText)
   if (hasSalary) signals.push('salary')
-
-  // Factor D: Job Type
-  const hasJobType = /\b(full[ -]time|part[ -]time|contract|internship|intern|campus\s+ambassador|freelance)\b/i.test(cardText)
   if (hasJobType) signals.push('jobType')
-
-  // Factor E: Application link / Career URL
-  const anyLink = (titleLink?.href ? titleLink : card.querySelector('a')) as HTMLAnchorElement | null
-  const href = anyLink?.href || ''
-  const hasJobLink =
-    /\/jobs?\//i.test(href) ||
-    /\/careers?\//i.test(href) ||
-    /\/position\//i.test(href) ||
-    /\/apply/i.test(href) ||
-    /viewjob/i.test(href) ||
-    /unstop\.com\/(jobs|internships|opportunity|p)\//i.test(href) ||
-    /\/(opportunity|p)\//i.test(href)
   if (hasJobLink) signals.push('jobLink')
-
-  // Factor F: Job description / requirements snippet
-  const hasJobSnippet =
-    !!card.querySelector('[class*="snippet" i], [class*="summary" i], [class*="description" i]') ||
-    /\b(responsibilities|qualifications|skills|requirements|eligibility|apply\s+by)\b/i.test(cardText)
-  if (hasJobSnippet) signals.push('jobSnippet')
-
-  // Factor G: Education requirement
-  const hasEducation = /\b(bachelor'?s|master'?s|b\.?tech|b\.?e|degree|phd|diploma)\b/i.test(cardText)
+  if (hasSnippet) signals.push('jobSnippet')
   if (hasEducation) signals.push('education')
-
-  // Factor H: Apply action
-  const hasApply = !!card.querySelector('button[class*="apply" i], a[class*="apply" i]') || /\b(apply|apply now|easy apply)\b/i.test(cardText)
   if (hasApply) signals.push('applyAction')
 
-  // Requirement: Job title + (Company or at least 2 job signals) + at least 1 verified job signal
-  const hasCompany = Boolean(rawCompany && rawCompany.length >= 2)
-  const isSufficientlyEvident =
-    (hasCompany && signals.length >= 1) ||
-    (!hasCompany && signals.length >= 2 && (hasJobLink || hasJobType || hasSalary || hasExperience))
-
-  if (!isSufficientlyEvident) {
-    return {
-      isValid: false,
-      title: rawTitle,
-      company: rawCompany,
-      signals,
-      reason: `Card lacks sufficient verified job signals (found ${signals.length}: ${signals.join(', ')})`,
-    }
-  }
-
-  return {
-    isValid: true,
-    title: rawTitle,
-    company: rawCompany || 'Unknown Company',
-    signals,
-  }
+  const hasCompany = rawCompany.length >= 2
+  const valid = (hasCompany && signals.length >= 1) || (!hasCompany && signals.length >= 2 && (hasJobLink || hasJobType || hasSalary || hasExperience))
+  return valid ? { isValid: true, title: rawTitle, company: rawCompany || 'Unknown Company', signals } : { isValid: false, title: rawTitle, company: rawCompany, signals, reason: `Insufficient job evidence (${signals.length} signals)` }
 }
 
 /**
- * Gate check for job listing pages
+ * Generic listing evidence gate. It deliberately looks beyond CSS classes:
+ * job destination anchors and their nearest semantic containers are candidate
+ * cards. This is what lets custom company portals and evolving job-board DOMs
+ * work without adding a new adapter for every site.
  */
 export function isLikelyJobListing(doc: Document, url: string): boolean {
   if (isExplicitlyNonJobSite(url)) return false
 
-  const cleanUrl = url.toLowerCase()
-
-  // 1. JSON-LD ItemList with JobPostings
-  const scripts = doc.querySelectorAll ? doc.querySelectorAll('script[type="application/ld+json"]') : []
+  const scripts = doc.querySelectorAll?.('script[type="application/ld+json"]') || []
   for (const script of Array.from(scripts)) {
     try {
-      const data = JSON.parse(script.textContent || '{}')
-      const items = Array.isArray(data) ? data : [data]
-      for (const item of items) {
-        if (item['@type'] === 'ItemList' && Array.isArray(item.itemListElement)) {
-          const jobCount = item.itemListElement.filter(
-            (elem: any) => (elem.item || elem)['@type'] === 'JobPosting'
-          ).length
-          if (jobCount >= 2) return true
+      const parsed = JSON.parse(script.textContent || '{}')
+      const roots = Array.isArray(parsed) ? parsed : [parsed]
+      for (const root of roots) {
+        if (root?.['@type'] === 'ItemList' && Array.isArray(root.itemListElement)) {
+          const count = root.itemListElement.filter((x: any) => (x?.item || x)?.['@type'] === 'JobPosting').length
+          if (count >= 1) return true
         }
       }
-    } catch {
-      /* ignore */
+    } catch { /* ignore */ }
+  }
+
+  const candidates: HTMLElement[] = []
+  const selectors = [
+    '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job-listing" i]', '[class*="job-item" i]',
+    '[data-job-id]', '[data-testid*="job" i]', '[data-automation-id*="job" i]', 'article[class*="job" i]',
+    'li[class*="job" i]', '.card[class*="job" i]', '[class*="opportunity_card" i]', '[class*="opp-card" i]',
+    '[class*="opp_card" i]', '[class*="c-card" i]', '[class*="listing_card" i]', '.single_opportunity',
+    '[class*="opening" i]', '[class*="vacancy" i]', '[class*="position" i]',
+  ]
+  for (const sel of selectors) for (const el of Array.from(doc.querySelectorAll?.(sel) || [])) candidates.push(el as HTMLElement)
+
+  // Universal anchor-driven discovery: do not require a job-card class.
+  const anchors = Array.from(doc.querySelectorAll?.('a[href]') || []) as HTMLAnchorElement[]
+  for (const anchor of anchors) {
+    const href = anchor.href || ''
+    const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
+    if (!text || text.length < 4 || text.length > 140) continue
+    const jobDestination = /\/jobs?\//i.test(href) || /\/careers?\//i.test(href) || /\/positions?\//i.test(href) || /\/openings?\//i.test(href) || /\/vacancies?\//i.test(href) || /\/apply(?:\/|\?|$)/i.test(href) || /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com/i.test(href)
+    const titleLike = /\b(engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|human resources|hr)\b/i.test(text)
+    if (jobDestination || titleLike) {
+      let node: HTMLElement | null = anchor.parentElement
+      let depth = 0
+      while (node && depth < 5) {
+        const nodeText = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+        if (nodeText.length >= 25 && nodeText.length <= 1800) { candidates.push(node); break }
+        node = node.parentElement; depth++
+      }
     }
   }
 
-  // 2. Candidate Card Elements
-  const potentialCards = doc.querySelectorAll
-    ? Array.from(
-        doc.querySelectorAll(
-          '[class*="job-card" i], [class*="jobCard" i], [class*="job-listing" i], [class*="job-item" i], [data-job-id], article[class*="job" i], li[class*="job" i], .card[class*="job" i], [class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="listing_card" i], .single_opportunity, [class*="opportunity" i], div[class*="opening" i], tr.job, [data-automation-id="compositeHeader"], [data-automation-id="jobCard"]'
-        )
-      )
-    : []
-
-  let validJobCardCount = 0
-  for (const card of potentialCards) {
-    const check = isValidJobCard(card as HTMLElement)
-    if (check.isValid) {
-      validJobCardCount++
-      if (validJobCardCount >= 2) return true
+  const unique = Array.from(new Set(candidates))
+  let validCount = 0
+  for (const card of unique) {
+    if (isValidJobCard(card).isValid) {
+      validCount++
+      if (validCount >= 1) return true
     }
   }
-
-  // 3. Verified Job Board Search URL with at least 1 validated job card
-  const isJobBoardSearch =
-    /linkedin\.com\/jobs/i.test(cleanUrl) ||
-    /indeed\.com\/jobs/i.test(cleanUrl) ||
-    /unstop\.com\/(jobs|internships|all-opportunities|competitions)/i.test(cleanUrl) ||
-    cleanUrl.includes('opportunity=') ||
-    /glassdoor\.com\/job-listing/i.test(cleanUrl) ||
-    /careers\.[a-z0-9-]+\.[a-z]+/i.test(cleanUrl) ||
-    /\/careers?\/?(\?.*)?$/i.test(cleanUrl) ||
-    /\/jobs?\/?(\?.*)?$/i.test(cleanUrl) ||
-    /\/openings\/?(\?.*)?$/i.test(cleanUrl) ||
-    /\/vacancies\/?(\?.*)?$/i.test(cleanUrl) ||
-    /boards\.greenhouse\.io/i.test(cleanUrl) ||
-    /jobs\.lever\.co/i.test(cleanUrl) ||
-    /myworkdayjobs\.com/i.test(cleanUrl)
-
-  if (isJobBoardSearch && validJobCardCount >= 1) {
-    return true
-  }
-
   return false
 }
