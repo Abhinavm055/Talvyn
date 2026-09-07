@@ -27,7 +27,7 @@ export class JobScanner {
   private isPlausibleExtractedJob(job: ExtractedJob, currentUrl: string): boolean {
     const title = (job.title || '').replace(/\s+/g, ' ').trim()
     const company = (job.company || '').replace(/\s+/g, ' ').trim()
-    if (title.length < 3 || title.length > 180 || company.length < 2) return false
+    if (title.length < 3 || title.length > 180) return false
 
     const nonJobPattern = /\b(competition|competitions|hackathon|hackathons|workshop|workshops|webinar|quiz|quizzes|contest|contests|leaderboard|challenge|challenges|register now|sponsored|advertisement|advert|promoted)\b/i
     if (nonJobPattern.test(title)) return false
@@ -40,9 +40,9 @@ export class JobScanner {
       job.description || '',
     ].join(' ')
 
-    const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|years? of experience|experience required|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
+    const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|years?(\s+(of\s+)?exp(erience)?)?|experience required|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
     const hasDestination = Boolean(job.jobUrl && job.jobUrl !== currentUrl)
-    const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.description || hasDestination)
+    const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.description || hasDestination || (company && company !== 'Unknown Company'))
 
     return hasJobSignal && hasSupportingField
   }
@@ -92,6 +92,13 @@ export class JobScanner {
     const adapter = adapterRegistry.getAdapter(url, doc)
     const pageJobEvidence = isLikelyJobPage(doc, url)
     const pageListingEvidence = isLikelyJobListing(doc, url)
+    const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|\b(search|results|q=|keywords=)\b/i.test(url)
+
+    // If page has listing search parameters (e.g. Unstop ?selectedItem=..., LinkedIn ?currentJobId=...)
+    // and valid listing evidence, prioritize JOB_LIST even if a side pane previews one job.
+    if (hasListingParam && pageListingEvidence) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
+    }
 
     // A single job requires the universal job evidence gate, even when a
     // site-specific adapter recognizes a detail URL.
@@ -105,10 +112,6 @@ export class JobScanner {
     }
 
     // Universal fallback classification. This is intentionally evidence-based.
-    if (pageJobEvidence) {
-      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
-    }
-
     if (pageListingEvidence) {
       return { classification: 'JOB_LIST', adapterName: adapter.name }
     }
@@ -121,6 +124,10 @@ export class JobScanner {
       if (adapterJobs.length > 0) {
         return { classification: 'JOB_LIST', adapterName: adapter.name }
       }
+    }
+
+    if (pageJobEvidence) {
+      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
     }
 
     return { classification: 'OTHER', adapterName: adapter.name }

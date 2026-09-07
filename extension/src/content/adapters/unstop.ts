@@ -95,10 +95,22 @@ export class UnstopAdapter implements SiteAdapter {
     const clean = url.toLowerCase()
 
     const cardCount = doc?.querySelectorAll?.(
-      '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity'
+      '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], [class*="opportunity" i], .single_opportunity'
     )?.length || 0
 
     if (cardCount >= 2) {
+      return false
+    }
+
+    const isListUrl =
+      /\/(job|jobs)\/?(\?.*)?$/i.test(clean) ||
+      /\/jobs?\/search/i.test(clean) ||
+      /\/internships\/?(\?.*)?$/i.test(clean) ||
+      clean.includes('selecteditem=') ||
+      clean.includes('oppstatus=') ||
+      clean.includes('opportunity=')
+
+    if (isListUrl && cardCount >= 1) {
       return false
     }
 
@@ -116,32 +128,39 @@ export class UnstopAdapter implements SiteAdapter {
     const hasTitle = Boolean(doc?.querySelector?.('h1, h1.title, [class*="job-title" i], [class*="opp_title" i], [class*="opp-title" i]'))
     const hasApplyOrRegBtn = Boolean(doc?.querySelector?.('button[class*="apply" i], a[class*="apply" i], button[class*="register" i], a[class*="register" i]'))
 
-    if (isDetailUrl) {
+    if (isDetailUrl && !isListUrl) {
       return true
     }
 
-    return Boolean(hasTitle && hasApplyOrRegBtn)
+    return Boolean(hasTitle && hasApplyOrRegBtn && !isListUrl)
   }
 
   isJobListingPage(url: string, doc?: Document): boolean {
-    if (this.isJobDetailPage(url, doc)) {
-      return false
-    }
     const clean = url.toLowerCase()
     const isListUrl =
-      /\/jobs\/?(\?.*)?$/i.test(clean) ||
-      /\/jobs\/search/i.test(clean) ||
+      /\/(job|jobs)\/?(\?.*)?$/i.test(clean) ||
+      /\/jobs?\/search/i.test(clean) ||
       /\/internships\/?(\?.*)?$/i.test(clean) ||
       /\/internships\/search/i.test(clean) ||
       /\/competitions\/?(\?.*)?$/i.test(clean) ||
       /\/all-opportunities/i.test(clean) ||
-      clean.includes('opportunity=')
+      clean.includes('opportunity=') ||
+      clean.includes('oppstatus=') ||
+      clean.includes('selecteditem=')
 
     const cardCount = doc?.querySelectorAll?.(
       '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], [class*="opportunity" i], .single_opportunity'
     )?.length || 0
 
-    return Boolean(isListUrl || cardCount >= 2)
+    if (isListUrl || cardCount >= 2) {
+      return true
+    }
+
+    if (this.isJobDetailPage(url, doc)) {
+      return false
+    }
+
+    return false
   }
 
   extractJobList(doc: Document): ExtractedJob[] {
@@ -154,14 +173,16 @@ export class UnstopAdapter implements SiteAdapter {
       )
     )
 
+    let idx = 0
     for (const card of cardElements) {
+      idx++
       // Filter out non-card parent containers if matching [class*="opportunity" i] broadly
       if (card.children.length > 25 && card.querySelectorAll('[class*="opportunity" i]').length > 1) {
         continue
       }
 
       const titleEl = card.querySelector(
-        'h2, h3, h4, h1, [class*="title" i], [class*="opp_title" i], [class*="heading" i], a'
+        'h2, h3, h4, h5, h1, [class*="title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="heading" i], a'
       )
       const linkEl = (titleEl?.tagName === 'A' ? titleEl : card.querySelector('a')) as HTMLAnchorElement | null
       const companyEl = card.querySelector(
@@ -182,16 +203,22 @@ export class UnstopAdapter implements SiteAdapter {
       const rawCompany = companyEl?.textContent?.trim()
       const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
 
-      const rawJobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
-      const jobUrl = cleanUrl(rawJobUrl) || `https://unstop.com/jobs/${encodeURIComponent(title || '')}-${encodeURIComponent(company || '')}`
+      const dataId = (card as HTMLElement).getAttribute?.('data-id') || (card as HTMLElement).getAttribute?.('data-item-id') || (card as HTMLElement).getAttribute?.('id')
+      let rawJobUrl = linkEl?.href || (dataId ? `https://unstop.com/jobs/${dataId}` : '')
+      if (!rawJobUrl || (typeof window !== 'undefined' && rawJobUrl === window.location.href) || rawJobUrl === '#' || rawJobUrl.startsWith('javascript:')) {
+        rawJobUrl = `https://unstop.com/jobs/${encodeURIComponent(title || '')}-${encodeURIComponent(company || '')}-${idx}`
+      }
+      const jobUrl = cleanUrl(rawJobUrl)
 
       let location = locationEl?.textContent?.trim() || undefined
       if (location && (location.includes('Bengaluru') || location.includes('Bangalore'))) {
         location = location.replace(/\s+/g, ' ').trim()
       }
 
+      const dedupKey = `${title.toLowerCase()}|${company.toLowerCase()}`
       // Reject non-job items (e.g. pure generic cards or empty titles)
-      if (title && title.length > 2 && !seen.has(jobUrl)) {
+      if (title && title.length > 2 && !seen.has(dedupKey) && !seen.has(jobUrl)) {
+        seen.add(dedupKey)
         seen.add(jobUrl)
         jobs.push({
           title,

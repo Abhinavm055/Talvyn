@@ -35,8 +35,14 @@ function matches(node: Node, selector: string): boolean {
 
 function makeNode(tagName: string, textContent = '', opts: Partial<Node> = {}): Node {
   const node: Node = {
-    tagName: tagName.toUpperCase(), textContent, children: opts.children || [], href: opts.href,
+    tagName: tagName.toUpperCase(), children: opts.children || [], href: opts.href,
     className: opts.className || '', parentElement: null,
+    get textContent() {
+      if (this.children.length > 0) {
+        return this.children.map((c) => c.textContent).join(' ')
+      }
+      return textContent
+    },
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null },
     querySelectorAll(selector) {
       const out: Node[] = []

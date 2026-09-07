@@ -98,13 +98,13 @@ export class IndeedAdapter implements SiteAdapter {
 
   extractSingleJob(doc: Document): ExtractedJob | null {
     const title = doc.querySelector(
-      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"]'
+      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h1'
     )?.textContent?.trim()
 
     if (!title) return null
 
     const companyEl = doc.querySelector(
-      '[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"] span, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, div[data-testid="jobsearch-CompanyInfoContainer"] span, .companyName, .icl-u-lg-mr--sm, [class*="companyName"]'
+      '[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"] span, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, div[data-testid="jobsearch-CompanyInfoContainer"] span, .jobsearch-CompanyInfoContainer, [class*="CompanyInfo" i], .companyName, .icl-u-lg-mr--sm, [class*="companyName"]'
     )
 
     const company =

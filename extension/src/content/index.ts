@@ -729,7 +729,18 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   // 1. Classification check
   const { classification } = jobScanner.classifyPage(url, doc)
 
-  // A. Single Job Detail Page (First Priority: analyze specific job detail and open floating window)
+  // A. Job Listing Page (When classified as JOB_LIST or when page has listing evidence without being a dedicated SINGLE_JOB)
+  if (classification === 'JOB_LIST' || (classification !== 'SINGLE_JOB' && isLikelyJobListing(doc, url))) {
+    removePanel()
+    isSinglePanelVisible = false
+    const summary = jobScanner.scanJobListing(url, doc, profile)
+    if (summary.totalDetected >= 1) {
+      renderDiscoveryView(summary)
+      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
+    }
+  }
+
+  // B. Single Job Detail Page (When on a specific job detail page)
   if (classification === 'SINGLE_JOB' || isLikelyJobPage(doc, url)) {
     const job = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
     if (job && isLikelyJobPage(doc, url)) {
@@ -741,28 +752,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     }
   }
 
-  // B. Job Listing Page (When on a multi-job search or directory page)
-  if (classification === 'JOB_LIST' || isLikelyJobListing(doc, url)) {
-    removePanel()
-    isSinglePanelVisible = false
-    const summary = jobScanner.scanJobListing(url, doc, profile)
-    if (summary.totalDetected >= 1) {
-      renderDiscoveryView(summary)
-      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
-    }
-  }
-
-  // C. Fallback: Re-verify if single job is evident
-  const fallbackJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
-  if (fallbackJob && isLikelyJobPage(doc, url)) {
-    currentSingleJob = fallbackJob
-    discoveryPanelManager.remove()
-    isDiscoveryPanelVisible = false
-    await showSinglePanel(fallbackJob)
-    return { success: true, mode: 'single-job' }
-  }
-
-  // D. Fallback: Re-verify if any valid job listing cards exist
+  // C. Fallback: Re-verify if any valid job listing cards exist
   if (isLikelyJobListing(doc, url)) {
     const fallbackSummary = jobScanner.scanJobListing(url, doc, profile)
     if (fallbackSummary.totalDetected >= 1) {
@@ -771,6 +761,16 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
       renderDiscoveryView(fallbackSummary)
       return { success: true, mode: 'job-listing', detectedJobs: fallbackSummary.totalDetected }
     }
+  }
+
+  // D. Fallback: Re-verify if single job is evident
+  const fallbackJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
+  if (fallbackJob && isLikelyJobPage(doc, url)) {
+    currentSingleJob = fallbackJob
+    discoveryPanelManager.remove()
+    isDiscoveryPanelVisible = false
+    await showSinglePanel(fallbackJob)
+    return { success: true, mode: 'single-job' }
   }
 
   // D. Could not detect job on this page
