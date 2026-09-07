@@ -1,5 +1,6 @@
 import { ExtractedJob, UserProfile, AnalyzedJob, JobListAnalysisSummary } from '../types'
 import { adapterRegistry } from './adapters/registry'
+import { GenericAdapter } from './adapters/generic'
 import { analyzeJobRelevance } from '../services/relevanceScorer'
 import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing } from './jobEvidenceDetector'
 
@@ -16,9 +17,72 @@ export class JobScanner {
   private scannedJobUrls = new Set<string>()
   private cachedAnalyzedJobs: Map<string, { job: AnalyzedJob; cachedAt: number }> = new Map()
   private readonly CACHE_TTL_MS = 15 * 60 * 1000 // 15 minutes
+  private readonly genericAdapter = new GenericAdapter()
 
   /**
-   * Classifies current page as SINGLE_JOB, JOB_LIST, or OTHER
+   * A small final validator for adapter output. It prevents a site adapter from
+   * turning an arbitrary card (competition, article, promotion, etc.) into a job.
+   * This is deliberately independent of site-specific CSS.
+   */
+  private isPlausibleExtractedJob(job: ExtractedJob, currentUrl: string): boolean {
+    const title = (job.title || '').replace(/\s+/g, ' ').trim()
+    const company = (job.company || '').replace(/\s+/g, ' ').trim()
+    if (title.length < 3 || title.length > 180 || company.length < 2) return false
+
+    const nonJobPattern = /\b(competition|competitions|hackathon|hackathons|workshop|workshops|webinar|quiz|quizzes|contest|contests|leaderboard|challenge|challenges|register now|sponsored|advertisement|advert|promoted)\b/i
+    if (nonJobPattern.test(title)) return false
+
+    const evidenceText = [
+      title,
+      job.jobType || '',
+      job.location || '',
+      job.salary || '',
+      job.description || '',
+    ].join(' ')
+
+    const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|years? of experience|experience required|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
+    const hasDestination = Boolean(job.jobUrl && job.jobUrl !== currentUrl)
+    const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.description || hasDestination)
+
+    return hasJobSignal && hasSupportingField
+  }
+
+  /**
+   * Extract from a site adapter first, then fall back to the universal adapter
+   * when a site-specific adapter cannot produce valid job data. This keeps
+   * dedicated adapters as an optimization rather than a hard dependency.
+   */
+  private extractSingleJobUniversal(url: string, doc: Document, adapter: any): ExtractedJob | null {
+    const specific = adapter.extractSingleJob(doc)
+    if (specific && this.isPlausibleExtractedJob(specific, url)) return specific
+
+    const generic = this.genericAdapter.extractSingleJob(doc)
+    if (generic && this.isPlausibleExtractedJob(generic, url)) return generic
+
+    return null
+  }
+
+  private extractJobListUniversal(url: string, doc: Document, adapter: any): ExtractedJob[] {
+    const primary = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+    const generic = this.genericAdapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+
+    const merged: ExtractedJob[] = []
+    const seen = new Set<string>()
+
+    for (const job of [...primary, ...generic]) {
+      const key = `${job.jobUrl || ''}|${job.title.toLowerCase().replace(/[^a-z0-9]/g, '')}|${job.company.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(job)
+    }
+
+    return merged
+  }
+
+  /**
+   * Classifies current page as SINGLE_JOB, JOB_LIST, or OTHER.
+   * The universal evidence gate is mandatory: adapter URL patterns alone can
+   * never classify a page as a job.
    */
   classifyPage(url: string, doc: Document): { classification: PageClassification; adapterName: string } {
     if (isExplicitlyNonJobSite(url)) {
@@ -26,36 +90,50 @@ export class JobScanner {
     }
 
     const adapter = adapterRegistry.getAdapter(url, doc)
+    const pageJobEvidence = isLikelyJobPage(doc, url)
+    const pageListingEvidence = isLikelyJobListing(doc, url)
 
-    // Check detail page first when on a specific job posting
-    if (adapter.isJobDetailPage(url, doc)) {
+    // A single job requires the universal job evidence gate, even when a
+    // site-specific adapter recognizes a detail URL.
+    if (pageJobEvidence && adapter.isJobDetailPage(url, doc)) {
       return { classification: 'SINGLE_JOB', adapterName: adapter.name }
     }
 
-    // Check listing page for search results / collections
+    // A listing requires actual listing evidence, not merely /jobs or ?q= in URL.
+    if (pageListingEvidence && adapter.isJobListingPage(url, doc)) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
+    }
+
+    // Universal fallback classification. This is intentionally evidence-based.
+    if (pageJobEvidence) {
+      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
+    }
+
+    if (pageListingEvidence) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
+    }
+
+    // If the universal card gate cannot recognize a site's custom DOM but its
+    // adapter produced genuine job-shaped records, accept the listing only when
+    // at least one real job record exists. URL patterns are never sufficient.
     if (adapter.isJobListingPage(url, doc)) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // High-confidence fallback checks: detail page first
-    if (isLikelyJobPage(doc, url)) {
-      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
-    }
-
-    if (isLikelyJobListing(doc, url)) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
+      const adapterJobs = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+      if (adapterJobs.length > 0) {
+        return { classification: 'JOB_LIST', adapterName: adapter.name }
+      }
     }
 
     return { classification: 'OTHER', adapterName: adapter.name }
   }
 
   /**
-   * Scans a single job detail page
+   * Scans a single job detail page through the site adapter and then the
+   * universal fallback, while preserving the mandatory evidence gate.
    */
   scanSingleJob(url: string, doc: Document): ExtractedJob | null {
-    if (isExplicitlyNonJobSite(url)) return null
+    if (isExplicitlyNonJobSite(url) || !isLikelyJobPage(doc, url)) return null
     const adapter = adapterRegistry.getAdapter(url, doc)
-    return adapter.extractSingleJob(doc)
+    return this.extractSingleJobUniversal(url, doc, adapter)
   }
 
   /**
@@ -82,16 +160,13 @@ export class JobScanner {
     }
 
     const adapter = adapterRegistry.getAdapter(url, doc)
-    const rawJobs = adapter.extractJobList(doc)
-
+    const rawJobs = this.extractJobListUniversal(url, doc, adapter)
     const analyzedJobs: AnalyzedJob[] = []
-
     const now = Date.now()
 
     for (const rawJob of rawJobs) {
       const urlKey = rawJob.jobUrl || `${rawJob.title}-${rawJob.company}`
 
-      // Check cache or compute fresh
       const cached = this.cachedAnalyzedJobs.get(urlKey)
       let analyzed: AnalyzedJob
 
@@ -103,16 +178,12 @@ export class JobScanner {
         this.scannedJobUrls.add(urlKey)
       }
 
-      // Mark saved status
       analyzed.isSaved = existingSavedUrls.has(rawJob.jobUrl)
-
       analyzedJobs.push(analyzed)
     }
 
-    // Sort by relevance score descending (highest match first)
     analyzedJobs.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
-    // Calculate count breakdown
     let excellentCount = 0
     let highlyRelevantCount = 0
     let relevantCount = 0
@@ -137,9 +208,6 @@ export class JobScanner {
     }
   }
 
-  /**
-   * Clears the scan cache (e.g. on full navigation)
-   */
   clearCache(): void {
     this.scannedJobUrls.clear()
     this.cachedAnalyzedJobs.clear()
