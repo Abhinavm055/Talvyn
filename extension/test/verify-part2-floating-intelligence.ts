@@ -273,8 +273,18 @@ async function runTests() {
 
   const manifestSrc = fs.readFileSync(path.resolve(__dirname, '../src/manifest.ts'), 'utf8')
   assert(
-    !manifestSrc.includes("default_popup: 'src/popup/index.html'"),
-    'Action configuration does not force default_popup, allowing direct onClicked dispatch to webpage'
+    manifestSrc.includes("default_popup: 'src/popup/index.html'"),
+    'Action configuration defines default_popup so touching extension opens popup'
+  )
+
+  const popupSrc = fs.readFileSync(path.resolve(__dirname, '../src/popup/popup.ts'), 'utf8')
+  assert(
+    popupSrc.includes('triggerActiveTabIntelligencePanel') && popupSrc.includes('TALVYN_OPEN_INTELLIGENCE_PANEL'),
+    'Extension popup immediately triggers floating intelligence window on active tab so both appear'
+  )
+  assert(
+    bgSrc.includes('TRIGGER_ACTIVE_TAB_PANEL'),
+    'Background service worker supports TRIGGER_ACTIVE_TAB_PANEL for seamless injection & floating panel display'
   )
 
   // ─── 2. Job Detail Detection & Supported Sites ────────────────────────────

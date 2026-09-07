@@ -15,6 +15,7 @@ export default defineManifest({
   // Toolbar Action click handler — communicates directly with active tab to trigger intelligence window
   action: {
     default_title: 'Talvyn Browser Extension',
+    default_popup: 'src/popup/index.html',
     default_icon: {
       '16':  'icons/icon16.png',
       '32':  'icons/icon32.png',

@@ -109,11 +109,54 @@ async function triggerDisconnectAccount(): Promise<void> {
   renderDisconnected()
 }
 
+/**
+ * Triggers the floating intelligence panel on the active webpage.
+ * Automatically runs whenever popup opens so BOTH popup and floating window are displayed!
+ */
+export async function triggerActiveTabIntelligencePanel(): Promise<void> {
+  console.log('[Talvyn Popup] Triggering floating intelligence panel on active tab...')
+  try {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        const activeTab = tabs[0]
+        if (!activeTab?.id) return
+        try {
+          await chrome.tabs.sendMessage(activeTab.id, {
+            type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+            tabUrl: activeTab.url,
+            tabTitle: activeTab.title,
+          })
+        } catch {
+          // If direct send fails (e.g. content script needs injection), delegate to background
+          try {
+            await sendBackgroundMessage({
+              type: 'TRIGGER_ACTIVE_TAB_PANEL',
+            })
+          } catch (bgErr) {
+            console.warn('[Talvyn Popup] Background panel trigger error:', bgErr)
+          }
+        }
+      })
+    } else {
+      await sendBackgroundMessage({
+        type: 'TRIGGER_ACTIVE_TAB_PANEL',
+      })
+    }
+  } catch (err) {
+    console.warn('[Talvyn Popup] Failed to trigger active tab floating window:', err)
+  }
+}
+
 // ─── Initializer & State Machine ──────────────────────────────────────────────
 
 async function init() {
   console.log('[Talvyn] POPUP_AUTH_CHECK_STARTED')
   renderLoading()
+
+  // Immediately trigger floating intelligence window on the active tab so BOTH appear!
+  triggerActiveTabIntelligencePanel().catch((e) => {
+    console.warn('[Talvyn Popup] Auto-trigger floating panel error:', e)
+  })
 
   try {
     const response = await sendBackgroundMessage<{
@@ -481,6 +524,17 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
           </div>
         </div>
 
+        <!-- Primary Floating Window Action Button -->
+        <button type="button" id="btn-open-floating" style="
+          width:100%;margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg, #4f46e5, #6366f1);
+          color:white;border:none;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 1px 3px rgba(79,70,229,0.25);
+          transition:opacity 0.15s;
+        ">
+          <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span>Open Floating Job Intelligence</span>
+        </button>
+
         <!-- 4 Core Navigation Route Buttons: Dashboard, Profile, Tracker, Settings -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
           <button type="button" id="btn-open-dashboard" style="
@@ -544,6 +598,10 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
       </div>
     </div>
   `
+
+  document.getElementById('btn-open-floating')?.addEventListener('click', async () => {
+    await triggerActiveTabIntelligencePanel()
+  })
 
   document.getElementById('btn-open-dashboard')?.addEventListener('click', () => {
     openDashboardRoute('dashboard')

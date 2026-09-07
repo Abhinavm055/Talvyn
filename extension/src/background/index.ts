@@ -35,31 +35,28 @@ chrome.runtime.onStartup.addListener(async () => {
   await validateStoredToken()
 })
 
-// ─── Extension Action (Icon Click) ────────────────────────────────────────────
-// Flow: Extension icon click -> gets active tab -> sends TALVYN_OPEN_INTELLIGENCE_PANEL
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return
-  const tabId = tab.id
-  console.log('[Talvyn] Extension icon clicked on tab:', tabId, tab.url)
-
+// ─── Extension Action & Floating Window Trigger ──────────────────────────────
+export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: string, tabTitle?: string): Promise<any> {
+  console.log('[Talvyn] Triggering intelligence panel on tab:', tabId, tabUrl)
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
-      tabUrl: tab.url,
-      tabTitle: tab.title,
+      tabUrl,
+      tabTitle,
     })
     console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL responded:', response)
+    return response
   } catch (err: any) {
     console.log('[Talvyn] Content script not reachable directly, attempting programmatic injection:', err?.message || err)
     if (
-      tab.url?.startsWith('chrome://') ||
-      tab.url?.startsWith('chrome-extension://') ||
-      tab.url?.startsWith('edge://') ||
-      tab.url?.startsWith('brave://') ||
-      tab.url?.startsWith('about:')
+      tabUrl?.startsWith('chrome://') ||
+      tabUrl?.startsWith('chrome-extension://') ||
+      tabUrl?.startsWith('edge://') ||
+      tabUrl?.startsWith('brave://') ||
+      tabUrl?.startsWith('about:')
     ) {
-      console.warn('[Talvyn] Cannot inject content script into browser internal page:', tab.url)
-      return
+      console.warn('[Talvyn] Cannot inject content script into browser internal page:', tabUrl)
+      return null
     }
 
     try {
@@ -71,23 +68,32 @@ chrome.action.onClicked.addListener(async (tab) => {
             target: { tabId },
             files: contentScriptFiles,
           })
-          setTimeout(async () => {
-            try {
-              await chrome.tabs.sendMessage(tabId, {
-                type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
-                tabUrl: tab.url,
-                tabTitle: tab.title,
-              })
-            } catch {
-              /* retry completed */
-            }
-          }, 300)
+          return new Promise((resolve) => {
+            setTimeout(async () => {
+              try {
+                const retryRes = await chrome.tabs.sendMessage(tabId, {
+                  type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+                  tabUrl,
+                  tabTitle,
+                })
+                resolve(retryRes)
+              } catch {
+                resolve(null)
+              }
+            }, 300)
+          })
         }
       }
     } catch (injectErr) {
       console.error('[Talvyn] Failed to inject content script:', injectErr)
     }
   }
+  return null
+}
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return
+  await triggerIntelligencePanelOnTab(tab.id, tab.url, tab.title)
 })
 
 // ─── Token Validation ─────────────────────────────────────────────────────────
@@ -480,6 +486,21 @@ async function handleInternalMessage(msg: any): Promise<any> {
     await clearAuth()
     setBadge('off')
     return { success: true, state: 'disconnected' }
+  }
+
+  // 8. TRIGGER_ACTIVE_TAB_PANEL / TALVYN_OPEN_FLOATING_WINDOW
+  if (msg.type === 'TRIGGER_ACTIVE_TAB_PANEL' || msg.type === 'TALVYN_OPEN_FLOATING_WINDOW') {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+      const activeTab = tabs[0]
+      if (activeTab?.id) {
+        const result = await triggerIntelligencePanelOnTab(activeTab.id, activeTab.url, activeTab.title)
+        return { success: true, result }
+      }
+      return { success: false, error: 'No active tab found' }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to trigger intelligence panel' }
+    }
   }
 
   return { success: false, error: `Unknown internal message type: ${msg.type}` }
