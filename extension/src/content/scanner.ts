@@ -37,12 +37,13 @@ export class JobScanner {
       job.jobType || '',
       job.location || '',
       job.salary || '',
+      job.experience || '',
       job.description || '',
     ].join(' ')
 
     const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|years?(\s+(of\s+)?exp(erience)?)?|experience required|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
     const hasDestination = Boolean(job.jobUrl && job.jobUrl !== currentUrl)
-    const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.description || hasDestination || (company && company !== 'Unknown Company'))
+    const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.experience || job.description || hasDestination || (company && company !== 'Unknown Company'))
 
     return hasJobSignal && hasSupportingField
   }
@@ -64,15 +65,25 @@ export class JobScanner {
 
   private extractJobListUniversal(url: string, doc: Document, adapter: any): ExtractedJob[] {
     const primary = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
-    const generic = this.genericAdapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+    const generic = adapter.name !== 'Generic'
+      ? this.genericAdapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+      : []
 
     const merged: ExtractedJob[] = []
-    const seen = new Set<string>()
+    const seenTitles = new Set<string>()
+    const seenUrls = new Set<string>()
 
     for (const job of [...primary, ...generic]) {
-      const key = `${job.jobUrl || ''}|${job.title.toLowerCase().replace(/[^a-z0-9]/g, '')}|${job.company.toLowerCase().replace(/[^a-z0-9]/g, '')}`
-      if (seen.has(key)) continue
-      seen.add(key)
+      const normTitle = job.title.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const normComp = job.company.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const fullKey = `${normTitle}|${normComp}`
+
+      if (job.jobUrl && seenUrls.has(job.jobUrl)) continue
+      if (seenTitles.has(fullKey)) continue
+      if (normComp === 'unknowncompany' && Array.from(seenTitles).some((k) => k.startsWith(normTitle + '|'))) continue
+
+      seenTitles.add(fullKey)
+      if (job.jobUrl) seenUrls.add(job.jobUrl)
       merged.push(job)
     }
 
@@ -96,7 +107,7 @@ export class JobScanner {
 
     // Check if multiple legitimate jobs can be extracted from the listing DOM
     const rawJobs = adapter.extractJobList(doc)
-    if (adapter.name !== 'Generic') {
+    if (adapter.name !== 'Generic' && rawJobs.length === 0) {
       rawJobs.push(...this.genericAdapter.extractJobList(doc))
     }
     const seen = new Set<string>()

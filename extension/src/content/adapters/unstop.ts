@@ -1,6 +1,6 @@
 import { ExtractedJob } from '../../types'
 import { SiteAdapter } from './types'
-import { UNIVERSAL_JOB_ROLE_REGEX } from '../jobEvidenceDetector'
+import { UNIVERSAL_JOB_ROLE_REGEX, findJobCardCandidates, isValidJobCard } from '../jobEvidenceDetector'
 
 function cleanUrl(rawUrl: string): string {
   try {
@@ -168,54 +168,97 @@ export class UnstopAdapter implements SiteAdapter {
     const jobs: ExtractedJob[] = []
     const seen = new Set<string>()
 
-    const cardElements = Array.from(
-      doc.querySelectorAll(
-        '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity, [class*="opportunity" i]'
-      )
-    )
+    const rawCandidates: HTMLElement[] = [
+      ...Array.from(
+        doc.querySelectorAll(
+          '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity, [class*="opportunity" i]'
+        )
+      ) as HTMLElement[],
+      ...findJobCardCandidates(doc),
+    ]
+
+    const uniqueCards = Array.from(new Set(rawCandidates))
 
     let idx = 0
-    for (const card of cardElements) {
+    for (const card of uniqueCards) {
       idx++
       // Filter out non-card parent containers if matching [class*="opportunity" i] broadly
       if (card.children.length > 25 && card.querySelectorAll('[class*="opportunity" i]').length > 1) {
         continue
       }
+      if (!isValidJobCard(card).isValid) {
+        continue
+      }
+
+      const cardText = card.textContent?.replace(/\s+/g, ' ').trim() || ''
 
       // 1. High-precision title selection: prioritize elements matching universal job roles
       const titleCandidates = Array.from(card.querySelectorAll(
-        'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a, strong, b'
+        'h1, h2, h3, h4, h5, h6, [class*="job-title" i], [class*="jobTitle" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], [class*="title" i], [class*="name" i], [data-automation-id*="title" i], [data-testid*="title" i], a, strong, b, [class*="bold" i], [class*="semibold" i], p, div, span'
       ))
       let title = ''
-      let linkEl: HTMLAnchorElement | null = null
+      let linkEl: HTMLAnchorElement | null = (card.tagName === 'A' ? card : null) as HTMLAnchorElement | null
 
       for (const el of titleCandidates) {
+        if (el.children && el.children.length > 3) continue
         const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
         const cls = (el.className || '').toString().toLowerCase()
-        if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-        if (txt.length >= 3 && txt.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+        if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+        if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
           title = txt
-          linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+          if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
           break
         }
       }
 
       if (!title) {
         for (const el of titleCandidates) {
+          if (el.children && el.children.length > 2) continue
           const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
           const cls = (el.className || '').toString().toLowerCase()
-          if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-          if (txt.length >= 3 && txt.length <= 140 && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+          if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+          const tag = el.tagName.toUpperCase()
+          const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
+          if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
             title = txt
-            linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+            if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
             break
           }
         }
       }
 
+      if (!title) {
+        const lines = cardText.split(/\n|<br\s*\/?>/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 120)
+        for (const line of lines.slice(0, 4)) {
+          if (UNIVERSAL_JOB_ROLE_REGEX.test(line) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(line)) {
+            title = line
+            break
+          }
+        }
+      }
+
+      if (!title || title.length < 3 || title.length > 150) continue
+
       const companyEl = card.querySelector(
-        '[class*="company" i], [class*="organisation" i], [class*="organization" i], [class*="c-name" i], [class*="sub-title" i], [class*="subtitle" i], [class*="brand" i]'
+        '[class*="company" i], [class*="organisation" i], [class*="organization" i], [class*="c-name" i], [class*="sub-title" i], [class*="subtitle" i], [class*="brand" i], [class*="employer" i]'
       )
+      let rawCompany = companyEl?.textContent?.trim() || ''
+      if (!rawCompany) {
+        const nonTitleLeaves = Array.from(card.querySelectorAll('span, div, p, a, h4, h5'))
+        for (const el of nonTitleLeaves) {
+          if (el.children && el.children.length > 0) continue
+          const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+          if (txt && txt !== title && txt.length >= 2 && txt.length <= 60) {
+            const isMeta = /\b(full[ -]?time|part[ -]?time|remote|hybrid|in[ -]?office|years?|yrs?|exp|lpa|ctc|stipend|salary|[$€£₹]|apply|view)\b/i.test(txt)
+            if (!isMeta && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|apply|save|view details)$/i.test(txt)) {
+              rawCompany = txt
+              break
+            }
+          }
+        }
+      }
+      const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
+
       const locationEl = card.querySelector(
         '[class*="location" i], [class*="city" i], [class*="place" i], [class*="meta_item" i], [aria-label*="location" i]'
       )
@@ -225,9 +268,9 @@ export class UnstopAdapter implements SiteAdapter {
       const typeEl = card.querySelector(
         '[class*="job-type" i], [class*="opp-type" i], [class*="timing" i], [class*="type" i]'
       )
-
-      const rawCompany = companyEl?.textContent?.trim()
-      const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
+      const expEl = card.querySelector(
+        '[class*="experience" i], [class*="exp" i]'
+      )
 
       const dataId = (card as HTMLElement).getAttribute?.('data-id') || (card as HTMLElement).getAttribute?.('data-item-id') || (card as HTMLElement).getAttribute?.('id')
       let rawJobUrl = linkEl?.href || (dataId ? `https://unstop.com/jobs/${dataId}` : '')
@@ -236,9 +279,31 @@ export class UnstopAdapter implements SiteAdapter {
       }
       const jobUrl = cleanUrl(rawJobUrl)
 
-      let location = locationEl?.textContent?.trim() || undefined
+      let location = locationEl?.textContent?.trim()
+      if (!location) {
+        const locMatch = cardText.match(/\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|kochi|chandigarh|jaipur|indore|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i)
+        if (locMatch) location = locMatch[0]
+      }
       if (location && (location.includes('Bengaluru') || location.includes('Bangalore'))) {
         location = location.replace(/\s+/g, ' ').trim()
+      }
+
+      let salary = salaryEl?.textContent?.trim()
+      if (!salary) {
+        const salMatch = cardText.match(/([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b|\b(salary|stipend|compensation|unpaid)\b)/i)
+        if (salMatch) salary = salMatch[0]
+      }
+
+      let jobType = typeEl?.textContent?.trim()
+      if (!jobType) {
+        const typeMatch = cardText.match(/\b(full[ -]?time|part[ -]?time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary|trainee|in[ -]?office|in[ -]?person)\b/i)
+        if (typeMatch) jobType = typeMatch[0]
+      }
+
+      let experience = expEl?.textContent?.trim()
+      if (!experience) {
+        const expMatch = cardText.match(/\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i)
+        if (expMatch) experience = expMatch[0]
       }
 
       const dedupKey = `${title.toLowerCase()}|${company.toLowerCase()}`
@@ -249,9 +314,10 @@ export class UnstopAdapter implements SiteAdapter {
         jobs.push({
           title,
           company,
-          location,
-          salary: salaryEl?.textContent?.trim() || undefined,
-          jobType: typeEl?.textContent?.trim() || undefined,
+          location: location || undefined,
+          salary: salary || undefined,
+          jobType: jobType || undefined,
+          experience: experience || undefined,
           jobUrl,
           sourceWebsite: 'Unstop',
           confidence: 'HIGH',

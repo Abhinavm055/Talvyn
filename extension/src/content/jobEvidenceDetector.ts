@@ -43,7 +43,7 @@ export function isExplicitlyNonJobSite(url: string): boolean {
   } catch { return false }
 }
 
-export const UNIVERSAL_JOB_ROLE_REGEX = /\b(engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|writer|editor|strategist|assistant|operator|fellow|advisor|counsel|counselor|supervisor|head|vp|president|founder|staff|principal|chief)\b/i
+export const UNIVERSAL_JOB_ROLE_REGEX = /\b(engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|writer|editor|strategist|assistant|operator|fellow|advisor|counsel|counselor|supervisor|head|vp|president|founder|staff|principal|chief|business development|sales development|customer success|operations|growth)\b/i
 
 const VERIFIED_CAREER_URL_PATTERNS = [
   /\/jobs?\/\d+/i, /\/jobs?\/[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+/i,
@@ -118,6 +118,7 @@ export function calculateJobConfidence(doc: Document, url: string): ConfidenceRe
   const companyEl = doc.querySelector?.('[class*="company" i], [class*="employer" i], [class*="org" i], [data-automation-id="companyName"]')
   const metaCompany = (doc.querySelector?.('meta[property="og:site_name"]') as HTMLMetaElement)?.content || ''
   const rawCompany = companyEl?.textContent?.trim() || metaCompany
+
   const hasTitleAndCompany = Boolean(rawTitle && rawTitle.length >= 3 && rawTitle.length <= 140 && !/^(home|careers|jobs|search|about|login|sign in)$/i.test(rawTitle)) && Boolean(rawCompany && rawCompany.length >= 2)
   if (hasTitleAndCompany) { score += 25; signals.push(`Valid job title and company detected: "${rawTitle}" / "${rawCompany}"`) }
 
@@ -138,10 +139,10 @@ export function calculateJobConfidence(doc: Document, url: string): ConfidenceRe
     /\b(responsibilities|what you('ll| will) do|key responsibilities|about the (role|position|job)|primary duties)\b/i.test(bodyText)
   if (hasResponsibilities) { score += 15; signals.push('Responsibilities section found') }
 
-  const hasExp = /\b(\d+\+?\s*years?(\s+(of\s+)?experience|\s+exp)?|\d+\s*-\s*\d+\s*years?(\s+(of\s+)?experience|\s+exp)?|fresher|freshers|entry[ -]level|bachelor'?s|master'?s|b\.?tech|b\.?e\.)\b/i.test(bodyText)
-  const hasEmployment = /\b(full[ -]time|part[ -]time|internship|contract|temporary|permanent|remote|hybrid|on-site)\b/i.test(bodyText)
-  const hasSalary = /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|k|usd|eur|gbp|inr)\b|\bper\s+(year|annum|month|hour)\b|\b(salary|stipend|compensation)\b)/i.test(bodyText)
-  const hasLocation = Boolean(doc.querySelector?.('[class*="location" i], [data-automation-id*="location" i], [itemprop="addressLocality"]')) || /\b(remote|work from home|hybrid|office location)\b/i.test(bodyText)
+  const hasExp = /\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?experience|\s+exp)?|\d+\s*-\s*\d+\s*(years?|yrs?)(\s+(of\s+)?experience|\s+exp)?|fresher|freshers|entry[ -]level|bachelor'?s|master'?s|b\.?tech|b\.?e\.)\b/i.test(bodyText)
+  const hasEmployment = /\b(full[ -]time|part[ -]time|internship|contract|temporary|permanent|remote|hybrid|on-site|in-office)\b/i.test(bodyText)
+  const hasSalary = /([$€£₹]\s*[\d,]+|\b\d+\s*-\s*\d+\s*(lpa|ctc|k|usd|eur|gbp|inr)\b|\bper\s+(year|annum|month|hour)\b|\b(salary|stipend|compensation)\b)/i.test(bodyText)
+  const hasLocation = Boolean(doc.querySelector?.('[class*="location" i], [data-automation-id*="location" i], [itemprop="addressLocality"]')) || /\b(remote|work from home|hybrid|office location|in-office|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida)\b/i.test(bodyText)
   if (hasExp) { score += 10; signals.push('Experience requirement mentioned') }
   if (hasEmployment) { score += 10; signals.push('Employment type detected') }
   if (hasSalary) { score += 10; signals.push('Salary/stipend detected') }
@@ -165,40 +166,46 @@ export interface CardValidationResult {
   reason?: string
 }
 
+const NON_TITLE_WORDS = /^(home|about|careers?|jobs?|login|sign in|signup|sign up|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|explore|overview|all jobs|view details|register|register now|next|back|previous|read more|learn more)$/i
+
 export function isValidJobCard(card: HTMLElement): CardValidationResult {
   const cardText = card.textContent?.replace(/\s+/g, ' ').trim() || ''
   if (cardText.length < 15) return { isValid: false, signals: [], reason: 'Card content too brief' }
   if (/\b\d+(\.\d+)?[KM]?\s+views\b|\b(subscribers?|playlist|episodes?|season\s+\d+)\b/i.test(cardText) || card.querySelector?.('ytd-thumbnail, ytd-video-renderer, #video-title')) return { isValid: false, signals: [], reason: 'Video/media indicators' }
   if (/\b(add to cart|buy now|in stock|free delivery)\b/i.test(cardText) || card.querySelector?.('[class*="add-to-cart" i]')) return { isValid: false, signals: [], reason: 'E-commerce indicators' }
-  if (/\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?|festivals?|conferences?)\b/i.test(cardText) && !/\b(jobs?|internships?|hiring|recruitment|trainee|developer|engineer|analyst|executive|consultant)\b/i.test(cardText)) return { isValid: false, signals: [], reason: 'Competition/event card' }
+  if (/\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?|festivals?|conferences?)\b/i.test(cardText) && !/\b(jobs?|internships?|hiring|recruitment|trainee|developer|engineer|analyst|executive|consultant|representative|associate|specialist)\b/i.test(cardText)) return { isValid: false, signals: [], reason: 'Competition/event card' }
   if (/\b(sponsored|advertisement|promoted)\b/i.test(cardText) || card.querySelector?.('[class*="sponsored" i], [class*="ad-" i], [data-ad]')) return { isValid: false, signals: [], reason: 'Advertisement' }
 
   const titleCandidateElements = Array.from(card.querySelectorAll?.(
-    'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="job_title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a, strong, b'
+    'h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="role" i], [class*="position" i], [class*="heading" i], [class*="name" i], [data-automation-id*="title" i], [data-testid*="title" i], a, strong, b, [class*="bold" i], [class*="semibold" i], p, div, span'
   ) || [])
 
   let rawTitle = ''
   let titleLink: HTMLAnchorElement | null = null
 
-  // 1. First priority: Heading or link explicitly matching universal job roles
+  // 1. First priority: Heading or element explicitly matching universal job roles
   for (const el of titleCandidateElements) {
+    if (el.children && el.children.length > 3) continue // avoid large multi-child containers
     const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
     const cls = (el.className || '').toString().toLowerCase()
-    if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-    if (txt.length >= 3 && txt.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+    if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+    if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !NON_TITLE_WORDS.test(txt)) {
       rawTitle = txt
       titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
       break
     }
   }
 
-  // 2. Second priority: First plausible heading or anchor
+  // 2. Second priority: Plausible heading, link, or bold element
   if (!rawTitle) {
     for (const el of titleCandidateElements) {
+      if (el.children && el.children.length > 2) continue
       const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
       const cls = (el.className || '').toString().toLowerCase()
-      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-      if (txt.length >= 3 && txt.length <= 140 && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+      const tag = el.tagName.toUpperCase()
+      const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
+      if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !NON_TITLE_WORDS.test(txt)) {
         rawTitle = txt
         titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
         break
@@ -206,24 +213,54 @@ export function isValidJobCard(card: HTMLElement): CardValidationResult {
     }
   }
 
-  if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 140 || /^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(rawTitle)) {
+  // 3. Third priority: First text line matching job role
+  if (!rawTitle) {
+    const lines = cardText.split(/\n|<br\s*\/?>/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 120)
+    for (const line of lines.slice(0, 4)) {
+      if (UNIVERSAL_JOB_ROLE_REGEX.test(line) && !NON_TITLE_WORDS.test(line)) {
+        rawTitle = line
+        break
+      }
+    }
+  }
+
+  if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 140 || NON_TITLE_WORDS.test(rawTitle)) {
     return { isValid: false, signals: [], reason: 'No valid job title' }
   }
 
+  // Company extraction: check company classes or neighboring subtitle text
   const companyEl = card.querySelector?.(
     '[class*="company" i], [class*="employer" i], [class*="organization" i], [class*="organisation" i], [class*="org" i], [class*="hiring" i], [class*="recruiter" i], [class*="sub-title" i], [class*="subtitle" i], [class*="c-name" i], [class*="brand" i], [data-automation-id*="company" i]'
   )
-  const rawCompany = companyEl?.textContent?.replace(/\s+/g, ' ').trim() || ''
+  let rawCompany = companyEl?.textContent?.replace(/\s+/g, ' ').trim() || ''
+
+  if (!rawCompany) {
+    // Try candidate elements near title that are not location, salary, or experience
+    const nonTitleLeaves = Array.from(card.querySelectorAll?.('span, div, p, a, h4, h5') || [])
+    for (const el of nonTitleLeaves) {
+      if (el.children && el.children.length > 0) continue
+      const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+      if (txt && txt !== rawTitle && txt.length >= 2 && txt.length <= 60) {
+        const isMeta = /\b(full[ -]?time|part[ -]?time|remote|hybrid|in[ -]?office|years?|yrs?|exp|lpa|ctc|stipend|salary|[$€£₹]|apply|view)\b/i.test(txt)
+        if (!isMeta && !NON_TITLE_WORDS.test(txt)) {
+          rawCompany = txt
+          break
+        }
+      }
+    }
+  }
+
   const signals: string[] = []
-  const hasLocation = Boolean(card.querySelector?.('[class*="location" i], [class*="city" i], [class*="place" i], [class*="region" i]')) || /\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i.test(cardText)
-  const hasExperience = /\b(\d+\+?\s*years?(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*years?|fresher|freshers|entry[ -]level|mid[ -]level|senior|lead|years?\s+exp)\b/i.test(cardText)
-  const hasSalary = Boolean(card.querySelector?.('[class*="salary" i], [class*="stipend" i], [class*="pay" i], [class*="ctc" i], [class*="wage" i], [class*="compensation" i]')) || /([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b)/i.test(cardText)
-  const hasJobType = /\b(full[ -]?time|part[ -]?time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary|trainee)\b/i.test(cardText)
-  const href = titleLink?.href || (card.querySelector?.('a') as HTMLAnchorElement | null)?.href || ''
-  const hasJobLink = /\/jobs?(\/|\?|#|$)/i.test(href) || /\/careers?(\/|\?|#|$)/i.test(href) || /\/positions?(\/|\?|#|$)/i.test(href) || /\/openings?(\/|\?|#|$)/i.test(href) || /\/opportunities?(\/|\?|#|$)/i.test(href) || /\/apply/i.test(href) || /viewjob/i.test(href) || /boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com/i.test(href) || card.hasAttribute?.('data-job-id') || card.hasAttribute?.('data-id') || card.hasAttribute?.('data-item-id') || /selectedItem=|oppstatus=|jobId=/i.test(href)
+  const hasLocation = Boolean(card.querySelector?.('[class*="location" i], [class*="city" i], [class*="place" i], [class*="region" i], [aria-label*="location" i]')) || /\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|kochi|chandigarh|jaipur|indore|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i.test(cardText)
+  const hasExperience = /\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i.test(cardText)
+  const hasSalary = Boolean(card.querySelector?.('[class*="salary" i], [class*="stipend" i], [class*="pay" i], [class*="ctc" i], [class*="wage" i], [class*="compensation" i]')) || /([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b|\b(salary|stipend|compensation|unpaid)\b)/i.test(cardText)
+  const hasJobType = /\b(full[ -]?time|part[ -]?time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary|trainee|in[ -]?office|in[ -]?person)\b/i.test(cardText)
+  const href = titleLink?.href || (card.querySelector?.('a') as HTMLAnchorElement | null)?.href || (card.tagName === 'A' ? (card as HTMLAnchorElement).href : '') || ''
+  const hasJobLink = /\/jobs?(\/|\?|#|$)/i.test(href) || /\/careers?(\/|\?|#|$)/i.test(href) || /\/positions?(\/|\?|#|$)/i.test(href) || /\/openings?(\/|\?|#|$)/i.test(href) || /\/opportunities?(\/|\?|#|$)/i.test(href) || /\/apply(?:\/|\?|$)/i.test(href) || /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com/i.test(href) || card.hasAttribute?.('data-job-id') || card.hasAttribute?.('data-id') || card.hasAttribute?.('data-item-id') || /selectedItem=|oppstatus=|jobId=/i.test(href)
   const hasSnippet = Boolean(card.querySelector?.('[class*="snippet" i], [class*="summary" i], [class*="description" i]')) || /\b(responsibilities|qualifications|skills|requirements|eligibility|apply\s+by)\b/i.test(cardText)
   const hasEducation = /\b(bachelor'?s|master'?s|b\.?tech|b\.?e\.?|m\.?tech|degree|phd|diploma)\b/i.test(cardText)
-  const hasApply = Boolean(card.querySelector?.('button[class*="apply" i], a[class*="apply" i], button[class*="register" i], a[class*="register" i]')) || /\b(apply|easy apply|apply now|register now|quick apply|view details)\b/i.test(cardText)
+  const hasSkills = Boolean(card.querySelector?.('[class*="skill" i], [class*="tag" i], [class*="chip" i], [class*="badge" i]')) || /\b(python|sql|java|react|node|javascript|typescript|c\+\+|excel|aws|docker|kubernetes|tableau|power\s*bi|sales|marketing|figma)\b/i.test(cardText)
+  const hasApply = Boolean(card.querySelector?.('button, a, [role="button"]')) && /\b(apply|easy apply|apply now|register now|quick apply|view details|learn more)\b/i.test(cardText)
 
   if (hasLocation) signals.push('location')
   if (hasExperience) signals.push('experience')
@@ -232,22 +269,130 @@ export function isValidJobCard(card: HTMLElement): CardValidationResult {
   if (hasJobLink) signals.push('jobLink')
   if (hasSnippet) signals.push('jobSnippet')
   if (hasEducation) signals.push('education')
+  if (hasSkills) signals.push('skills')
   if (hasApply) signals.push('applyAction')
 
   const hasCompany = rawCompany.length >= 2
   const valid =
     (hasCompany && signals.length >= 1) ||
-    (!hasCompany && signals.length >= 2 && (hasJobLink || hasJobType || hasSalary || hasExperience || hasLocation || hasApply)) ||
+    (!hasCompany && signals.length >= 2 && (hasJobLink || hasJobType || hasSalary || hasExperience || hasLocation || hasSkills || hasApply)) ||
     (UNIVERSAL_JOB_ROLE_REGEX.test(rawTitle) && signals.length >= 1)
 
   return valid ? { isValid: true, title: rawTitle, company: rawCompany || 'Unknown Company', signals } : { isValid: false, title: rawTitle, company: rawCompany, signals, reason: `Insufficient job evidence (${signals.length} signals)` }
 }
 
 /**
+ * Universally discovers candidate job cards using semantic selectors,
+ * job destination anchors, and repeated sibling structures.
+ */
+export function findJobCardCandidates(doc: Document): HTMLElement[] {
+  const candidates: HTMLElement[] = []
+  const seenElements = new Set<HTMLElement>()
+
+  const addCandidate = (el: HTMLElement | null) => {
+    if (!el || seenElements.has(el)) return
+    const text = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+    // A single job card should be bounded in text length
+    if (text.length >= 20 && text.length <= 2500) {
+      seenElements.add(el)
+      candidates.push(el)
+    }
+  }
+
+  // 1. Common semantic selectors
+  const selectors = [
+    '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job_card" i]', '[class*="job-listing" i]', '[class*="job-item" i]', '[class*="job_item" i]',
+    '[data-job-id]', '[data-testid*="job" i]', '[data-automation-id*="job" i]', '[data-automation-id*="composite" i]', 'article[class*="job" i]',
+    'li[class*="job" i]', '.card[class*="job" i]', '[class*="opportunity_card" i]', '[class*="opp-card" i]',
+    '[class*="opp_card" i]', '[class*="c-card" i]', '[class*="listing_card" i]', '.single_opportunity',
+    '[class*="opportunity" i]', '[class*="opening" i]', '[class*="vacancy" i]', '[class*="position" i]',
+    '.job_seen_beacon', '.resultContent', 'div[class*="cardOutline"]', '[role="listitem"]', '[role="article"]',
+  ]
+  for (const sel of selectors) {
+    for (const el of Array.from(doc.querySelectorAll?.(sel) || [])) {
+      const hEl = el as HTMLElement
+      if (hEl.children && hEl.children.length > 25 && hEl.querySelectorAll?.('[class*="opportunity" i]').length > 1) continue
+      addCandidate(hEl)
+    }
+  }
+
+  // 2. Universal anchor-driven discovery (handles full-card anchors & inner job links)
+  const anchors = Array.from(doc.querySelectorAll?.('a[href]') || []) as HTMLAnchorElement[]
+  for (const anchor of anchors) {
+    const href = anchor.href || ''
+    const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
+    const jobDestination = /\/jobs?(\/|\?|#|$)/i.test(href) || /\/careers?(\/|\?|#|$)/i.test(href) || /\/positions?(\/|\?|#|$)/i.test(href) || /\/openings?(\/|\?|#|$)/i.test(href) || /\/opportunities?(\/|\?|#|$)/i.test(href) || /\/apply(?:\/|\?|$)/i.test(href) || /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com|selectedItem=|oppstatus=/i.test(href)
+    const titleLike = Boolean(text && text.length >= 3 && text.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(text))
+
+    if (jobDestination || titleLike) {
+      // If the anchor itself is the full card:
+      if (text.length >= 25 && text.length <= 2500) {
+        addCandidate(anchor)
+      }
+      // Also look up parent containers up to 5 levels
+      let node: HTMLElement | null = anchor.parentElement
+      let depth = 0
+      while (node && depth < 5) {
+        const nodeText = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+        if (nodeText.length >= 25 && nodeText.length <= 2500) {
+          addCandidate(node)
+          break
+        }
+        node = node.parentElement
+        depth++
+      }
+    }
+  }
+
+  // 3. Universal repeated-card structure discovery (works across ANY framework without classes)
+  const containers = Array.from(doc.querySelectorAll?.('ul, ol, div, section, main, [role="feed"], [role="list"], [role="region"]') || []) as HTMLElement[]
+  for (const container of containers) {
+    if (seenElements.has(container)) continue // already a card, do not break down into sub-cards
+    const children = Array.from(container.children) as HTMLElement[]
+    if (children.some((c) => seenElements.has(c))) {
+      for (const c of children) {
+        if (isValidJobCard(c).isValid) addCandidate(c)
+      }
+      continue
+    }
+
+    if (children.length >= 2 && children.length <= 60) {
+      let jobCardCount = 0
+      const validChildren: HTMLElement[] = []
+      for (const child of children) {
+        const childText = child.textContent?.replace(/\s+/g, ' ').trim() || ''
+        if (childText.length >= 20 && childText.length <= 2500) {
+          if (isValidJobCard(child).isValid) {
+            jobCardCount++
+            validChildren.push(child)
+          }
+        }
+      }
+      if (jobCardCount >= 2) {
+        for (const vc of validChildren) {
+          addCandidate(vc)
+        }
+      }
+    }
+  }
+
+  // Filter out candidate elements that are inside another valid job card
+  const filteredCandidates = candidates.filter((card) => {
+    for (const other of candidates) {
+      if (other !== card && other.contains && other.contains(card)) {
+        if (isValidJobCard(other).isValid) return false
+      }
+    }
+    return true
+  })
+
+  return filteredCandidates
+}
+
+/**
  * Generic listing evidence gate. It deliberately looks beyond CSS classes:
- * job destination anchors and their nearest semantic containers are candidate
- * cards. This is what lets custom company portals and evolving job-board DOMs
- * work without adding a new adapter for every site.
+ * job destination anchors, repeated card structures, and nearest semantic
+ * containers are candidate cards.
  */
 export function isLikelyJobListing(doc: Document, url: string): boolean {
   if (isExplicitlyNonJobSite(url)) return false
@@ -266,45 +411,9 @@ export function isLikelyJobListing(doc: Document, url: string): boolean {
     } catch { /* ignore */ }
   }
 
-  const candidates: HTMLElement[] = []
-  const selectors = [
-    '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job_card" i]', '[class*="job-listing" i]', '[class*="job-item" i]', '[class*="job_item" i]',
-    '[data-job-id]', '[data-testid*="job" i]', '[data-automation-id*="job" i]', '[data-automation-id*="composite" i]', 'article[class*="job" i]',
-    'li[class*="job" i]', '.card[class*="job" i]', '[class*="opportunity_card" i]', '[class*="opp-card" i]',
-    '[class*="opp_card" i]', '[class*="c-card" i]', '[class*="listing_card" i]', '.single_opportunity',
-    '[class*="opportunity" i]', '[class*="opening" i]', '[class*="vacancy" i]', '[class*="position" i]',
-    '.job_seen_beacon', '.resultContent', 'div[class*="cardOutline"]',
-  ]
-  for (const sel of selectors) {
-    for (const el of Array.from(doc.querySelectorAll?.(sel) || [])) {
-      const hEl = el as HTMLElement
-      // Filter out overly large wrappers that might match class "opportunity" broadly
-      if (hEl.children && hEl.children.length > 25 && hEl.querySelectorAll?.('[class*="opportunity" i]').length > 1) continue
-      candidates.push(hEl)
-    }
-  }
-
-  // Universal anchor-driven discovery: do not require a job-card class.
-  const anchors = Array.from(doc.querySelectorAll?.('a[href]') || []) as HTMLAnchorElement[]
-  for (const anchor of anchors) {
-    const href = anchor.href || ''
-    const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
-    const jobDestination = /\/jobs?(\/|\?|#|$)/i.test(href) || /\/careers?(\/|\?|#|$)/i.test(href) || /\/positions?(\/|\?|#|$)/i.test(href) || /\/openings?(\/|\?|#|$)/i.test(href) || /\/opportunities?(\/|\?|#|$)/i.test(href) || /\/apply(?:\/|\?|$)/i.test(href) || /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com|selectedItem=|oppstatus=/i.test(href)
-    const titleLike = Boolean(text && text.length >= 3 && text.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(text))
-    if (jobDestination || titleLike) {
-      let node: HTMLElement | null = anchor.parentElement
-      let depth = 0
-      while (node && depth < 5) {
-        const nodeText = node.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (nodeText.length >= 25 && nodeText.length <= 1800) { candidates.push(node); break }
-        node = node.parentElement; depth++
-      }
-    }
-  }
-
-  const unique = Array.from(new Set(candidates))
+  const candidates = findJobCardCandidates(doc)
   let validCount = 0
-  for (const card of unique) {
+  for (const card of candidates) {
     if (isValidJobCard(card).isValid) {
       validCount++
       if (validCount >= 1) return true
@@ -312,3 +421,4 @@ export function isLikelyJobListing(doc: Document, url: string): boolean {
   }
   return false
 }
+

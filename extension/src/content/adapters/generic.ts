@@ -1,6 +1,6 @@
 import { ExtractedJob } from '../../types'
 import { SiteAdapter } from './types'
-import { isLikelyJobPage, isLikelyJobListing, isValidJobCard, isExplicitlyNonJobSite, UNIVERSAL_JOB_ROLE_REGEX } from '../jobEvidenceDetector'
+import { isLikelyJobPage, isLikelyJobListing, isValidJobCard, isExplicitlyNonJobSite, UNIVERSAL_JOB_ROLE_REGEX, findJobCardCandidates } from '../jobEvidenceDetector'
 
 export class GenericAdapter implements SiteAdapter {
   name = 'Generic'
@@ -31,6 +31,9 @@ export class GenericAdapter implements SiteAdapter {
       const key = `${normTitle}|${normCompany}`
       if (seenJobKeys.has(key)) return true
       seenJobKeys.add(key)
+      if (normCompany !== 'unknowncompany') {
+        seenJobKeys.add(`${normTitle}|unknowncompany`)
+      }
       if (j.jobUrl && j.jobUrl !== currentUrl) {
         if (seenUrls.has(j.jobUrl)) return true
         seenUrls.add(j.jobUrl)
@@ -45,48 +48,11 @@ export class GenericAdapter implements SiteAdapter {
     // 1. Structured JSON-LD first.
     for (const job of this.extractFromJsonLd(doc)) add(job)
 
-    // 2. Standard semantic card extraction.
-    const cardSelectors = [
-      '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job_card" i]', '[class*="job-listing" i]', '[class*="job-item" i]',
-      '[class*="job_item" i]', '[class*="job-result" i]', '[data-job-id]', '[data-testid*="job" i]',
-      '[data-automation-id*="job" i]', '[data-automation-id*="composite" i]', 'article[class*="job" i]',
-      'li[class*="job" i]', 'div[class*="opening" i]', 'div[class*="posting" i]', 'div[class*="vacancy" i]',
-      'div[class*="position" i]', 'div[class*="career" i]', 'div[class*="role" i]', '.card[class*="job" i]',
-      'tr[class*="job" i]', 'tr.job', '.resultContent', '.job-search-card', '.base-card',
-      '[class*="opportunity_card" i]', '[class*="opp-card" i]', '[class*="opp_card" i]', '[class*="c-card" i]',
-      '[class*="listing_card" i]', '.single_opportunity', '[class*="opportunity" i]',
-    ]
-    for (const sel of cardSelectors) {
-      for (const card of Array.from(doc.querySelectorAll(sel))) {
-        const cardEl = card as HTMLElement
-        if (cardEl.children && cardEl.children.length > 25 && cardEl.querySelectorAll?.('[class*="opportunity" i]').length > 1) continue
-        if (!isValidJobCard(cardEl).isValid) continue
-        add(this.extractCardData(cardEl))
-      }
-    }
-
-    // 3. Universal semantic-link fallback for custom ATS/company DOMs.
-    const anchors = Array.from(doc.querySelectorAll('a[href]')) as HTMLAnchorElement[]
-    for (const anchor of anchors) {
-      const href = anchor.href || ''
-      const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
-      if (text.length < 3 || text.length > 140) continue
-
-      const jobDestination = /\/jobs?(\/|\?|#|$)/i.test(href) || /\/careers?(\/|\?|#|$)/i.test(href) || /\/positions?(\/|\?|#|$)/i.test(href) || /\/openings?(\/|\?|#|$)/i.test(href) || /\/opportunities?(\/|\?|#|$)/i.test(href) || /\/apply(?:\/|\?|$)/i.test(href) || /viewjob|greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|selectedItem=|oppstatus=/i.test(href)
-      const titleLike = UNIVERSAL_JOB_ROLE_REGEX.test(text)
-      if (!jobDestination && !titleLike) continue
-
-      let container: HTMLElement | null = anchor.parentElement
-      for (let depth = 0; container && depth < 5; depth++, container = container.parentElement) {
-        const containerText = container.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (containerText.length >= 20 && containerText.length <= 1800) {
-          const validation = isValidJobCard(container)
-          if (validation.isValid) {
-            add(this.extractCardData(container, anchor))
-            break
-          }
-        }
-      }
+    // 2. Discover all candidate cards universally (semantic selectors, anchors, repeated-card structures)
+    const candidateCards = findJobCardCandidates(doc)
+    for (const card of candidateCards) {
+      if (!isValidJobCard(card).isValid) continue
+      add(this.extractCardData(card))
     }
 
     return jobs
@@ -217,29 +183,36 @@ export class GenericAdapter implements SiteAdapter {
   }
 
   private extractCardData(card: HTMLElement, preferredAnchor?: HTMLAnchorElement): ExtractedJob | null {
+    const cardText = card.textContent?.replace(/\s+/g, ' ').trim() || ''
     const titleCandidates = Array.from(card.querySelectorAll(
-      'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="job_title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a, strong, b'
+      'h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="role" i], [class*="position" i], [class*="heading" i], [class*="name" i], [data-automation-id*="title" i], [data-testid*="title" i], a, strong, b, [class*="bold" i], [class*="semibold" i], p, div, span'
     ))
     let title = ''
     let titleLink: HTMLAnchorElement | null = preferredAnchor || null
 
+    // 1. First priority: Heading or element matching universal job roles
     for (const el of titleCandidates) {
+      if (el.children && el.children.length > 3) continue
       const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
       const cls = (el.className || '').toString().toLowerCase()
-      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-      if (txt.length >= 3 && txt.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+      if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
         title = txt
         if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
         break
       }
     }
 
+    // 2. Second priority: Heading, link, or bold element
     if (!title) {
       for (const el of titleCandidates) {
+        if (el.children && el.children.length > 2) continue
         const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
         const cls = (el.className || '').toString().toLowerCase()
-        if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
-        if (txt.length >= 3 && txt.length <= 140 && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+        if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
+        const tag = el.tagName.toUpperCase()
+        const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
+        if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
           title = txt
           if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
           break
@@ -247,32 +220,66 @@ export class GenericAdapter implements SiteAdapter {
       }
     }
 
+    // 3. Third priority: Text line matching job role
+    if (!title) {
+      const lines = cardText.split(/\n|<br\s*\/?>/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 120)
+      for (const line of lines.slice(0, 4)) {
+        if (UNIVERSAL_JOB_ROLE_REGEX.test(line) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(line)) {
+          title = line
+          break
+        }
+      }
+    }
+
     if (!title || title.length < 3 || title.length > 150) return null
 
-    const cardText = card.textContent?.replace(/\s+/g, ' ').trim() || ''
-    const company = card.querySelector('[class*="company" i], [class*="employer" i], [class*="organisation" i], [class*="organization" i], [class*="org" i], [class*="sub-title" i], [class*="subtitle" i], [class*="c-name" i], [class*="brand" i], [class*="recruiter" i]')?.textContent?.replace(/\s+/g, ' ').trim() || 'Unknown Company'
+    // Company extraction
+    const companyEl = card.querySelector('[class*="company" i], [class*="employer" i], [class*="organisation" i], [class*="organization" i], [class*="org" i], [class*="sub-title" i], [class*="subtitle" i], [class*="c-name" i], [class*="brand" i], [class*="recruiter" i]')
+    let company = companyEl?.textContent?.replace(/\s+/g, ' ').trim() || ''
+
+    if (!company) {
+      const nonTitleLeaves = Array.from(card.querySelectorAll('span, div, p, a, h4, h5'))
+      for (const el of nonTitleLeaves) {
+        if (el.children && el.children.length > 0) continue
+        const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+        if (txt && txt !== title && txt.length >= 2 && txt.length <= 60) {
+          const isMeta = /\b(full[ -]?time|part[ -]?time|remote|hybrid|in[ -]?office|years?|yrs?|exp|lpa|ctc|stipend|salary|[$€£₹]|apply|view)\b/i.test(txt)
+          if (!isMeta && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|apply|save|view details)$/i.test(txt)) {
+            company = txt
+            break
+          }
+        }
+      }
+    }
+    if (!company) company = 'Unknown Company'
 
     let location = card.querySelector('[class*="location" i], [class*="city" i], [class*="place" i], [class*="region" i]')?.textContent?.replace(/\s+/g, ' ').trim()
     if (!location) {
-      const locMatch = cardText.match(/\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i)
+      const locMatch = cardText.match(/\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|kochi|chandigarh|jaipur|indore|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i)
       if (locMatch) location = locMatch[0]
     }
 
     let salary = card.querySelector('[class*="salary" i], [class*="stipend" i], [class*="compensation" i], [class*="pay" i], [class*="wage" i], [class*="ctc" i]')?.textContent?.replace(/\s+/g, ' ').trim()
     if (!salary) {
-      const salMatch = cardText.match(/([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b)/i)
+      const salMatch = cardText.match(/([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b|\b(salary|stipend|compensation|unpaid)\b)/i)
       if (salMatch) salary = salMatch[0]
     }
 
     let jobType = card.querySelector('[class*="job-type" i], [class*="employment" i], [class*="work-type" i], [class*="timing" i]')?.textContent?.replace(/\s+/g, ' ').trim()
     if (!jobType) {
-      const typeMatch = cardText.match(/\b(full[ -]?time|part[ -]?time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary|trainee)\b/i)
+      const typeMatch = cardText.match(/\b(full[ -]?time|part[ -]?time|contract|internship|intern|campus\s+ambassador|freelance|permanent|temporary|trainee|in[ -]?office|in[ -]?person)\b/i)
       if (typeMatch) jobType = typeMatch[0]
+    }
+
+    let experience = card.querySelector('[class*="experience" i], [class*="exp" i]')?.textContent?.replace(/\s+/g, ' ').trim()
+    if (!experience) {
+      const expMatch = cardText.match(/\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i)
+      if (expMatch) experience = expMatch[0]
     }
 
     const description = card.querySelector('[class*="snippet" i], [class*="description" i], [class*="summary" i], p')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 1000)
 
-    let jobUrl = titleLink?.href || ''
+    let jobUrl = titleLink?.href || (card.tagName === 'A' ? (card as HTMLAnchorElement).href : '') || ''
     if (!jobUrl || (typeof window !== 'undefined' && jobUrl === window.location.href) || jobUrl === '#' || jobUrl.startsWith('javascript:')) {
       const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://careers.company.com'
       jobUrl = `${origin}/jobs/${encodeURIComponent(title)}-${encodeURIComponent(company)}`
@@ -284,6 +291,7 @@ export class GenericAdapter implements SiteAdapter {
       location,
       salary,
       jobType,
+      experience,
       description,
       jobUrl,
       sourceWebsite: typeof window !== 'undefined' ? window.location.hostname.replace(/^www\./, '') : '',

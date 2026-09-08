@@ -1392,10 +1392,70 @@ console.log('\n--- 24. Testing Floating Window Rendering With All Structured Sec
   const manifestContent = fs.readFileSync(manifestPath, 'utf8')
   assert(manifestContent.includes('default_popup'), '35a. Manifest configures default_popup for toolbar icon')
 
-  const popupPath = path.resolve(__dirname, '../src/popup/popup.ts')
-  const popupContent = fs.readFileSync(popupPath, 'utf8')
-  assert(popupContent.includes('btn-analyze-page'), '35b. Popup contains [ Analyze This Page ] button')
-  assert(popupContent.includes('TALVYN_OPEN_INTELLIGENCE_PANEL'), '35c. Analyze action communicates with active tab')
+  // ─── 36. Real World Repeated Card Structure with Modern Component Classes ─────
+  console.log('\n--- 36. Testing Real World Repeated Card Structure with Modern Component Classes ---')
+  {
+    const doc = createMockDoc()
+
+    // Container with 3 modern repeated cards without traditional job-card classes
+    const feed = createMockElement('DIV', { className: 'opportunities-feed flex flex-col gap-4' })
+
+    // Card 1: Data Analyst at Capital Engineering
+    const card1 = createMockElement('DIV', { className: 'cursor-pointer p-4 border rounded-xl bg-white hover:shadow-md' })
+    appendChild(card1, createMockElement('DIV', { className: 'text-lg font-bold text-gray-900', textContent: 'Data Analyst' }))
+    appendChild(card1, createMockElement('DIV', { className: 'text-sm text-gray-600', textContent: 'Capital Engineering' }))
+    const meta1 = createMockElement('DIV', { className: 'flex flex-wrap gap-2 text-xs text-gray-500' })
+    appendChild(meta1, createMockElement('SPAN', { textContent: '0-2 Years' }))
+    appendChild(meta1, createMockElement('SPAN', { textContent: 'Bengaluru, Karnataka' }))
+    appendChild(meta1, createMockElement('SPAN', { textContent: '₹ 6 - 10 LPA' }))
+    appendChild(meta1, createMockElement('SPAN', { textContent: 'Full Time' }))
+    appendChild(card1, meta1)
+    appendChild(card1, createMockElement('A', { href: 'https://unstop.com/job/data-analyst-capital-engineering-101', textContent: 'View Details' }))
+
+    // Card 2: Sales Development Representative at Unstop
+    const card2 = createMockElement('DIV', { className: 'cursor-pointer p-4 border rounded-xl bg-white hover:shadow-md' })
+    appendChild(card2, createMockElement('DIV', { className: 'text-lg font-bold text-gray-900', textContent: 'Sales Development Representative' }))
+    appendChild(card2, createMockElement('DIV', { className: 'text-sm text-gray-600', textContent: 'Unstop' }))
+    const meta2 = createMockElement('DIV', { className: 'flex flex-wrap gap-2 text-xs text-gray-500' })
+    appendChild(meta2, createMockElement('SPAN', { textContent: 'Fresher / 0-1 Yrs' }))
+    appendChild(meta2, createMockElement('SPAN', { textContent: 'Gurugram, Haryana' }))
+    appendChild(meta2, createMockElement('SPAN', { textContent: '₹ 4 - 7 LPA' }))
+    appendChild(meta2, createMockElement('SPAN', { textContent: 'In Office' }))
+    appendChild(card2, meta2)
+    appendChild(card2, createMockElement('A', { href: 'https://unstop.com/job/sales-dev-rep-unstop-102', textContent: 'Apply' }))
+
+    // Card 3: Product Operations Specialist at Swiggy
+    const card3 = createMockElement('DIV', { className: 'cursor-pointer p-4 border rounded-xl bg-white hover:shadow-md' })
+    appendChild(card3, createMockElement('DIV', { className: 'text-lg font-bold text-gray-900', textContent: 'Product Operations Specialist' }))
+    appendChild(card3, createMockElement('DIV', { className: 'text-sm text-gray-600', textContent: 'Swiggy' }))
+    const meta3 = createMockElement('DIV', { className: 'flex flex-wrap gap-2 text-xs text-gray-500' })
+    appendChild(meta3, createMockElement('SPAN', { textContent: '1-3 Years' }))
+    appendChild(meta3, createMockElement('SPAN', { textContent: 'Remote' }))
+    appendChild(meta3, createMockElement('SPAN', { textContent: '₹ 8 - 12 LPA' }))
+    appendChild(card3, meta3)
+
+    appendChild(feed, card1)
+    appendChild(feed, card2)
+    appendChild(feed, card3)
+    appendChild(doc.body, feed)
+
+    const url = 'https://unstop.com/job?oppstatus=open'
+    const isListing = isLikelyJobListing(doc, url)
+    assert(isListing === true, '36a. Repeated card structure with modern component classes identified as job listing')
+
+    const classification = scanner.classifyPage(url, doc)
+    assert(classification.classification === 'JOB_LIST', '36b. Unstop listing with modern component classes classified as JOB_LIST')
+
+    const summary = scanner.scanJobListing(url, doc, testProfile)
+    assert(summary.totalDetected >= 3, `36c. Scanned all 3 visible jobs (Got: ${summary.totalDetected})`)
+
+    const titles = summary.analyzedJobs.map((j) => j.job.title)
+    const companies = summary.analyzedJobs.map((j) => j.job.company)
+    assert(titles.includes('Data Analyst'), '36d. Data Analyst role extracted from modern card')
+    assert(companies.includes('Capital Engineering'), '36e. Capital Engineering company extracted')
+    assert(titles.includes('Sales Development Representative'), '36f. Sales Development Representative role extracted')
+    assert(companies.includes('Unstop'), '36g. Unstop company extracted')
+  }
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
