@@ -94,16 +94,36 @@ export class JobScanner {
     const pageListingEvidence = isLikelyJobListing(doc, url)
     const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|\b(search|results|q=|keywords=)\b/i.test(url)
 
-    // If page has listing search parameters (e.g. Unstop ?selectedItem=..., LinkedIn ?currentJobId=...)
-    // and valid listing evidence, prioritize JOB_LIST even if a side pane previews one job.
-    if (hasListingParam && pageListingEvidence) {
+    // Check if multiple legitimate jobs can be extracted from the listing DOM
+    const rawJobs = adapter.extractJobList(doc)
+    if (adapter.name !== 'Generic') {
+      rawJobs.push(...this.genericAdapter.extractJobList(doc))
+    }
+    const seen = new Set<string>()
+    const listingJobs = rawJobs.filter((job: ExtractedJob) => {
+      if (!this.isPlausibleExtractedJob(job, url)) return false
+      const key = `${job.title.toLowerCase().trim()}|${job.company.toLowerCase().trim()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    // If page has listing search parameters and valid listing evidence or extracted jobs
+    if (hasListingParam && (pageListingEvidence || listingJobs.length >= 1 || adapter.isJobListingPage(url, doc))) {
       return { classification: 'JOB_LIST', adapterName: adapter.name }
     }
 
     // A single job requires the universal job evidence gate, even when a
     // site-specific adapter recognizes a detail URL.
-    if (pageJobEvidence && adapter.isJobDetailPage(url, doc)) {
+    // If not on a listing search param and the page exhibits single job evidence,
+    // prioritize SINGLE_JOB over sidebar recommendation cards.
+    if (pageJobEvidence && adapter.isJobDetailPage(url, doc) && !hasListingParam) {
       return { classification: 'SINGLE_JOB', adapterName: adapter.name }
+    }
+
+    // Multiple validated jobs always means a job listing page, even if previewing one
+    if (listingJobs.length >= 2) {
+      return { classification: 'JOB_LIST', adapterName: adapter.name }
     }
 
     // A listing requires actual listing evidence, not merely /jobs or ?q= in URL.

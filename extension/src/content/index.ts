@@ -729,14 +729,14 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   // 1. Classification check
   const { classification } = jobScanner.classifyPage(url, doc)
 
-  // A. Job Listing Page (When classified as JOB_LIST or when page has listing evidence without being a dedicated SINGLE_JOB)
-  if (classification === 'JOB_LIST' || (classification !== 'SINGLE_JOB' && isLikelyJobListing(doc, url))) {
-    removePanel()
-    isSinglePanelVisible = false
-    const summary = jobScanner.scanJobListing(url, doc, profile)
-    if (summary.totalDetected >= 1) {
-      renderDiscoveryView(summary)
-      return { success: true, mode: 'job-listing', detectedJobs: summary.totalDetected }
+  // A. Job Listing Page: Check if listing produces jobs or page is classified as JOB_LIST
+  const listingSummary = jobScanner.scanJobListing(url, doc, profile)
+  if (classification === 'JOB_LIST' || listingSummary.totalDetected >= 2 || (classification !== 'SINGLE_JOB' && isLikelyJobListing(doc, url))) {
+    if (listingSummary.totalDetected >= 1) {
+      removePanel()
+      isSinglePanelVisible = false
+      renderDiscoveryView(listingSummary)
+      return { success: true, mode: 'job-listing', detectedJobs: listingSummary.totalDetected }
     }
   }
 

@@ -1027,30 +1027,41 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
   if (rawDesc.trim()) {
     const cleanText = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     if (cleanText.length > 0) {
-      const sentences = cleanText.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 15)
+      // Strip leading metadata chip phrases like "Eligibility Fresher Locations Delhi"
+      const cleanedDesc = cleanText.replace(/^(eligibility\s+fresher\s+locations?\s+[a-z0-9\s,.-]+(?=[A-Z]|\.|$)|eligibility\s*:\s*[^\.\n]+|locations?\s*:\s*[^\.\n]+)\s*/i, '').trim()
+      const targetSummaryText = cleanedDesc.length > 20 ? cleanedDesc : cleanText
+      const sentences = targetSummaryText.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 15)
       if (sentences.length > 0) {
         descriptionSummary = sentences.slice(0, 2).join(' ')
         if (descriptionSummary.length > 280) {
           descriptionSummary = descriptionSummary.substring(0, 280) + '...'
         }
       } else {
-        descriptionSummary = cleanText.length > 200 ? cleanText.substring(0, 200) + '...' : cleanText
+        descriptionSummary = targetSummaryText.length > 200 ? targetSummaryText.substring(0, 200) + '...' : targetSummaryText
       }
     }
   }
 
   // Deterministic responsibilities extraction
   let responsibilities: string[] = []
-  if (job.description) {
+  if (job.responsibilities && job.responsibilities.length > 0) {
+    responsibilities = job.responsibilities.slice(0, 4)
+  } else if (job.description) {
     const text = job.description
-    const respMatch = text.match(/(?:responsibilities|duties|what you will do|what you'll do|your role)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|benefits|$)/i)
-    const targetText = respMatch ? respMatch[1] : text
+    const respMatch = text.match(/(?:responsibilities|duties|what you(?:'ll|\s+will)\s+do|key responsibilities|your role|role and responsibilities)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|eligibility|what we offer|benefits|about us|$)/i)
+    const targetText = (respMatch && respMatch[1]) ? respMatch[1] : (text || '')
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
       .map((l) => l.replace(/<[^>]+>/g, '').trim())
-      .filter((l) => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^(design|develop|build|collaborate|lead|manage|maintain|implement|create|deliver|support|coordinate|review|test)\b/i.test(l))
-      .map((l) => l.replace(/^[•\-*]\s*/, '').trim())
-      .filter((l) => l.length > 10 && l.length < 200)
+      .filter((l) => {
+        if (!l || l.length < 8) return false
+        const isBullet = /^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]|\d+[\.\)]/.test(l)
+        if (isBullet) return true
+        if (respMatch && l.length >= 15 && l.length <= 250 && !/^(about|overview|details|company|salary|location|apply)/i.test(l)) return true
+        return /^(design|develop|build|collaborate|lead|manage|maintain|implement|create|deliver|support|coordinate|review|test|activate|enroll|convert|drive|sell|promote|execute|identify|generate|assist|prepare|conduct|ensure|participate|oversee)\b/i.test(l)
+      })
+      .map((l) => l.replace(/^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter((l) => l.length > 10 && l.length < 250)
 
     if (lines.length > 0) {
       responsibilities = lines.slice(0, 4)
@@ -1062,16 +1073,24 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
 
   // Deterministic requirements extraction
   let requirements: string[] = []
-  if (job.description) {
+  if (job.requirements && job.requirements.length > 0) {
+    requirements = job.requirements.slice(0, 4)
+  } else if (job.description) {
     const text = job.description
-    const reqMatch = text.match(/(?:requirements|qualifications|what we are looking for|what we're looking for|who you are|must have|eligibility)[:\s]+([\s\S]*?)(?:responsibilities|duties|benefits|about us|$)/i)
-    const targetText = reqMatch ? reqMatch[1] : text
+    const reqMatch = text.match(/(?:requirements|qualifications|what we(?:'re|\s+are)\s+looking\s+for|who you are|must have|preferred qualifications|key requirements|eligibility)[:\s]+([\s\S]*?)(?:responsibilities|duties|what you will do|benefits|about us|perks|what we offer|$)/i)
+    const targetText = (reqMatch && reqMatch[1]) ? reqMatch[1] : (text || '')
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
       .map((l) => l.replace(/<[^>]+>/g, '').trim())
-      .filter((l) => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^(bachelor|master|degree|\d+\+?\s*years|experience|proficiency|strong|knowledge|familiarity)\b/i.test(l))
-      .map((l) => l.replace(/^[•\-*]\s*/, '').trim())
-      .filter((l) => l.length > 10 && l.length < 200)
+      .filter((l) => {
+        if (!l || l.length < 8) return false
+        const isBullet = /^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]|\d+[\.\)]/.test(l)
+        if (isBullet) return true
+        if (reqMatch && l.length >= 15 && l.length <= 250 && !/^(about|overview|details|company|salary|location|apply)/i.test(l)) return true
+        return /^(bachelor|master|degree|\d+\+?\s*years|experience|proficiency|strong|knowledge|familiarity|good|ability|willingness|excellent|proven|hands-on)\b/i.test(l)
+      })
+      .map((l) => l.replace(/^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter((l) => l.length > 10 && l.length < 250)
 
     if (lines.length > 0) {
       requirements = lines.slice(0, 4)
@@ -1248,7 +1267,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
               font-size:10px;padding:1px 6px;border-radius:4px;
               background:${isDark ? '#064e3b' : '#ecfdf5'};color:#059669;border:1px solid ${isDark ? '#047857' : '#a7f3d0'};
             ">✓ ${escapeHtml(s)}</span>
-          `).join('') : `<span style="color:${textMuted};">— None detected</span>`}
+          `).join('') : `<span style="color:${textMuted};">None</span>`}
         </div>
       </div>
       <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;">

@@ -96,6 +96,44 @@ export class GenericAdapter implements SiteAdapter {
     const currentUrl = typeof window !== 'undefined' ? window.location.href : ''
     if (currentUrl && isExplicitlyNonJobSite(currentUrl)) return null
 
+    // Semantic section extraction: Responsibilities and Requirements
+    const responsibilities: string[] = []
+    const requirements: string[] = []
+    let semanticDesc = ''
+
+    const sectionHeadings = Array.from(doc.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, strong, b, [class*="heading" i], [class*="section_title" i], [class*="section-title" i], [class*="title" i], div, span, p'
+    ))
+
+    for (const el of sectionHeadings) {
+      const text = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+      if (!text || text.length > 60 || text.includes('\n')) continue
+
+      const isRespHeading = /^(key\s+|major\s+|primary\s+|role\s+)?responsibilities\b|^what\s+you('ll|\s+will)\s+do\b|^your\s+role\b|^duties\b|^day[ -]to[ -]day\b/i.test(text)
+      const isReqHeading = /^(key\s+|basic\s+|minimum\s+|preferred\s+)?(requirements|qualifications)\b|^what\s+we('re|\s+are)\s+looking\s+for\b|^who\s+you\s+are\b|^what\s+you('ll|\s+will)\s+need\b|^skills\s+and\s+qualifications\b|^eligibility\s+criteria\b/i.test(text)
+      const isAboutHeading = /^(about\s+the\s+(job|role|position)|job\s+description|role\s+overview|job\s+summary)\b/i.test(text)
+
+      if (isRespHeading || isReqHeading || isAboutHeading) {
+        let container: Element | null = el.nextElementSibling
+        if (!container && el.parentElement && el.parentElement.children.length <= 2) {
+          container = el.parentElement.nextElementSibling
+        }
+        if (container) {
+          const lis = Array.from(container.querySelectorAll('li'))
+          const listItems = lis.map((li) => li.textContent?.replace(/\s+/g, ' ').trim() || '').filter((t) => t.length > 5 && t.length < 300)
+          const lines = listItems.length > 0 ? listItems : (container.textContent || '').split(/\n|<br\s*\/?>/).map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => l.length > 10 && l.length < 300)
+
+          if (isRespHeading && responsibilities.length === 0) {
+            responsibilities.push(...lines.slice(0, 8))
+          } else if (isReqHeading && requirements.length === 0) {
+            requirements.push(...lines.slice(0, 8))
+          } else if (isAboutHeading && !semanticDesc) {
+            semanticDesc = lines.join(' ')
+          }
+        }
+      }
+    }
+
     const jsonLdJobs = this.extractFromJsonLd(doc)
     if (jsonLdJobs.length === 1 && jsonLdJobs[0].title) {
       const j = jsonLdJobs[0]
@@ -103,6 +141,8 @@ export class GenericAdapter implements SiteAdapter {
         const descEl = doc.querySelector('[class*="job-description" i], [class*="jobDescription" i], [class*="description" i], [class*="posting-requirements" i], article, main')
         if (descEl) j.description = descEl.textContent?.replace(/\s+/g, ' ').trim().slice(0, 3000)
       }
+      if (responsibilities.length > 0) j.responsibilities = responsibilities
+      if (requirements.length > 0) j.requirements = requirements
       return j
     }
 
@@ -118,10 +158,23 @@ export class GenericAdapter implements SiteAdapter {
     const salary = doc.querySelector('[class*="salary" i], [class*="compensation" i], [class*="stipend" i], [class*="pay" i]')?.textContent?.trim()
     const jobType = doc.querySelector('[class*="job-type" i], [class*="employment-type" i], [class*="work-type" i]')?.textContent?.trim()
     const descEl = doc.querySelector('[class*="job-description" i], [class*="jobDescription" i], [class*="description" i], [class*="posting-requirements" i], article, main')
-    const description = descEl?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 3000)
+    let description = descEl?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 3000)
+    if (!description || description.length < 60) {
+      description = semanticDesc || undefined
+    }
+
+    if ((responsibilities.length > 0 || requirements.length > 0) && (!description || description.length < 100)) {
+      const parts: string[] = []
+      if (description) parts.push(description)
+      if (responsibilities.length > 0) parts.push(`Responsibilities:\n${responsibilities.map((r) => `• ${r}`).join('\n')}`)
+      if (requirements.length > 0) parts.push(`Requirements:\n${requirements.map((r) => `• ${r}`).join('\n')}`)
+      description = parts.join('\n\n')
+    }
 
     return {
       title, company, location, salary, jobType, description,
+      responsibilities: responsibilities.length > 0 ? responsibilities : undefined,
+      requirements: requirements.length > 0 ? requirements : undefined,
       jobUrl: currentUrl,
       sourceWebsite: typeof window !== 'undefined' ? window.location.hostname.replace(/^www\./, '') : '',
       confidence: 'MEDIUM',
@@ -138,10 +191,12 @@ export class GenericAdapter implements SiteAdapter {
         for (const item of items) {
           if (item['@type'] === 'ItemList' && Array.isArray(item.itemListElement)) {
             for (const elem of item.itemListElement) {
-              const jobItem = elem.item || elem
-              if (jobItem['@type'] === 'JobPosting' || jobItem.title) jobs.push(this.formatJsonLdJob(jobItem))
+              const inner = elem.item || elem
+              if (inner['@type'] === 'JobPosting') jobs.push(this.formatJsonLdJob(inner))
             }
-          } else if (item['@type'] === 'JobPosting') jobs.push(this.formatJsonLdJob(item))
+          } else if (item['@type'] === 'JobPosting') {
+            jobs.push(this.formatJsonLdJob(item))
+          }
         }
       } catch { /* malformed json-ld */ }
     }
@@ -162,16 +217,31 @@ export class GenericAdapter implements SiteAdapter {
   }
 
   private extractCardData(card: HTMLElement, preferredAnchor?: HTMLAnchorElement): ExtractedJob | null {
-    const titleEl = card.querySelector('h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a[class*="job" i]') || preferredAnchor
-    const titleLink = (titleEl?.tagName === 'A' ? titleEl : preferredAnchor || card.querySelector('a')) as HTMLAnchorElement | null
-    let title = titleEl?.textContent?.replace(/\s+/g, ' ').trim() || titleLink?.textContent?.replace(/\s+/g, ' ').trim() || ''
+    const titleCandidates = Array.from(card.querySelectorAll(
+      'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="job_title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a, strong, b'
+    ))
+    let title = ''
+    let titleLink: HTMLAnchorElement | null = preferredAnchor || null
 
-    if (!title || /^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(title)) {
-      const anchors = Array.from(card.querySelectorAll?.('a') || []) as HTMLAnchorElement[]
-      for (const a of anchors) {
-        const aText = a.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (aText.length >= 3 && aText.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(aText)) {
-          title = aText
+    for (const el of titleCandidates) {
+      const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+      const cls = (el.className || '').toString().toLowerCase()
+      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
+      if (txt.length >= 3 && txt.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+        title = txt
+        if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+        break
+      }
+    }
+
+    if (!title) {
+      for (const el of titleCandidates) {
+        const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+        const cls = (el.className || '').toString().toLowerCase()
+        if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
+        if (txt.length >= 3 && txt.length <= 140 && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+          title = txt
+          if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
           break
         }
       }

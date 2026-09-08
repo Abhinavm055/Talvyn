@@ -173,19 +173,34 @@ export function isValidJobCard(card: HTMLElement): CardValidationResult {
   if (/\b(hackathons?|competitions?|quizzes?|coding\s+challenge|workshops?|webinars?|festivals?|conferences?)\b/i.test(cardText) && !/\b(jobs?|internships?|hiring|recruitment|trainee|developer|engineer|analyst|executive|consultant)\b/i.test(cardText)) return { isValid: false, signals: [], reason: 'Competition/event card' }
   if (/\b(sponsored|advertisement|promoted)\b/i.test(cardText) || card.querySelector?.('[class*="sponsored" i], [class*="ad-" i], [data-ad]')) return { isValid: false, signals: [], reason: 'Advertisement' }
 
-  const titleEl = card.querySelector?.(
-    'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], [class*="name" i], a[class*="job" i], [data-testid*="title" i], [data-automation-id*="title" i], strong, b'
-  )
-  const titleLink = (titleEl?.tagName === 'A' ? titleEl : card.querySelector?.('a')) as HTMLAnchorElement | null
-  let rawTitle = titleEl?.textContent?.replace(/\s+/g, ' ').trim() || titleLink?.textContent?.replace(/\s+/g, ' ').trim() || ''
+  const titleCandidateElements = Array.from(card.querySelectorAll?.(
+    'h1, h2, h3, h4, h5, [class*="job-title" i], [class*="jobTitle" i], [class*="job_title" i], [class*="opp_title" i], [class*="opp-title" i], [class*="role" i], [class*="position" i], [class*="heading" i], a, strong, b'
+  ) || [])
 
-  // Fallback: If title element text is generic or missing, find any anchor or text segment matching universal job roles
-  if (!rawTitle || /^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(rawTitle)) {
-    const anchors = Array.from(card.querySelectorAll?.('a') || []) as HTMLAnchorElement[]
-    for (const a of anchors) {
-      const aText = a.textContent?.replace(/\s+/g, ' ').trim() || ''
-      if (aText.length >= 3 && aText.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(aText)) {
-        rawTitle = aText
+  let rawTitle = ''
+  let titleLink: HTMLAnchorElement | null = null
+
+  // 1. First priority: Heading or link explicitly matching universal job roles
+  for (const el of titleCandidateElements) {
+    const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+    const cls = (el.className || '').toString().toLowerCase()
+    if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
+    if (txt.length >= 3 && txt.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+      rawTitle = txt
+      titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+      break
+    }
+  }
+
+  // 2. Second priority: First plausible heading or anchor
+  if (!rawTitle) {
+    for (const el of titleCandidateElements) {
+      const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+      const cls = (el.className || '').toString().toLowerCase()
+      if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand')) continue
+      if (txt.length >= 3 && txt.length <= 140 && !/^(home|about|careers|jobs|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all)$/i.test(txt)) {
+        rawTitle = txt
+        titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
         break
       }
     }

@@ -315,6 +315,10 @@ export interface ExtractedJob {
   salary?: string
   jobType?: string
   description?: string
+  responsibilities?: string[]
+  requirements?: string[]
+  experience?: string
+  education?: string
   jobUrl: string
   sourceWebsite: string
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'

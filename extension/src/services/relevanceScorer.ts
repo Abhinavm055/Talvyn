@@ -115,6 +115,21 @@ export const COMMON_SKILLS_CANONICAL: Record<string, string> = {
   budgeting: 'Budgeting',
   prototyping: 'Prototyping',
   'user research': 'User Research',
+  communication: 'Communication',
+  sales: 'Sales',
+  'technical sales': 'Technical Sales',
+  'field sales': 'Field Sales',
+  'lead generation': 'Lead Generation',
+  crm: 'CRM',
+  'customer relationship management': 'Customer Relationship Management',
+  'client relations': 'Client Relations',
+  negotiation: 'Negotiation',
+  'account management': 'Account Management',
+  'business development': 'Business Development',
+  'data structures': 'Data Structures',
+  algorithms: 'Algorithms',
+  workday: 'Workday',
+  compensation: 'Compensation',
 }
 
 // ─── 1. Experience Extraction & Matching (25%) ───────────────────────────────
@@ -432,6 +447,32 @@ export interface StrictSkillsMatchResult extends ComponentScore {
   status: 'MATCH' | 'MISMATCH' | 'UNSPECIFIED'
 }
 
+export const BANNED_SKILL_WORDS: Set<string> = new Set([
+  'a', 'an', 'the', 'and', 'or', 'for', 'to', 'in', 'at', 'by', 'with', 'from', 'of', 'on', 'as',
+  'c', 'r', 'v', 'k', 'd', 'p', 'x', 'y', 'z', 'b', 'e', 'f', 'g', 'h', 'i', 'j', 'l', 'm', 'n', 'o', 'q', 's', 't', 'u', 'w',
+  'full time', 'part time', 'contract', 'internship', 'intern', 'permanent', 'temporary', 'freelance',
+  'delhi', 'mumbai', 'bangalore', 'bengaluru', 'pune', 'hyderabad', 'chennai', 'kolkata', 'noida', 'gurgaon', 'gurugram',
+  'fresher', 'freshers', 'entry level', 'experienced', 'experience', 'posted', 'apply', 'apply now', 'registered',
+  'job', 'jobs', 'career', 'careers', 'opportunity', 'opportunities', 'role', 'roles', 'position', 'positions',
+  'location', 'locations', 'eligibility', 'salary', 'stipend', 'ctc', 'lpa', 'pay', 'wage',
+  'requirements', 'responsibilities', 'description', 'not specified', 'details', 'about', 'overview',
+  'none', 'null', 'undefined', 'n/a', 'na'
+])
+
+export function isValidSkillToken(token: string | undefined | null): boolean {
+  if (!token) return false
+  const trimmed = token.trim()
+  // Reject single-character tokens (such as 'C', 'a', etc.)
+  if (trimmed.length < 2) return false
+  // Reject single letter / digit
+  if (/^[a-z0-9]$/i.test(trimmed)) return false
+  // Reject pure numbers or punctuation
+  if (/^[\d\s.,;:\-_/\\#@!$%^&*()+=[\]{}|<>?~`]+$/.test(trimmed)) return false
+  // Reject banned / metadata words
+  if (BANNED_SKILL_WORDS.has(trimmed.toLowerCase())) return false
+  return true
+}
+
 export function evaluateSkillsMatchStrict(
   jobTitle: string,
   jobDescription: string | undefined,
@@ -442,6 +483,7 @@ export function evaluateSkillsMatchStrict(
   const detectedJobSkills: string[] = []
 
   for (const [key, canonical] of Object.entries(COMMON_SKILLS_CANONICAL)) {
+    if (!isValidSkillToken(key) || !isValidSkillToken(canonical)) continue
     const regex = new RegExp(`(?:^|[\\s,.;/()+-])${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[\\s,.;/()+-])`, 'i')
     if (regex.test(fullText)) {
       if (!detectedJobSkills.includes(canonical)) {
@@ -450,17 +492,23 @@ export function evaluateSkillsMatchStrict(
     }
   }
 
-  const userSkills = (userProfile.skills || []).map((s) => s.trim())
+  const userSkills = (userProfile.skills || [])
+    .map((s) => s.trim())
+    .filter(isValidSkillToken)
   const userSkillsLower = userSkills.map((s) => s.toLowerCase())
 
   const matchedSkills: string[] = []
   const missingSkills: string[] = []
 
   for (const jobSkill of detectedJobSkills) {
+    if (!isValidSkillToken(jobSkill)) continue
     const jobSkillLower = jobSkill.toLowerCase()
-    const hasSkill = userSkillsLower.some(
-      (us) => us.includes(jobSkillLower) || jobSkillLower.includes(us)
-    )
+    const hasSkill = userSkillsLower.some((us) => {
+      if (us === jobSkillLower) return true
+      const canonicalUser = COMMON_SKILLS_CANONICAL[us]?.toLowerCase()
+      if (canonicalUser && canonicalUser === jobSkillLower) return true
+      return false
+    })
     if (hasSkill) {
       if (!matchedSkills.includes(jobSkill)) matchedSkills.push(jobSkill)
     } else {
@@ -468,10 +516,12 @@ export function evaluateSkillsMatchStrict(
     }
   }
 
-  // Fallback: Check if user profile skills appear in job description
+  // Fallback: Check if valid user profile skills appear in job text with exact word boundaries
   if (matchedSkills.length === 0 && userSkills.length > 0) {
     for (const us of userSkills) {
-      if (fullText.includes(us.toLowerCase()) && !matchedSkills.includes(us)) {
+      if (!isValidSkillToken(us)) continue
+      const wordRegex = new RegExp(`(?:^|[\\s,.;/()+-])${us.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[\\s,.;/()+-])`, 'i')
+      if (wordRegex.test(fullText) && !matchedSkills.includes(us)) {
         matchedSkills.push(us)
       }
     }
@@ -483,7 +533,7 @@ export function evaluateSkillsMatchStrict(
       weight,
       weightedScore: 0.85 * weight * 100,
       reason: 'General technical skill alignment',
-      matchedSkills: userSkills.slice(0, 3),
+      matchedSkills: [],
       missingSkills: [],
       status: 'UNSPECIFIED',
     }
