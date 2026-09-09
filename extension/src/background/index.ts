@@ -64,24 +64,26 @@ export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: stri
         const manifest = chrome.runtime.getManifest()
         const contentScriptFiles = manifest.content_scripts?.[0]?.js || []
         if (contentScriptFiles.length > 0) {
+          console.log('[Talvyn] Programmatically injecting content script files from background:', contentScriptFiles)
           await chrome.scripting.executeScript({
             target: { tabId },
             files: contentScriptFiles,
           })
-          return new Promise((resolve) => {
-            setTimeout(async () => {
-              try {
-                const retryRes = await chrome.tabs.sendMessage(tabId, {
-                  type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
-                  tabUrl,
-                  tabTitle,
-                })
-                resolve(retryRes)
-              } catch {
-                resolve(null)
-              }
-            }, 300)
-          })
+          // Retry with exponential backoff / polling up to 3 times to allow dynamic import to finish
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, attempt * 150))
+            try {
+              const retryRes = await chrome.tabs.sendMessage(tabId, {
+                type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+                tabUrl,
+                tabTitle,
+              })
+              console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL retry succeeded after background injection:', retryRes)
+              return retryRes
+            } catch {
+              /* retry */
+            }
+          }
         }
       }
     } catch (injectErr) {
@@ -491,10 +493,23 @@ async function handleInternalMessage(msg: any): Promise<any> {
   // 8. TRIGGER_ACTIVE_TAB_PANEL / TALVYN_OPEN_FLOATING_WINDOW
   if (msg.type === 'TRIGGER_ACTIVE_TAB_PANEL' || msg.type === 'TALVYN_OPEN_FLOATING_WINDOW') {
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-      const activeTab = tabs[0]
-      if (activeTab?.id) {
-        const result = await triggerIntelligencePanelOnTab(activeTab.id, activeTab.url, activeTab.title)
+      let targetTabId = msg.tabId
+      let targetTabUrl = msg.tabUrl
+      let targetTabTitle = msg.tabTitle
+
+      if (!targetTabId) {
+        // In MV3 Service Worker, query using lastFocusedWindow: true because service workers have no window
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+        const activeTab = tabs[0] || (await chrome.tabs.query({ active: true }))[0]
+        if (activeTab?.id) {
+          targetTabId = activeTab.id
+          targetTabUrl = activeTab.url
+          targetTabTitle = activeTab.title
+        }
+      }
+
+      if (targetTabId) {
+        const result = await triggerIntelligencePanelOnTab(targetTabId, targetTabUrl, targetTabTitle)
         return { success: true, result }
       }
       return { success: false, error: 'No active tab found' }

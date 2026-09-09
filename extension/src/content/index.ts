@@ -108,6 +108,8 @@ try {
 }
 
 
+console.log('[Talvyn] Content script loaded')
+
 const DEFAULT_GUEST_PROFILE: UserProfile = {
   id: 'guest',
   userId: 'guest',
@@ -131,8 +133,11 @@ async function getUserPreferences(): Promise<UserProfile> {
 
   if (token) {
     try {
-      const liveProfile = await profileService.get()
-      return liveProfile
+      const liveProfile = await Promise.race([
+        profileService.get(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 1500)),
+      ])
+      if (liveProfile) return liveProfile
     } catch {
       /* fallback */
     }
@@ -702,8 +707,11 @@ async function safeAnalyzeAndRender(): Promise<void> {
 // ─── Extension Action Trigger (Icon Click) ──────────────────────────────────
 
 async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: string; detectedJobs?: number }> {
-  console.log('[Talvyn] Handling TALVYN_OPEN_INTELLIGENCE_PANEL')
-  if (!isRuntimeActive()) return { success: false, mode: 'inactive' }
+  console.log('[Talvyn] Starting page analysis')
+  if (!isRuntimeActive()) {
+    console.warn('[Talvyn] Runtime inactive; skipping analysis')
+    return { success: false, mode: 'inactive' }
+  }
   hasUserRequestedAnalysis = true
   jobScanner.clearCache()
 
@@ -715,6 +723,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   if (isExplicitlyNonJobSite(url)) {
     discoveryPanelManager.remove()
     isDiscoveryPanelVisible = false
+    console.log('[Talvyn] Rendering intelligence panel (Unsupported Notice - Non-job site)')
     injectUnsupportedNotice(
       () => {
         removePanel()
@@ -728,10 +737,12 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   }
 
   // 1. Classification check
-  const { classification } = jobScanner.classifyPage(url, doc)
+  const { classification, adapterName } = jobScanner.classifyPage(url, doc)
+  console.log(`[Talvyn] classifyPage result: ${classification} (adapter: ${adapterName})`)
 
   // A. Job Listing Page: Check if listing produces jobs or page is classified as JOB_LIST
   const listingSummary = jobScanner.scanJobListing(url, doc, profile)
+  console.log(`[Talvyn] scanJobListing result: ${listingSummary.totalDetected} jobs detected`)
   if (
     classification === 'JOB_LIST' ||
     listingSummary.totalDetected >= 2 ||
@@ -740,6 +751,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     if (listingSummary.totalDetected >= 1) {
       removePanel()
       isSinglePanelVisible = false
+      console.log(`[Talvyn] Rendering intelligence panel (Discovery Panel - ${listingSummary.totalDetected} jobs)`)
       renderDiscoveryView(listingSummary)
       return { success: true, mode: 'job-listing', detectedJobs: listingSummary.totalDetected }
     }
@@ -752,6 +764,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
       currentSingleJob = job
       discoveryPanelManager.remove()
       isDiscoveryPanelVisible = false
+      console.log(`[Talvyn] Rendering intelligence panel (Single Job - ${job.title})`)
       await showSinglePanel(job)
       return { success: true, mode: 'single-job' }
     }
@@ -763,6 +776,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     if (fallbackSummary.totalDetected >= 1) {
       removePanel()
       isSinglePanelVisible = false
+      console.log(`[Talvyn] Rendering intelligence panel (Fallback Discovery Panel - ${fallbackSummary.totalDetected} jobs)`)
       renderDiscoveryView(fallbackSummary)
       return { success: true, mode: 'job-listing', detectedJobs: fallbackSummary.totalDetected }
     }
@@ -774,13 +788,15 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     currentSingleJob = fallbackJob
     discoveryPanelManager.remove()
     isDiscoveryPanelVisible = false
+    console.log(`[Talvyn] Rendering intelligence panel (Fallback Single Job - ${fallbackJob.title})`)
     await showSinglePanel(fallbackJob)
     return { success: true, mode: 'single-job' }
   }
 
-  // D. Could not detect job on this page
+  // E. Could not detect job on this page
   discoveryPanelManager.remove()
   isDiscoveryPanelVisible = false
+  console.log('[Talvyn] Rendering intelligence panel (Unsupported Notice - No job detected)')
   injectUnsupportedNotice(
     () => {
       removePanel()
@@ -795,7 +811,16 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'TALVYN_OPEN_INTELLIGENCE_PANEL') {
-    handleOpenIntelligencePanel().then((res) => sendResponse(res))
+    console.log('[Talvyn] Received TALVYN_OPEN_INTELLIGENCE_PANEL')
+    handleOpenIntelligencePanel()
+      .then((res) => {
+        console.log('[Talvyn] handleOpenIntelligencePanel completed with result:', res)
+        sendResponse(res)
+      })
+      .catch((err) => {
+        console.error('[Talvyn] Error in handleOpenIntelligencePanel:', err)
+        sendResponse({ success: false, error: String(err?.message || err) })
+      })
     return true // async response
   }
 })

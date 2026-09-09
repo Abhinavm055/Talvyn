@@ -114,36 +114,110 @@ async function triggerDisconnectAccount(): Promise<void> {
  * Automatically runs whenever popup opens so BOTH popup and floating window are displayed!
  */
 export async function triggerActiveTabIntelligencePanel(): Promise<void> {
+  console.log('[Talvyn] Analyze button clicked')
   console.log('[Talvyn Popup] Triggering floating intelligence panel on active tab...')
   try {
+    let activeTab: chrome.tabs.Tab | null = null
+
     if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
-      chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-        const activeTab = tabs[0]
-        if (!activeTab?.id) return
-        try {
-          await chrome.tabs.sendMessage(activeTab.id, {
-            type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
-            tabUrl: activeTab.url,
-            tabTitle: activeTab.title,
-          })
-        } catch {
-          // If direct send fails (e.g. content script needs injection), delegate to background
-          try {
-            await sendBackgroundMessage({
-              type: 'TRIGGER_ACTIVE_TAB_PANEL',
-            })
-          } catch (bgErr) {
-            console.warn('[Talvyn Popup] Background panel trigger error:', bgErr)
+      // 1. Try lastFocusedWindow first (standard for popups to target the webpage the user was viewing)
+      const lastFocusedTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      if (lastFocusedTabs[0]?.id) {
+        activeTab = lastFocusedTabs[0]
+      } else {
+        // 2. Fallback to currentWindow
+        const currentWindowTabs = await chrome.tabs.query({ active: true, currentWindow: true })
+        if (currentWindowTabs[0]?.id) {
+          activeTab = currentWindowTabs[0]
+        } else {
+          // 3. Fallback to any active tab
+          const anyActive = await chrome.tabs.query({ active: true })
+          if (anyActive[0]?.id) {
+            activeTab = anyActive[0]
           }
         }
-      })
-    } else {
-      await sendBackgroundMessage({
-        type: 'TRIGGER_ACTIVE_TAB_PANEL',
-      })
+      }
     }
-  } catch (err) {
-    console.warn('[Talvyn Popup] Failed to trigger active tab floating window:', err)
+
+    if (!activeTab?.id) {
+      console.warn('[Talvyn Popup] Active tab not found directly via tabs.query; delegating to background worker...')
+      try {
+        const bgRes = await sendBackgroundMessage<{ success: boolean; error?: string }>({
+          type: 'TRIGGER_ACTIVE_TAB_PANEL',
+        })
+        console.log('[Talvyn] Background panel trigger response:', bgRes)
+      } catch (bgErr) {
+        console.error('[Talvyn Popup] Background panel trigger failed:', bgErr)
+      }
+      return
+    }
+
+    const tabUrl = activeTab.url || ''
+    const tabTitle = activeTab.title || ''
+    console.log(`[Talvyn] Active tab: ${tabUrl || `tabId ${activeTab.id}`}`)
+    console.log('[Talvyn] Sending TALVYN_OPEN_INTELLIGENCE_PANEL')
+
+    try {
+      const response = await chrome.tabs.sendMessage(activeTab.id, {
+        type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+        tabUrl,
+        tabTitle,
+      })
+      console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL acknowledged by content script:', response)
+    } catch (sendErr: any) {
+      console.warn('[Talvyn] chrome.tabs.sendMessage failed directly on active tab:', sendErr?.message || sendErr)
+      console.log(`[Talvyn] Content script not reachable on tab ${activeTab.id}. Attempting injection & background delegation...`)
+
+      // Attempt programmatic injection from popup if scripting API is available
+      if (typeof chrome !== 'undefined' && chrome.scripting?.executeScript) {
+        try {
+          const manifest = chrome.runtime.getManifest()
+          const files = manifest.content_scripts?.[0]?.js || []
+          if (files.length > 0) {
+            console.log('[Talvyn] Programmatically injecting content script files from popup:', files)
+            await chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              files,
+            })
+            // Allow loader to import bundle and register listeners
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              await new Promise((r) => setTimeout(r, attempt * 150))
+              try {
+                const retryRes = await chrome.tabs.sendMessage(activeTab.id, {
+                  type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
+                  tabUrl,
+                  tabTitle,
+                })
+                console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL retry succeeded after direct injection:', retryRes)
+                return
+              } catch {
+                /* retry */
+              }
+            }
+          }
+        } catch (injectErr: any) {
+          console.warn('[Talvyn] Popup-level script injection error:', injectErr?.message || injectErr)
+        }
+      }
+
+      // Delegate to background worker with explicit tabId, tabUrl, tabTitle
+      try {
+        const bgRes = await sendBackgroundMessage<{ success: boolean; error?: string }>({
+          type: 'TRIGGER_ACTIVE_TAB_PANEL',
+          tabId: activeTab.id,
+          tabUrl,
+          tabTitle,
+        })
+        console.log('[Talvyn] Background panel trigger response:', bgRes)
+        if (!bgRes?.success) {
+          console.error('[Talvyn] Failed to trigger panel via background worker:', bgRes?.error)
+        }
+      } catch (bgErr: any) {
+        console.error('[Talvyn] Background panel trigger exception:', bgErr?.message || bgErr)
+      }
+    }
+  } catch (err: any) {
+    console.error('[Talvyn Popup] Failed to trigger active tab floating window:', err?.message || err)
   }
 }
 
