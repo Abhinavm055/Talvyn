@@ -105,13 +105,18 @@ export class UnstopAdapter implements SiteAdapter {
 
     const isListUrl =
       /\/(job|jobs)\/?(\?.*)?$/i.test(clean) ||
+      /\/(job|jobs)\/[a-z0-9_-]+-jobs/i.test(clean) ||
       /\/jobs?\/search/i.test(clean) ||
       /\/internships\/?(\?.*)?$/i.test(clean) ||
+      /\/internships\/search/i.test(clean) ||
       clean.includes('selecteditem=') ||
       clean.includes('oppstatus=') ||
-      clean.includes('opportunity=')
+      clean.includes('opportunity=') ||
+      clean.includes('usertype=') ||
+      clean.includes('domain=') ||
+      clean.includes('specialization=')
 
-    if (isListUrl && cardCount >= 1) {
+    if (isListUrl) {
       return false
     }
 
@@ -126,20 +131,22 @@ export class UnstopAdapter implements SiteAdapter {
       /\/p\/[a-zA-Z0-9_-]+/i.test(clean) ||
       (/\/(jobs|internships|competitions)\/[a-zA-Z0-9_-]{4,}/i.test(clean) && !/\/(jobs|internships|competitions)\/(search|all|\?|$)/i.test(clean))
 
-    const hasTitle = Boolean(doc?.querySelector?.('h1, h1.title, [class*="job-title" i], [class*="opp_title" i], [class*="opp-title" i]'))
-    const hasApplyOrRegBtn = Boolean(doc?.querySelector?.('button[class*="apply" i], a[class*="apply" i], button[class*="register" i], a[class*="register" i]'))
-
-    if (isDetailUrl && !isListUrl) {
+    if (isDetailUrl) {
       return true
     }
 
-    return Boolean(hasTitle && hasApplyOrRegBtn && !isListUrl)
+    const mainOrArticle = doc?.querySelector('main, article, [class*="job-detail" i], [class*="opportunity-detail" i]') || doc
+    const hasTitle = Boolean(mainOrArticle?.querySelector('h1, h1.title, [class*="job-title" i], [class*="opp_title" i], [class*="opp-title" i]'))
+    const hasApplyBtn = Boolean(mainOrArticle?.querySelector('button[class*="apply" i], a[class*="apply" i], button[data-testid*="apply" i]'))
+
+    return Boolean(hasTitle && hasApplyBtn)
   }
 
   isJobListingPage(url: string, doc?: Document): boolean {
     const clean = url.toLowerCase()
     const isListUrl =
       /\/(job|jobs)\/?(\?.*)?$/i.test(clean) ||
+      /\/(job|jobs)\/[a-z0-9_-]+-jobs/i.test(clean) ||
       /\/jobs?\/search/i.test(clean) ||
       /\/internships\/?(\?.*)?$/i.test(clean) ||
       /\/internships\/search/i.test(clean) ||
@@ -147,7 +154,10 @@ export class UnstopAdapter implements SiteAdapter {
       /\/all-opportunities/i.test(clean) ||
       clean.includes('opportunity=') ||
       clean.includes('oppstatus=') ||
-      clean.includes('selecteditem=')
+      clean.includes('selecteditem=') ||
+      clean.includes('usertype=') ||
+      clean.includes('domain=') ||
+      clean.includes('specialization=')
 
     const cardCount = doc?.querySelectorAll?.(
       '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], [class*="opportunity" i], .single_opportunity'
@@ -171,7 +181,7 @@ export class UnstopAdapter implements SiteAdapter {
     const rawCandidates: HTMLElement[] = [
       ...Array.from(
         doc.querySelectorAll(
-          '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity, [class*="opportunity" i]'
+          '[class*="opportunity_card" i], [class*="opp-card" i], [class*="opp_card" i], [class*="c-card" i], [class*="job-card" i], [class*="listing_card" i], .single_opportunity, app-competition-listing'
         )
       ) as HTMLElement[],
       ...findJobCardCandidates(doc),
@@ -206,7 +216,7 @@ export class UnstopAdapter implements SiteAdapter {
         if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
         if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
           title = txt
-          if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+          if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
           break
         }
       }
@@ -221,7 +231,7 @@ export class UnstopAdapter implements SiteAdapter {
           const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
           if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
             title = txt
-            if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+            if (!linkEl) linkEl = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
             break
           }
         }
@@ -273,7 +283,15 @@ export class UnstopAdapter implements SiteAdapter {
       )
 
       const dataId = (card as HTMLElement).getAttribute?.('data-id') || (card as HTMLElement).getAttribute?.('data-item-id') || (card as HTMLElement).getAttribute?.('id')
+      if (!linkEl) {
+        linkEl = (card.querySelector('a[href]:not([href="#"]):not([href^="javascript:"])') || card.closest?.('a[href]')) as HTMLAnchorElement | null
+      }
       let rawJobUrl = linkEl?.href || (dataId ? `https://unstop.com/jobs/${dataId}` : '')
+      if (rawJobUrl && !rawJobUrl.startsWith('http') && typeof window !== 'undefined') {
+        try {
+          rawJobUrl = new URL(rawJobUrl, window.location.origin).toString()
+        } catch {}
+      }
       if (!rawJobUrl || (typeof window !== 'undefined' && rawJobUrl === window.location.href) || rawJobUrl === '#' || rawJobUrl.startsWith('javascript:')) {
         rawJobUrl = `https://unstop.com/jobs/${encodeURIComponent(title || '')}-${encodeURIComponent(company || '')}-${idx}`
       }
@@ -281,7 +299,7 @@ export class UnstopAdapter implements SiteAdapter {
 
       let location = locationEl?.textContent?.trim()
       if (!location) {
-        const locMatch = cardText.match(/\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|kochi|chandigarh|jaipur|indore|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i)
+        const locMatch = cardText.match(/\b(remote|hybrid|on[ -]?site|in[ -]?office|work from home|in[ -]?person|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|kochi|chandigarh|jaipur|indore|london|new york|san francisco|singapore|berlin|toronto|austin|seattle|dublin|chicago|boston)\b/i)
         if (locMatch) location = locMatch[0]
       }
       if (location && (location.includes('Bengaluru') || location.includes('Bangalore'))) {
@@ -290,7 +308,7 @@ export class UnstopAdapter implements SiteAdapter {
 
       let salary = salaryEl?.textContent?.trim()
       if (!salary) {
-        const salMatch = cardText.match(/([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b|\b(salary|stipend|compensation|unpaid)\b)/i)
+        const salMatch = cardText.match(/(([$€£₹]?\s*\d+(\.\d+)?\s*(l|lac|lakh|cr|k)?\s*-\s*[$€£₹]?\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr|l)\b)|([$€£₹]\s*\d+(\.\d+)?\s*(l|lac|lakh|cr|k)?\s*-\s*[$€£₹]?\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr|l)?\b)|(\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b)|([$€£₹]\s*[\d,]+(\.\d+)?\s*(l|lac|lakh|cr|k)?)|(\bper\s+(month|year|annum|hr|hour)\b)|(\b\d+k\s*-\s*\d+k\b)|(\b(salary|stipend|compensation|unpaid)\b))/i)
         if (salMatch) salary = salMatch[0]
       }
 
@@ -302,7 +320,9 @@ export class UnstopAdapter implements SiteAdapter {
 
       let experience = expEl?.textContent?.trim()
       if (!experience) {
-        const expMatch = cardText.match(/\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i)
+        const expMatch = cardText.match(
+          /\b(no\s+prior\s+experience\s+required|no\s+experience\s+required|0\s*-\s*\d+\s*(?:years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|\d+\+?\s*(?:years?|yrs?)(?:\s+(?:of\s+)?exp(?:erience)?)?|\d+\s*-\s*\d+\s*(?:years?|yrs?)|\d+\s*to\s*\d+\s*(?:years?|yrs?)|min\s+\d+\s*(?:years?|yrs?))\b/i
+        )
         if (expMatch) experience = expMatch[0]
       }
 

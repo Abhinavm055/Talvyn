@@ -198,7 +198,7 @@ export class GenericAdapter implements SiteAdapter {
       if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
       if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
         title = txt
-        if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+        if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
         break
       }
     }
@@ -214,7 +214,7 @@ export class GenericAdapter implements SiteAdapter {
         const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
         if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
           title = txt
-          if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null
+          if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
           break
         }
       }
@@ -261,7 +261,7 @@ export class GenericAdapter implements SiteAdapter {
 
     let salary = card.querySelector('[class*="salary" i], [class*="stipend" i], [class*="compensation" i], [class*="pay" i], [class*="wage" i], [class*="ctc" i]')?.textContent?.replace(/\s+/g, ' ').trim()
     if (!salary) {
-      const salMatch = cardText.match(/([$€£₹]\s*[\d,]+|\b\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr)\b|\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b|\bper\s+(month|year|annum|hr|hour)\b|\b\d+k\s*-\s*\d+k\b|\b(salary|stipend|compensation|unpaid)\b)/i)
+      const salMatch = cardText.match(/(([$€£₹]?\s*\d+(\.\d+)?\s*(l|lac|lakh|cr|k)?\s*-\s*[$€£₹]?\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr|l)\b)|([$€£₹]\s*\d+(\.\d+)?\s*(l|lac|lakh|cr|k)?\s*-\s*[$€£₹]?\s*\d+(\.\d+)?\s*(lpa|ctc|k|lac|lakh|cr|l)?\b)|(\b\d+(\.\d+)?\s*(lpa|ctc|lac|lakh|k)\b)|([$€£₹]\s*[\d,]+(\.\d+)?)|(\bper\s+(month|year|annum|hr|hour)\b)|(\b\d+k\s*-\s*\d+k\b)|(\b(salary|stipend|compensation|unpaid)\b))/i)
       if (salMatch) salary = salMatch[0]
     }
 
@@ -273,13 +273,20 @@ export class GenericAdapter implements SiteAdapter {
 
     let experience = card.querySelector('[class*="experience" i], [class*="exp" i]')?.textContent?.replace(/\s+/g, ' ').trim()
     if (!experience) {
-      const expMatch = cardText.match(/\b(\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i)
+      const expMatch = cardText.match(/\b(no\s+(prior\s+)?exp(erience)?(\s+required)?|exp(erience)?\s+not\s+required|fresher|freshers|entry[ -]?level|mid[ -]?level|senior|lead|\d+\+?\s*(years?|yrs?)(\s+(of\s+)?exp(erience)?)?|\d+\s*-\s*\d+\s*(years?|yrs?)|\d+\s*to\s*\d+\s*(years?|yrs?)|0\s*-\s*\d+\s*(years?|yrs?)|0\s*to\s*\d+\s*(years?|yrs?)|0\+?\s*(years?|yrs?)|years?\s+exp|min\s+\d+\s*(years?|yrs?))\b/i)
       if (expMatch) experience = expMatch[0]
     }
 
     const description = card.querySelector('[class*="snippet" i], [class*="description" i], [class*="summary" i], p')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 1000)
 
     let jobUrl = titleLink?.href || (card.tagName === 'A' ? (card as HTMLAnchorElement).href : '') || ''
+    if (!jobUrl || (typeof window !== 'undefined' && jobUrl === window.location.href) || jobUrl === '#' || jobUrl.startsWith('javascript:')) {
+      const preferredLink = card.querySelector('a[href*="/job"], a[href*="/career"], a[href*="/position"], a[href*="/opening"], a[href*="/opp"], a[href*="/apply"], a[itemprop="url"]') as HTMLAnchorElement | null
+      const anyLink = preferredLink || (card.querySelector('a[href]') as HTMLAnchorElement | null)
+      if (anyLink && anyLink.href && anyLink.href !== '#' && !anyLink.href.startsWith('javascript:')) {
+        jobUrl = anyLink.href
+      }
+    }
     if (!jobUrl || (typeof window !== 'undefined' && jobUrl === window.location.href) || jobUrl === '#' || jobUrl.startsWith('javascript:')) {
       const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://careers.company.com'
       jobUrl = `${origin}/jobs/${encodeURIComponent(title)}-${encodeURIComponent(company)}`

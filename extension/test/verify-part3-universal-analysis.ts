@@ -630,7 +630,7 @@ console.log('\n--- 10. Testing Workday Job Page ---')
 
   const url = 'https://adobe.wd5.myworkdayjobs.com/en-US/external/job/San-Jose/Senior-Cloud-Architect_R9988'
   const classification = scanner.classifyPage(url, doc)
-  assert(classification.classification === 'SINGLE_JOB', '10a. Workday job page classified as SINGLE_JOB')
+  assert(classification.classification === 'SINGLE_JOB', '10a. Workday job page classified as SINGLE_JOB', classification)
 
   const job = scanner.scanSingleJob(url, doc)
   assert(Boolean(job && job.title === 'Senior Cloud Architect'), '10b. Workday adapter successfully extracted single job')
@@ -942,7 +942,8 @@ console.log('\n--- 21. Testing Single Job Detail with Sidebar Recommendations --
   const classification = scanner.classifyPage(url, doc)
   assert(
     classification.classification === 'SINGLE_JOB',
-    '21a. Page with sidebar recommendations correctly prioritized as SINGLE_JOB'
+    '21a. Page with sidebar recommendations correctly prioritized as SINGLE_JOB',
+    classification
   )
 
   const job = scanner.scanSingleJob(url, doc)

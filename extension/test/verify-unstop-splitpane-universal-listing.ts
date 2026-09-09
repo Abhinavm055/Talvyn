@@ -161,12 +161,16 @@ function createMockCard(props: {
     querySelectorAll(sel: string) {
       const res: any[] = []
       for (const child of children) {
-        if (sel.includes('a') && child.tagName === 'A') res.push(child)
+        if (sel.includes('h3') && child.tagName === 'H3') res.push(child)
+        else if (sel.includes('title') && (child.className?.includes('title') || child.tagName === 'H3')) res.push(child)
+        else if (sel.includes('a') && child.tagName === 'A') res.push(child)
+        else if (sel.includes('div') && child.tagName === 'DIV') res.push(child)
+        else if (sel.includes('span') && child.tagName === 'SPAN') res.push(child)
       }
       return res
     },
     get textContent() {
-      return children.map((c) => c.textContent).filter(Boolean).join(' ')
+      return children.map((c) => c.textContent).filter(Boolean).join('\n')
     },
   }
 
@@ -257,9 +261,9 @@ console.log('--- 1. Testing https://unstop.com/job?oppstatus=open&selectedItem=i
   }
 
   // 1a. Validate individual cards pass universal validation
-  assert(isValidJobCard(card1).isValid === true, '1a. Technical Sales Executive passes isValidJobCard')
-  assert(isValidJobCard(card2).isValid === true, '1b. Workday Advanced Compensation Consultant passes isValidJobCard')
-  assert(isValidJobCard(card3).isValid === true, '1c. Senior Solutions Architect passes isValidJobCard')
+  assert(isValidJobCard(card1).isValid === true, '1a. Technical Sales Executive passes isValidJobCard', isValidJobCard(card1))
+  assert(isValidJobCard(card2).isValid === true, '1b. Workday Advanced Compensation Consultant passes isValidJobCard', isValidJobCard(card2))
+  assert(isValidJobCard(card3).isValid === true, '1c. Senior Solutions Architect passes isValidJobCard', isValidJobCard(card3))
 
   // 1b. Validate listing evidence detector confirms listing
   assert(isLikelyJobListing(mockDoc, url) === true, '1d. isLikelyJobListing confirms multi-card listing')

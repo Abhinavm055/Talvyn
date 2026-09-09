@@ -41,7 +41,7 @@ export class JobScanner {
       job.description || '',
     ].join(' ')
 
-    const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|years?(\s+(of\s+)?exp(erience)?)?|experience required|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
+    const hasJobSignal = /\b(job|role|position|engineer|developer|designer|analyst|scientist|manager|executive|intern|internship|trainee|architect|consultant|specialist|coordinator|lead|director|recruiter|associate|assistant|operator|accountant|marketing|sales|product|software|data|cloud|devops|full[ -]?stack|front[ -]?end|back[ -]?end|mobile|qa|tester|security|ai|ml|administrator|technician|officer|representative|expert|writer|editor|teacher|instructor|tutor|counselor|recruit|hiring|full[ -]?time|part[ -]?time|contract|permanent|remote|hybrid|on[ -]?site|in[ -]?office|in[ -]?person|work from home|years?(\s+(of\s+)?exp(erience)?)?|experience required|no prior experience|salary|stipend|compensation|lpa)\b/i.test(evidenceText)
     const hasDestination = Boolean(job.jobUrl && job.jobUrl !== currentUrl)
     const hasSupportingField = Boolean(job.location || job.salary || job.jobType || job.experience || job.description || hasDestination || (company && company !== 'Unknown Company'))
 
@@ -65,7 +65,7 @@ export class JobScanner {
 
   private extractJobListUniversal(url: string, doc: Document, adapter: any): ExtractedJob[] {
     const primary = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
-    const generic = adapter.name !== 'Generic'
+    const generic = (adapter.name !== 'Generic' && primary.length === 0)
       ? this.genericAdapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
       : []
 
@@ -103,7 +103,7 @@ export class JobScanner {
     const adapter = adapterRegistry.getAdapter(url, doc)
     const pageJobEvidence = isLikelyJobPage(doc, url)
     const pageListingEvidence = isLikelyJobListing(doc, url)
-    const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|\b(search|results|q=|keywords=)\b/i.test(url)
+    const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|usertype=|domain=|course=|specialization=|\b(search|results|q=|keywords=)\b/i.test(url)
 
     // Check if multiple legitimate jobs can be extracted from the listing DOM
     const rawJobs = adapter.extractJobList(doc)

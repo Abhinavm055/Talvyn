@@ -705,6 +705,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   console.log('[Talvyn] Handling TALVYN_OPEN_INTELLIGENCE_PANEL')
   if (!isRuntimeActive()) return { success: false, mode: 'inactive' }
   hasUserRequestedAnalysis = true
+  jobScanner.clearCache()
 
   const url = window.location.href
   const doc = document
@@ -731,7 +732,11 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
 
   // A. Job Listing Page: Check if listing produces jobs or page is classified as JOB_LIST
   const listingSummary = jobScanner.scanJobListing(url, doc, profile)
-  if (classification === 'JOB_LIST' || listingSummary.totalDetected >= 2 || (classification !== 'SINGLE_JOB' && listingSummary.totalDetected >= 1) || (classification !== 'SINGLE_JOB' && isLikelyJobListing(doc, url))) {
+  if (
+    classification === 'JOB_LIST' ||
+    listingSummary.totalDetected >= 2 ||
+    (listingSummary.totalDetected >= 1 && (isLikelyJobListing(doc, url) || classification !== 'SINGLE_JOB'))
+  ) {
     if (listingSummary.totalDetected >= 1) {
       removePanel()
       isSinglePanelVisible = false
