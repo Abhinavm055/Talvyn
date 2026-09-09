@@ -32,6 +32,9 @@ export class JobScanner {
     const nonJobPattern = /\b(competition|competitions|hackathon|hackathons|workshop|workshops|webinar|quiz|quizzes|contest|contests|leaderboard|challenge|challenges|register now|sponsored|advertisement|advert|promoted)\b/i
     if (nonJobPattern.test(title)) return false
 
+    const greetingOrAccountPattern = /^(welcome\b|hello\b|hi\b|good\s+(morning|afternoon|evening)|my\s+account\b|sign\s+in\b|sign\s+up\b|log\s+in\b|log\s+out\b|dashboard\b|notifications\b|messages\b|profile\b|settings\b|feedback\b)/i
+    if (greetingOrAccountPattern.test(title)) return false
+
     const evidenceText = [
       title,
       job.jobType || '',

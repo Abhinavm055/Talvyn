@@ -72,12 +72,19 @@ export class IndeedAdapter implements SiteAdapter {
       const salaryEl = card.querySelector(
         '[data-testid="attribute_snippet_testid"], .salary-snippet-container, [class*="salary-snippet"], #salaryInfoAndJobType'
       )
+      const snippetEl = card.querySelector(
+        '.job-snippet, [data-testid="job-snippet"], [class*="job-snippet"], [class*="jobCardShelfContainer"], .underShelfFooter, ul, p'
+      )
 
       const title = titleEl?.textContent?.trim()
       const rawCompany = companyEl?.textContent?.trim()
       const company = rawCompany && rawCompany.length > 0 ? rawCompany : 'Unknown Company'
       const rawJobUrl = linkEl?.href || (typeof window !== 'undefined' ? window.location.href : '')
       const jobUrl = rawJobUrl || `https://www.indeed.com/viewjob?key=${encodeURIComponent(title || '')}-${encodeURIComponent(company)}`
+      const description = snippetEl?.textContent?.replace(/\s+/g, ' ').trim() || undefined
+
+      const snippetLis = Array.from(snippetEl?.querySelectorAll('li') || [])
+      const snippetBullets = snippetLis.map((li) => li.textContent?.replace(/\s+/g, ' ').trim() || '').filter((t) => t.length > 8)
 
       if (title && title.length > 2 && !seen.has(jobUrl)) {
         seen.add(jobUrl)
@@ -86,6 +93,8 @@ export class IndeedAdapter implements SiteAdapter {
           company,
           location: locationEl?.textContent?.trim(),
           salary: salaryEl?.textContent?.trim(),
+          description,
+          responsibilities: snippetBullets.length > 0 ? snippetBullets.slice(0, 4) : undefined,
           jobUrl,
           sourceWebsite: 'Indeed',
           confidence: 'HIGH',
@@ -97,14 +106,48 @@ export class IndeedAdapter implements SiteAdapter {
   }
 
   extractSingleJob(doc: Document): ExtractedJob | null {
-    const title = doc.querySelector(
-      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h1'
-    )?.textContent?.trim()
+    // 1. Identify authoritative job detail container
+    const container =
+      doc.querySelector(
+        '[data-testid="jobsearch-JobComponent"], [data-testid="jobsearch-ViewJobLayout-mainContent"], #jobsearch-ViewjobPaneWrapper, .jobsearch-JobComponent, #viewJobSSRRoot, article[class*="job" i], [role="main"]'
+      ) || doc.body || doc
 
-    if (!title) return null
+    // 2. Extract job title strictly from authoritative container or specific selectors (never naked h1 from root)
+    let titleEl = container.querySelector(
+      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title, h1[class*="jobTitle" i], h2[class*="jobTitle" i]'
+    )
 
-    const companyEl = doc.querySelector(
+    if (!titleEl && container !== doc && container !== doc.body) {
+      titleEl = container.querySelector('h1, h2')
+    }
+
+    if (!titleEl) {
+      titleEl = doc.querySelector(
+        '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title'
+      )
+    }
+
+    if (!titleEl) return null
+
+    // Ensure title element is not inside navigation, header, account, or banner regions
+    const isInsideNav = Boolean(
+      typeof titleEl.closest === 'function' &&
+      titleEl.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="header" i], [class*="account" i]')
+    )
+    if (isInsideNav && container === doc.body) return null
+
+    const title = titleEl.textContent?.trim()
+    if (!title || title.length < 3 || title.length > 150) return null
+
+    // Reject user greeting, account, and navigation text
+    const nonJobPattern = /^(welcome\b|hello\b|hi\b|good\s+(morning|afternoon|evening)|my\s+account\b|sign\s+in\b|sign\s+up\b|log\s+in\b|log\s+out\b|dashboard\b|notifications\b|messages\b|settings\b|feedback\b)/i
+    if (nonJobPattern.test(title)) return null
+
+    // 3. Extract company from the same container
+    const companyEl = container.querySelector(
       '[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"] span, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, div[data-testid="jobsearch-CompanyInfoContainer"] span, .jobsearch-CompanyInfoContainer, [class*="CompanyInfo" i], .companyName, .icl-u-lg-mr--sm, [class*="companyName"]'
+    ) || doc.querySelector(
+      '[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a'
     )
 
     const company =
@@ -112,17 +155,42 @@ export class IndeedAdapter implements SiteAdapter {
       extractCompanyFromJsonLd(doc) ||
       'Unknown Company'
 
-    const location = doc.querySelector(
-      '[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation'
+    // 4. Extract location from the same container
+    const location = (
+      container.querySelector('[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation') ||
+      doc.querySelector('[data-testid="job-location"], [data-testid="inlineHeader-companyLocation"]')
     )?.textContent?.trim()
 
-    const salary = doc.querySelector(
-      '[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType, [class*="salary-snippet"]'
+    // 5. Extract salary and job type from the same container
+    const salary = (
+      container.querySelector('[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType, [class*="salary-snippet"]') ||
+      doc.querySelector('[data-testid="attribute_snippet_testid"], #salaryInfoAndJobType')
     )?.textContent?.trim()
 
-    const description = doc.querySelector(
-      '#jobDescriptionText, [data-testid="jobsearch-JobComponent-description"]'
-    )?.textContent?.trim()
+    // 6. Extract description from the same container
+    const descEl = container.querySelector(
+      '#jobDescriptionText, [data-testid="jobsearch-JobComponent-description"], [class*="jobsearch-JobComponent-description"]'
+    ) || doc.querySelector('#jobDescriptionText, [data-testid="jobsearch-JobComponent-description"]')
+
+    const description = descEl?.textContent?.replace(/\s+/g, ' ').trim()
+
+    // 7. Extract semantic responsibilities and requirements if available
+    const responsibilities: string[] = []
+    const requirements: string[] = []
+    if (descEl) {
+      const lis = Array.from(descEl.querySelectorAll('li'))
+      for (const li of lis) {
+        const text = li.textContent?.replace(/\s+/g, ' ').trim() || ''
+        if (text.length > 8 && text.length < 250) {
+          const parentHeading = li.closest('ul')?.previousElementSibling?.textContent?.toLowerCase() || ''
+          if (/responsibilit|duties|what you('ll|\s+will)\s+do/i.test(parentHeading)) {
+            responsibilities.push(text)
+          } else if (/requirement|qualification|what we('re|\s+are)\s+looking\s+for|skills/i.test(parentHeading)) {
+            requirements.push(text)
+          }
+        }
+      }
+    }
 
     return {
       title,
@@ -130,6 +198,8 @@ export class IndeedAdapter implements SiteAdapter {
       location,
       salary,
       description,
+      responsibilities: responsibilities.length > 0 ? responsibilities.slice(0, 8) : undefined,
+      requirements: requirements.length > 0 ? requirements.slice(0, 8) : undefined,
       jobUrl: typeof window !== 'undefined' ? window.location.href : '',
       sourceWebsite: 'Indeed',
       confidence: 'HIGH',

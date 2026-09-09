@@ -38,6 +38,9 @@ import { normalizeJob } from './jobNormalizer'
 import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing } from './jobEvidenceDetector'
 
 let currentSingleJob: ExtractedJob | null = null
+let nativePageJob: ExtractedJob | null = null
+let selectedDiscoveryJob: ExtractedJob | null = null
+let activePanelMode: 'NONE' | 'DISCOVERY' | 'SELECTED_DISCOVERY' | 'NATIVE_SINGLE' = 'NONE'
 let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -55,6 +58,9 @@ onExtensionShutdown(() => {
   } catch {}
   isSinglePanelVisible = false
   isDiscoveryPanelVisible = false
+  activePanelMode = 'NONE'
+  selectedDiscoveryJob = null
+  nativePageJob = null
 })
 
 // Announce extension presence to Talvyn web app for automatic discovery
@@ -270,6 +276,9 @@ async function analyzeAndRenderPage(): Promise<void> {
   }
 
   if (classification === 'JOB_LIST') {
+    if (activePanelMode === 'SELECTED_DISCOVERY') {
+      return // Preserve selected discovery view
+    }
     removePanel()
     isSinglePanelVisible = false
     autofillCoordinator.dismiss()
@@ -281,22 +290,29 @@ async function analyzeAndRenderPage(): Promise<void> {
     } else {
       discoveryPanelManager.remove()
       isDiscoveryPanelVisible = false
+      activePanelMode = 'NONE'
     }
     return
   }
 
   // 4. PRIORITY 4: Single Job Detail Page (Phase 2A Job Saver)
   if (classification === 'SINGLE_JOB') {
+    if (activePanelMode === 'SELECTED_DISCOVERY') {
+      return // Preserve selected discovery view
+    }
     discoveryPanelManager.remove()
     autofillCoordinator.dismiss()
     isDiscoveryPanelVisible = false
 
-    currentSingleJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
-    if (!currentSingleJob) return
+    const job = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
+    if (!job) return
 
-    console.log(`[Talvyn] JOB_DETECTED: ${currentSingleJob.title} at ${currentSingleJob.company}`)
+    nativePageJob = job
+    currentSingleJob = job
+    activePanelMode = 'NATIVE_SINGLE'
+    console.log(`[Talvyn] JOB_DETECTED: ${job.title} at ${job.company}`)
     isSinglePanelVisible = true
-    await showSinglePanel(currentSingleJob)
+    await showSinglePanel(job)
     return
   }
 
@@ -333,9 +349,96 @@ function startListingObserver(): void {
   }
 }
 
+function enrichSelectedDiscoveryJobFromDom(job: ExtractedJob, doc: Document = document): ExtractedJob {
+  if (!doc) return job
+
+  try {
+    // 1. Try to find authoritative job detail container currently active in DOM
+    const detailContainer = doc.querySelector(
+      '[data-testid="jobsearch-JobComponent"], [data-testid="jobsearch-ViewJobLayout-mainContent"], #jobsearch-ViewjobPaneWrapper, .jobsearch-JobComponent, #viewJobSSRRoot, article[class*="job" i], [role="main"]'
+    )
+
+    if (detailContainer) {
+      const containerTitleEl = detailContainer.querySelector(
+        '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title, h1[class*="jobTitle" i], h2[class*="jobTitle" i]'
+      )
+      const containerCompanyEl = detailContainer.querySelector(
+        '[data-testid="inlineHeader-companyName"], [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, .companyName, [class*="companyName"]'
+      )
+
+      const cTitle = containerTitleEl?.textContent?.trim() || ''
+      const cComp = containerCompanyEl?.textContent?.trim() || ''
+
+      const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const titleMatch = cTitle && job.title && (clean(cTitle).includes(clean(job.title)) || clean(job.title).includes(clean(cTitle)))
+      const compMatch = cComp && job.company && (clean(cComp).includes(clean(job.company)) || clean(job.company).includes(clean(cComp)))
+
+      // Only enrich if this active detail container belongs to the selected job!
+      if (titleMatch || compMatch) {
+        const descEl = detailContainer.querySelector(
+          '#jobDescriptionText, [data-testid="jobsearch-JobComponent-description"], [class*="job-description" i], [class*="jobDescription" i], [class*="description" i]'
+        )
+        const fullDesc = descEl?.textContent?.replace(/\s+/g, ' ').trim()
+
+        const responsibilities: string[] = []
+        const requirements: string[] = []
+        if (descEl) {
+          const lis = Array.from(descEl.querySelectorAll('li'))
+          for (const li of lis) {
+            const text = li.textContent?.replace(/\s+/g, ' ').trim() || ''
+            if (text.length > 8 && text.length < 250) {
+              const parentHeading = li.closest('ul')?.previousElementSibling?.textContent?.toLowerCase() || ''
+              if (/responsibilit|duties|what you('ll|\s+will)\s+do/i.test(parentHeading)) {
+                responsibilities.push(text)
+              } else if (/requirement|qualification|what we('re|\s+are)\s+looking\s+for|skills/i.test(parentHeading)) {
+                requirements.push(text)
+              }
+            }
+          }
+        }
+
+        return {
+          ...job,
+          description: fullDesc && fullDesc.length > 40 ? fullDesc : job.description,
+          responsibilities: responsibilities.length > 0 ? responsibilities : job.responsibilities,
+          requirements: requirements.length > 0 ? requirements : job.requirements,
+        }
+      }
+    }
+
+    // 2. Structured data fallback (JSON-LD)
+    const scripts = doc.querySelectorAll('script[type="application/ld+json"]')
+    for (const script of Array.from(scripts)) {
+      const text = script.textContent
+      if (!text) continue
+      const data = JSON.parse(text)
+      const items = Array.isArray(data) ? data : [data]
+      for (const item of items) {
+        if (item['@type'] === 'JobPosting') {
+          const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+          const jTitle = item.title || item.name || ''
+          if (clean(jTitle).includes(clean(job.title)) || clean(job.title).includes(clean(jTitle))) {
+            const rawDesc = item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+            if (rawDesc && (!job.description || job.description.length < rawDesc.length)) {
+              return {
+                ...job,
+                description: rawDesc,
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return job
+}
+
 function renderDiscoveryView(summary: JobListAnalysisSummary): void {
   lastListingSummary = summary
+  activePanelMode = 'DISCOVERY'
   isDiscoveryPanelVisible = true
+  isSinglePanelVisible = false
   startListingObserver()
   discoveryPanelManager.render(summary, {
     onSaveJob: async (analyzed: AnalyzedJob) => {
@@ -364,10 +467,18 @@ function renderDiscoveryView(summary: JobListAnalysisSummary): void {
     onSelectJob: async (job: ExtractedJob) => {
       discoveryPanelManager.remove()
       isDiscoveryPanelVisible = false
-      await showSinglePanel(job, {
+      const enrichedJob = enrichSelectedDiscoveryJobFromDom(job, document)
+      selectedDiscoveryJob = enrichedJob
+      currentSingleJob = enrichedJob
+      activePanelMode = 'SELECTED_DISCOVERY'
+
+      await showSinglePanel(enrichedJob, {
         fromListing: true,
         onBackToListing: () => {
           removePanel()
+          selectedDiscoveryJob = null
+          currentSingleJob = nativePageJob
+          activePanelMode = 'DISCOVERY'
           if (lastListingSummary) {
             renderDiscoveryView(lastListingSummary)
           }
@@ -376,6 +487,7 @@ function renderDiscoveryView(summary: JobListAnalysisSummary): void {
     },
     onDismiss: () => {
       isDiscoveryPanelVisible = false
+      activePanelMode = 'NONE'
       hasUserRequestedAnalysis = false
     },
     onRefresh: async () => {
@@ -391,6 +503,9 @@ async function showSinglePanel(
   job: ExtractedJob,
   extraOptions?: { fromListing?: boolean; onBackToListing?: () => void }
 ): Promise<void> {
+  currentSingleJob = job
+  isSinglePanelVisible = true
+
   const token = await getToken()
   const profile = await getUserPreferences()
 
@@ -431,15 +546,19 @@ async function showSinglePanel(
     onBackToListing: extraOptions?.onBackToListing,
   }
 
+  const handleDismiss = () => {
+    isSinglePanelVisible = false
+    activePanelMode = 'NONE'
+    hasUserRequestedAnalysis = false
+    selectedDiscoveryJob = null
+  }
+
   if (!token) {
     injectPanel(
       normResult.normalized,
       (customJob, customProfile) => handleSingleSave(customJob, customProfile),
       handleSingleApply,
-      () => {
-        isSinglePanelVisible = false
-        hasUserRequestedAnalysis = false
-      },
+      handleDismiss,
       panelOptions
     )
     updatePanelState({ type: 'logged-out', opportunityType: opp.type, job: normResult.normalized, normalization: normResult })
@@ -454,10 +573,7 @@ async function showSinglePanel(
         normResult.normalized,
         (customJob, customProfile) => handleSingleSave(customJob, customProfile),
         handleSingleApply,
-        () => {
-          isSinglePanelVisible = false
-          hasUserRequestedAnalysis = false
-        },
+        handleDismiss,
         panelOptions
       )
 
@@ -506,10 +622,7 @@ async function showSinglePanel(
     normResult.normalized,
     (customJob, customProfile) => handleSingleSave(customJob, customProfile),
     handleSingleApply,
-    () => {
-      isSinglePanelVisible = false
-      hasUserRequestedAnalysis = false
-    },
+    handleDismiss,
     panelOptions
   )
 }
@@ -680,6 +793,7 @@ async function init() {
   // Initialize hardened SPA navigation & History API observer
   navigationObserver.init(async (_newUrl) => {
     if (!isRuntimeActive()) return
+    console.log('[Talvyn] SPA URL Navigation detected to:', _newUrl)
     applicationSuccessDetector.resetPageState()
     jobScanner.clearCache()
     removePanel()
@@ -688,8 +802,61 @@ async function init() {
     assistantCoordinator.dismiss()
     isSinglePanelVisible = false
     isDiscoveryPanelVisible = false
+    activePanelMode = 'NONE'
+    selectedDiscoveryJob = null
+    nativePageJob = null
 
     await safeAnalyzeAndRender()
+  })
+
+  // Register mutation listener for dynamic DOM mutations (never unmount or destroy open panels!)
+  navigationObserver.onMutation(async (_url) => {
+    if (!isRuntimeActive() || !hasUserRequestedAnalysis) return
+
+    // If candidate has selected a job from Discovery and is viewing its details:
+    if (activePanelMode === 'SELECTED_DISCOVERY' && selectedDiscoveryJob) {
+      // Background mutations must NEVER close the panel or overwrite the selected job!
+      if (!selectedDiscoveryJob.description || selectedDiscoveryJob.description.length < 50) {
+        const enriched = enrichSelectedDiscoveryJobFromDom(selectedDiscoveryJob, document)
+        if (enriched.description && enriched.description !== selectedDiscoveryJob.description) {
+          selectedDiscoveryJob = enriched
+          currentSingleJob = enriched
+          await showSinglePanel(enriched, {
+            fromListing: true,
+            onBackToListing: () => {
+              removePanel()
+              selectedDiscoveryJob = null
+              currentSingleJob = nativePageJob
+              activePanelMode = 'DISCOVERY'
+              if (lastListingSummary) {
+                renderDiscoveryView(lastListingSummary)
+              }
+            },
+          })
+        }
+      }
+      return
+    }
+
+    // If Discovery view is open, update summary in place without unmounting
+    if (isDiscoveryPanelVisible) {
+      const url = window.location.href
+      const doc = document
+      const { classification } = jobScanner.classifyPage(url, doc)
+      if (classification === 'JOB_LIST') {
+        const profile = await getUserPreferences()
+        const freshSummary = jobScanner.scanJobListing(url, doc, profile)
+        if (freshSummary.totalDetected > 0) {
+          discoveryPanelManager.updateSummary(freshSummary)
+        }
+      }
+      return
+    }
+
+    // If viewing native single job, keep panel mounted
+    if (isSinglePanelVisible) {
+      return
+    }
   })
 }
 
@@ -723,6 +890,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   if (isExplicitlyNonJobSite(url)) {
     discoveryPanelManager.remove()
     isDiscoveryPanelVisible = false
+    activePanelMode = 'NONE'
     console.log('[Talvyn] Rendering intelligence panel (Unsupported Notice - Non-job site)')
     injectUnsupportedNotice(
       () => {
@@ -751,6 +919,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     if (listingSummary.totalDetected >= 1) {
       removePanel()
       isSinglePanelVisible = false
+      activePanelMode = 'DISCOVERY'
       console.log(`[Talvyn] Rendering intelligence panel (Discovery Panel - ${listingSummary.totalDetected} jobs)`)
       renderDiscoveryView(listingSummary)
       return { success: true, mode: 'job-listing', detectedJobs: listingSummary.totalDetected }
@@ -761,7 +930,9 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   if (classification === 'SINGLE_JOB' || isLikelyJobPage(doc, url)) {
     const job = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
     if (job && isLikelyJobPage(doc, url)) {
+      nativePageJob = job
       currentSingleJob = job
+      activePanelMode = 'NATIVE_SINGLE'
       discoveryPanelManager.remove()
       isDiscoveryPanelVisible = false
       console.log(`[Talvyn] Rendering intelligence panel (Single Job - ${job.title})`)
@@ -776,6 +947,7 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
     if (fallbackSummary.totalDetected >= 1) {
       removePanel()
       isSinglePanelVisible = false
+      activePanelMode = 'DISCOVERY'
       console.log(`[Talvyn] Rendering intelligence panel (Fallback Discovery Panel - ${fallbackSummary.totalDetected} jobs)`)
       renderDiscoveryView(fallbackSummary)
       return { success: true, mode: 'job-listing', detectedJobs: fallbackSummary.totalDetected }
@@ -785,7 +957,9 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   // D. Fallback: Re-verify if single job is evident
   const fallbackJob = jobScanner.scanSingleJob(url, doc) || detectJob(url, doc)
   if (fallbackJob && isLikelyJobPage(doc, url)) {
+    nativePageJob = fallbackJob
     currentSingleJob = fallbackJob
+    activePanelMode = 'NATIVE_SINGLE'
     discoveryPanelManager.remove()
     isDiscoveryPanelVisible = false
     console.log(`[Talvyn] Rendering intelligence panel (Fallback Single Job - ${fallbackJob.title})`)

@@ -223,11 +223,18 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
       'h2[class*="job" i]',
       'h2[class*="title" i]',
     ]
+    const isExcluded = (el: Element | null): boolean => {
+      if (!el) return true
+      return Boolean(el.closest?.('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="navbar" i], [class*="header" i], [class*="account" i]'))
+    }
+    const nonJobTitlePattern = /^(home|careers|jobs|search|openings|login|sign\s*in|sign\s*up|welcome|hello|hi|my\s*account|dashboard|notifications|messages|settings|feedback)\b/i
+
     for (const sel of headingSelectors) {
       const el = doc.querySelector(sel)
       if (el) {
+        if (sel === 'h1' && isExcluded(el)) continue
         const text = el.textContent?.trim() || ''
-        if (text.length > 3 && text.length < 140 && !/^(home|careers|jobs|search|openings|login)$/i.test(text)) {
+        if (text.length > 3 && text.length < 140 && !nonJobTitlePattern.test(text)) {
           result.title = text
           break
         }

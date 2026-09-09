@@ -226,8 +226,8 @@ export function makeElementDraggable(
     let newLeft = initialLeft + deltaX
     let newTop = initialTop + deltaY
 
-    const panelWidth = panel.offsetWidth || 320
-    const panelHeight = panel.offsetHeight || 420
+    const panelWidth = panel.offsetWidth || 380
+    const panelHeight = panel.offsetHeight || 580
     const viewWidth = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 1200
     const viewHeight = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 800
     const maxLeft = Math.max(0, viewWidth - panelWidth)
@@ -943,25 +943,26 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
   const textMuted = isDark ? '#94a3b8' : '#64748b'
 
   return `
-    <div id="talvyn-panel-container">
+    <div id="talvyn-panel-container" style="display:flex;flex-direction:column;height:100%;max-height:580px;overflow:hidden;width:100%;box-sizing:border-box;">
       <!-- Header (Draggable Handle) -->
       <div id="talvyn-panel-header" style="
         display:flex;align-items:center;justify-content:space-between;
-        margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid ${borderCard};
-        cursor:grab;user-select:none;
+        padding:12px 14px;border-bottom:1px solid ${borderCard};
+        cursor:grab;user-select:none;flex-shrink:0;background:${isDark ? '#1e293b' : '#4f46e5'};
+        color:white;border-top-left-radius:14px;border-top-right-radius:14px;
       " title="Drag to move panel">
-        <div style="display:flex;align-items:center;gap:7px;">
+        <div style="display:flex;align-items:center;gap:8px;">
           <div style="
-            width:22px;height:22px;background:linear-gradient(135deg, #4f46e5, #6366f1);
+            width:22px;height:22px;background:rgba(255,255,255,0.25);
             border-radius:6px;display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:800;color:white;flex-shrink:0;box-shadow:0 1px 3px rgba(79,70,229,0.3);
+            font-size:11px;font-weight:800;color:white;flex-shrink:0;
           ">T</div>
-          <span style="font-weight:700;font-size:13px;color:${textPrimary};">Talvyn</span>
+          <span style="font-weight:800;font-size:13px;letter-spacing:0.3px;">Talvyn</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           ${options?.isConnected !== false ? `
           <span style="
-            font-size:10.5px;font-weight:700;color:#059669;background:${isDark ? '#064e3b' : '#ecfdf5'};
+            font-size:10.5px;font-weight:700;color:#065f46;background:#ecfdf5;border:1px solid #a7f3d0;
             padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
           ">
             <span style="width:5px;height:5px;border-radius:50%;background:#10b981;display:inline-block;"></span>
@@ -969,7 +970,7 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
           </span>
           ` : `
           <span style="
-            font-size:10.5px;font-weight:700;color:${isDark ? '#94a3b8' : '#64748b'};background:${isDark ? '#1e293b' : '#f1f5f9'};
+            font-size:10.5px;font-weight:700;color:${isDark ? '#94a3b8' : '#64748b'};background:${isDark ? '#0f172a' : '#f1f5f9'};
             padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
           ">
             <span style="width:5px;height:5px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
@@ -977,21 +978,24 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
           </span>
           `}
           <button id="talvyn-profile-btn" style="
-            background:none;border:1px solid ${borderCard};border-radius:6px;
-            padding:2px 6px;cursor:pointer;color:${textPrimary};font-size:11px;font-weight:600;
+            background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;
+            padding:2px 6px;cursor:pointer;color:white;font-size:11px;font-weight:600;
           " title="Candidate Profile">👤 Profile</button>
           <button id="talvyn-collapse-btn" style="
-            background:none;border:none;cursor:pointer;color:${textMuted};font-size:15px;
-            font-weight:700;line-height:1;padding:0 3px;
+            background:rgba(255,255,255,0.15);border:none;cursor:pointer;color:white;font-size:15px;
+            font-weight:700;line-height:1;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
           " title="Minimize">−</button>
           <button id="talvyn-dismiss-btn" style="
-            background:none;border:none;cursor:pointer;color:${textMuted};font-size:16px;
-            line-height:1;padding:0 2px;
+            background:rgba(255,255,255,0.15);border:none;cursor:pointer;color:white;font-size:16px;
+            line-height:1;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
           " title="Close">×</button>
         </div>
       </div>
 
-      <div id="talvyn-panel-body">
+      <div id="talvyn-panel-body" style="
+        flex:1;overflow-y:auto;padding:12px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
+        display:flex;flex-direction:column;
+      ">
         ${buildBodyHTML(job, options, isDark)}
       </div>
     </div>
@@ -1048,7 +1052,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     responsibilities = job.responsibilities.slice(0, 4)
   } else if (job.description) {
     const text = job.description
-    const respMatch = text.match(/(?:responsibilities|duties|what you(?:'ll|\s+will)\s+do|key responsibilities|your role|role and responsibilities)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|eligibility|what we offer|benefits|about us|$)/i)
+    const respMatch = text.match(/(?:responsibilities|duties|what you(?:'ll|\s+will)\s+do|key responsibilities|major responsibilities|primary responsibilities|your role|role and responsibilities|role & responsibilities|day[ -]to[ -]day)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|eligibility|what you(?:'ll|\s+will)\s+need|what we offer|benefits|about us|$)/i)
     const targetText = (respMatch && respMatch[1]) ? respMatch[1] : (text || '')
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
@@ -1077,7 +1081,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     requirements = job.requirements.slice(0, 4)
   } else if (job.description) {
     const text = job.description
-    const reqMatch = text.match(/(?:requirements|qualifications|what we(?:'re|\s+are)\s+looking\s+for|who you are|must have|preferred qualifications|key requirements|eligibility)[:\s]+([\s\S]*?)(?:responsibilities|duties|what you will do|benefits|about us|perks|what we offer|$)/i)
+    const reqMatch = text.match(/(?:requirements|qualifications|basic qualifications|minimum qualifications|preferred qualifications|what we(?:'re|\s+are)\s+looking\s+for|who you are|must have|what you(?:'ll|\s+will)\s+need|skills and qualifications|skills & requirements|key requirements|eligibility(?: criteria)?|skills)[:\s]+([\s\S]*?)(?:responsibilities|duties|what you will do|what you'll do|benefits|about us|perks|what we offer|$)/i)
     const targetText = (reqMatch && reqMatch[1]) ? reqMatch[1] : (text || '')
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
@@ -1416,41 +1420,48 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
       </div>
     </div>
 
-    <div id="talvyn-status" style="display:none;margin-bottom:8px;"></div>
+    <!-- Persistent Sticky Action Footer -->
+    <div id="talvyn-actions-footer" style="
+      position:sticky;bottom:-12px;margin:14px -14px -12px -14px;
+      padding:10px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
+      border-top:1px solid ${borderCard};z-index:10;box-shadow:0 -4px 12px rgba(0,0,0,0.05);
+    ">
+      <div id="talvyn-status" style="display:none;margin-bottom:8px;"></div>
 
-    <!-- Action Buttons -->
-    <div id="talvyn-actions" style="display:flex;flex-direction:column;gap:6px;">
-      <button id="talvyn-save-btn" style="
-        width:100%;padding:9px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
-        color:white;border:none;border-radius:8px;font-size:12.5px;font-weight:700;
-        cursor:pointer;transition:opacity 0.15s, transform 0.1s;box-shadow:0 2px 6px rgba(79,70,229,0.25);
-      ">
-        ★ Save Job
-      </button>
-
-      <button id="talvyn-apply-btn" style="
-        width:100%;padding:8px 12px;background:#ffffff;
-        color:#4f46e5;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;
-        cursor:pointer;transition:background 0.15s;display:flex;align-items:center;justify-content:center;gap:5px;
-      ">
-        <span>⚡</span> Apply with Talvyn
-      </button>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px;">
-        <button id="talvyn-open-job-btn" style="
-          padding:5px 8px;background:transparent;color:${textMuted};
-          border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:500;
-          cursor:pointer;text-align:center;
+      <!-- Action Buttons -->
+      <div id="talvyn-actions" style="display:flex;flex-direction:column;gap:6px;">
+        <button id="talvyn-save-btn" style="
+          width:100%;padding:9px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
+          color:white;border:none;border-radius:8px;font-size:12.5px;font-weight:700;
+          cursor:pointer;transition:opacity 0.15s, transform 0.1s;box-shadow:0 2px 6px rgba(79,70,229,0.25);
         ">
-          Open Job ↗
+          ★ Save Job
         </button>
-        <button id="talvyn-dashboard-btn" style="
-          padding:5px 8px;background:transparent;color:#6366f1;
-          border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:600;
-          cursor:pointer;text-align:center;
+
+        <button id="talvyn-apply-btn" style="
+          width:100%;padding:8px 12px;background:#ffffff;
+          color:#4f46e5;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;
+          cursor:pointer;transition:background 0.15s;display:flex;align-items:center;justify-content:center;gap:5px;
         ">
-          Dashboard
+          <span>⚡</span> Apply with Talvyn
         </button>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px;">
+          <button id="talvyn-open-job-btn" style="
+            padding:5px 8px;background:transparent;color:${textMuted};
+            border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:500;
+            cursor:pointer;text-align:center;
+          ">
+            Open Job ↗
+          </button>
+          <button id="talvyn-dashboard-btn" style="
+            padding:5px 8px;background:transparent;color:#6366f1;
+            border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:600;
+            cursor:pointer;text-align:center;
+          ">
+            Dashboard
+          </button>
+        </div>
       </div>
     </div>
   `
@@ -1568,16 +1579,16 @@ function applyPanelStyles(panel: HTMLElement, isDark: boolean = false): void {
     if (raw) savedPos = JSON.parse(raw)
   } catch {}
 
-  const defaultWidth = 320
-  const defaultHeight = 460
+  const width = 380
+  const height = 580
   const viewWidth = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 1200
   const viewHeight = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 800
 
-  let left = Math.max(16, viewWidth - defaultWidth - 24)
-  let top = Math.max(16, viewHeight - defaultHeight - 40)
+  let left = Math.max(16, viewWidth - width - 24)
+  let top = Math.max(16, viewHeight - height - 24)
 
   if (savedPos && typeof savedPos.x === 'number' && typeof savedPos.y === 'number') {
-    const maxLeft = Math.max(0, viewWidth - defaultWidth)
+    const maxLeft = Math.max(0, viewWidth - width)
     const maxTop = Math.max(0, viewHeight - 200)
     left = Math.max(0, Math.min(savedPos.x, maxLeft))
     top = Math.max(0, Math.min(savedPos.y, maxTop))
@@ -1590,19 +1601,23 @@ function applyPanelStyles(panel: HTMLElement, isDark: boolean = false): void {
     bottom: 'auto',
     right: 'auto',
     zIndex: '2147483647',
-    width: `${defaultWidth}px`,
+    width: `${width}px`,
+    maxHeight: `${height}px`,
+    height: `${height}px`,
     background: isDark ? '#0f172a' : '#ffffff',
     color: isDark ? '#f8fafc' : '#0f172a',
     borderRadius: '14px',
     boxShadow: isDark
-      ? '0 10px 36px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.3)'
-      : '0 10px 36px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06)',
-    padding: '13px',
+      ? '0 12px 40px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.3)'
+      : '0 12px 40px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06)',
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     fontSize: '13px',
     lineHeight: '1.4',
-    border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
+    border: isDark ? '1px solid #334155' : '1px solid rgba(99,102,241,0.2)',
     boxSizing: 'border-box',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
     transition: 'box-shadow 0.2s ease',
   })
 }

@@ -126,18 +126,86 @@ export class GenericAdapter implements SiteAdapter {
       return j
     }
 
-    const h1 = doc.querySelector('h1, [class*="job-title" i], [class*="app-title" i]')
-    let title = h1?.textContent?.trim() || ''
+    const isExcluded = (el: Element | null): boolean => {
+      if (!el) return true
+      if (typeof el.closest !== 'function') return false
+      return Boolean(el.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="navbar" i], [class*="header" i], [class*="account" i], [class*="user-menu" i]'))
+    }
+
+    const nonJobHeadingPattern = /^(welcome\b|hello\b|hi\b|good\s+(morning|afternoon|evening)|my\s+account\b|sign\s+in\b|sign\s+up\b|log\s+in\b|log\s+out\b|dashboard\b|notifications\b|messages\b|settings\b|feedback\b|search\s+jobs\b|browse\s+jobs\b|find\s+jobs\b)/i
+
+    // 1. Authoritative job detail container
+    const container = doc.querySelector(
+      'main, article[class*="job" i], [role="main"], [class*="job-details" i], [class*="job-view" i], [class*="job-posting" i], [class*="jobDescription" i], [id*="job-detail" i], [class*="posting" i], article'
+    ) || doc.body || doc
+
+    // 2. Job title extraction
+    let title = ''
+    const titleCandidates = Array.from(
+      container.querySelectorAll('[class*="job-title" i], [class*="jobTitle" i], [class*="position-title" i], [class*="role-title" i], [class*="app-title" i], h1, h2, [class*="title" i]')
+    )
+
+    for (const el of titleCandidates) {
+      if (isExcluded(el) && container === doc.body) continue
+      const txt = el.textContent?.trim() || ''
+      if (txt.length >= 3 && txt.length <= 150 && !nonJobHeadingPattern.test(txt)) {
+        if (UNIVERSAL_JOB_ROLE_REGEX.test(txt) || el.className.toString().toLowerCase().includes('title') || ['H1', 'H2'].includes(el.tagName)) {
+          title = txt
+          break
+        }
+      }
+    }
+
+    if (!title) {
+      const docHeadings = Array.from(doc.querySelectorAll('h1, [class*="job-title" i], [class*="app-title" i]'))
+      for (const el of docHeadings) {
+        if (isExcluded(el)) continue
+        const txt = el.textContent?.trim() || ''
+        if (txt.length >= 3 && txt.length <= 150 && !nonJobHeadingPattern.test(txt)) {
+          title = txt
+          break
+        }
+      }
+    }
+
     if (!title || title.length < 3 || title.length > 150) {
-      title = (doc.querySelector('meta[property="og:title"], meta[name="title"]') as HTMLMetaElement)?.content || ''
+      const metaTitle = (doc.querySelector('meta[property="og:title"], meta[name="title"]') as HTMLMetaElement)?.content || ''
+      if (metaTitle && !nonJobHeadingPattern.test(metaTitle)) {
+        title = metaTitle
+      }
     }
     if (!title || title.length < 3 || title.length > 150) return null
 
-    const company = doc.querySelector('[class*="company-name" i], [class*="companyName" i], [class*="employer-name" i], [class*="employer" i], [class*="org-name" i], [class*="company" i], [class*="org" i]')?.textContent?.trim() || (doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement)?.content?.trim() || 'Unknown Company'
-    const location = doc.querySelector('[class*="location" i], [class*="city" i], [class*="workplace" i], [itemprop="addressLocality"]')?.textContent?.trim()
-    const salary = doc.querySelector('[class*="salary" i], [class*="compensation" i], [class*="stipend" i], [class*="pay" i]')?.textContent?.trim()
-    const jobType = doc.querySelector('[class*="job-type" i], [class*="employment-type" i], [class*="work-type" i]')?.textContent?.trim()
-    const descEl = doc.querySelector('[class*="job-description" i], [class*="jobDescription" i], [class*="description" i], [class*="posting-requirements" i], article, main')
+    // 3. Company from container
+    const companyEl = container.querySelector(
+      '[class*="company-name" i], [class*="companyName" i], [class*="employer-name" i], [class*="employer" i], [class*="org-name" i], [class*="company" i], [class*="org" i]'
+    ) || doc.querySelector(
+      '[class*="company-name" i], [class*="companyName" i], [class*="employer-name" i], [class*="employer" i], [class*="org-name" i]'
+    )
+    const company = companyEl?.textContent?.trim() || (doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement)?.content?.trim() || 'Unknown Company'
+
+    // 4. Location, Salary, JobType from container
+    const location = (
+      container.querySelector('[class*="location" i], [class*="city" i], [class*="workplace" i], [itemprop="addressLocality"]') ||
+      doc.querySelector('[class*="location" i], [class*="city" i], [class*="workplace" i], [itemprop="addressLocality"]')
+    )?.textContent?.trim()
+
+    const salary = (
+      container.querySelector('[class*="salary" i], [class*="compensation" i], [class*="stipend" i], [class*="pay" i]') ||
+      doc.querySelector('[class*="salary" i], [class*="compensation" i], [class*="stipend" i], [class*="pay" i]')
+    )?.textContent?.trim()
+
+    const jobType = (
+      container.querySelector('[class*="job-type" i], [class*="employment-type" i], [class*="work-type" i]') ||
+      doc.querySelector('[class*="job-type" i], [class*="employment-type" i], [class*="work-type" i]')
+    )?.textContent?.trim()
+
+    // 5. Description from container
+    const descEl = container.querySelector(
+      '[class*="job-description" i], [class*="jobDescription" i], [class*="description" i], [class*="posting-requirements" i], article, main'
+    ) || doc.querySelector(
+      '[class*="job-description" i], [class*="jobDescription" i], [class*="description" i], [class*="posting-requirements" i]'
+    )
     let description = descEl?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 3000)
     if (!description || description.length < 60) {
       description = semanticDesc || undefined
@@ -291,7 +359,11 @@ export class GenericAdapter implements SiteAdapter {
       if (expMatch) experience = expMatch[0]
     }
 
-    const description = card.querySelector('[class*="snippet" i], [class*="description" i], [class*="summary" i], p')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 1000)
+    const snippetEl = card.querySelector('[class*="snippet" i], [class*="description" i], [class*="summary" i], [class*="details" i], ul, p')
+    const description = snippetEl?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 1000)
+
+    const snippetLis = Array.from(snippetEl?.querySelectorAll('li') || card.querySelectorAll('li'))
+    const snippetBullets = snippetLis.map((li) => li.textContent?.replace(/\s+/g, ' ').trim() || '').filter((t) => t.length > 8 && t.length < 250)
 
     let jobUrl = titleLink?.href || (card.tagName === 'A' ? (card as HTMLAnchorElement).href : '') || ''
     if (!jobUrl || (typeof window !== 'undefined' && jobUrl === window.location.href) || jobUrl === '#' || jobUrl.startsWith('javascript:')) {
@@ -314,6 +386,7 @@ export class GenericAdapter implements SiteAdapter {
       jobType,
       experience,
       description,
+      responsibilities: snippetBullets.length > 0 ? snippetBullets.slice(0, 4) : undefined,
       jobUrl,
       sourceWebsite: typeof window !== 'undefined' ? window.location.hostname.replace(/^www\./, '') : '',
       confidence: 'MEDIUM',

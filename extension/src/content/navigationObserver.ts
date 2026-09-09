@@ -18,6 +18,7 @@ export class NavigationObserver {
   private lastFingerprint = ''
   private isInitialized = false
   private callbacks: NavigationCallback[] = []
+  private mutationCallbacks: NavigationCallback[] = []
   private mutationObserver: MutationObserver | null = null
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private popstateListener: (() => void) | null = null
@@ -54,6 +55,13 @@ export class NavigationObserver {
 
     // 3. Setup Debounced Mutation Observer for dynamic SPA modals & infinite scroll
     this.setupMutationObserver()
+  }
+
+  /**
+   * Registers a callback for DOM state mutations (e.g. infinite scroll, dynamic elements).
+   */
+  onMutation(callback: NavigationCallback): void {
+    this.mutationCallbacks.push(callback)
   }
 
   /**
@@ -141,7 +149,7 @@ export class NavigationObserver {
         }
         if (this.hasStateChanged(window.location.href, document)) {
           logger.debug('DOM state mutation detected with changed fingerprint.')
-          this.triggerCallbacks(window.location.href)
+          this.triggerMutationCallbacks(window.location.href)
         }
       }, 1000)
     })
@@ -162,6 +170,20 @@ export class NavigationObserver {
         cb(url)
       } catch (err) {
         logger.error('Error in navigation callback:', err)
+      }
+    }
+  }
+
+  private triggerMutationCallbacks(url: string): void {
+    if (!isRuntimeActive()) {
+      this.cleanup()
+      return
+    }
+    for (const cb of this.mutationCallbacks) {
+      try {
+        cb(url)
+      } catch (err) {
+        logger.error('Error in mutation callback:', err)
       }
     }
   }
@@ -204,6 +226,7 @@ export class NavigationObserver {
     }
 
     this.callbacks = []
+    this.mutationCallbacks = []
     this.isInitialized = false
   }
 }
