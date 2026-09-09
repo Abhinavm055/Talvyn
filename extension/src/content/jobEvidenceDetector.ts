@@ -61,8 +61,38 @@ const VERIFIED_CAREER_URL_PATTERNS = [
   /workable\.com/i,
 ]
 
+/**
+ * Safely executes querySelectorAll, catching any invalid selector or DOM exceptions
+ * to prevent malformed selectors from crashing page classification.
+ */
+export function safeQuerySelectorAll<T extends Element = HTMLElement>(
+  root: Document | Element | null | undefined,
+  selector: string
+): T[] {
+  if (!root || typeof root.querySelectorAll !== 'function') return []
+  try {
+    return Array.from(root.querySelectorAll<T>(selector))
+  } catch (err) {
+    console.warn(`[Talvyn] Invalid or failed selector "${selector}":`, err)
+    return []
+  }
+}
+
+export function safeQuerySelector<T extends Element = HTMLElement>(
+  root: Document | Element | null | undefined,
+  selector: string
+): T | null {
+  if (!root || typeof root.querySelector !== 'function') return null
+  try {
+    return root.querySelector<T>(selector)
+  } catch (err) {
+    console.warn(`[Talvyn] Invalid or failed selector "${selector}":`, err)
+    return null
+  }
+}
+
 function hasJobPostingJsonLd(doc: Document): { valid: boolean; title?: string } {
-  const scripts = doc.querySelectorAll?.('script[type="application/ld+json"]') || []
+  const scripts = safeQuerySelectorAll<HTMLScriptElement>(doc, 'script[type="application/ld+json"]')
   for (const script of Array.from(scripts)) {
     try {
       const parsed = JSON.parse(script.textContent || '{}')
@@ -304,134 +334,167 @@ export function isValidJobCard(card: HTMLElement): CardValidationResult {
  * job destination anchors, and repeated sibling structures.
  */
 export function findJobCardCandidates(doc: Document): HTMLElement[] {
-  const candidates: HTMLElement[] = []
-  const seenElements = new Set<HTMLElement>()
+  try {
+    const candidates: HTMLElement[] = []
+    const seenElements = new Set<HTMLElement>()
 
-  const addCandidate = (el: HTMLElement | null) => {
-    if (!el || seenElements.has(el)) return
-    const text = el.textContent?.replace(/\s+/g, ' ').trim() || ''
-    // A single job card should be bounded in text length
-    if (text.length >= 20 && text.length <= 2500) {
-      seenElements.add(el)
-      candidates.push(el)
-    }
-  }
-
-  // 1. Common semantic selectors
-  const selectors = [
-    '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job_card" i]', '[class*="job-listing" i]', '[class*="job-item" i]', '[class*="job_item" i]',
-    '[data-job-id]', '[data-testid*="job" i]', '[data-automation-id*="job" i]', '[data-automation-id*="composite" i]', 'article[class*="job" i]',
-    'li[class*="job" i]', '.card[class*="job" i]', '[class*="opportunity_card" i]', '[class*="opp-card" i]',
-    '[class*="opp_card" i]', '[class*="c-card" i]', '[class*="listing_card" i]', '.single_opportunity',
-    '[class*="opportunity" i]', '[class*="opening" i]', '[class*="vacancy" i]', '[class*="position" i]',
-    '[itemprop="itemListElement"]', '[itemtype*="JobPosting"]', 'app-competition-listing',
-    '.job_seen_beacon', '.resultContent', 'div[class*="cardOutline"]', '[role="listitem"]', '[role="article"]',
-  ]
-  for (const sel of selectors) {
-    for (const el of Array.from(doc.querySelectorAll?.(sel) || [])) {
-      const hEl = el as HTMLElement
-      if (hEl.children && hEl.children.length > 25 && hEl.querySelectorAll?.('[class*="opportunity" i]').length > 1) continue
-      addCandidate(hEl)
-    }
-  }
-
-  // 2. Universal anchor-driven discovery (handles full-card anchors & inner job links)
-  const anchors = Array.from(doc.querySelectorAll?.('a[href]') || []) as HTMLAnchorElement[]
-  for (const anchor of anchors) {
-    const href = anchor.href || ''
-    const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
-    const jobDestination =
-      /\/jobs?(\/|\?|#|$)/i.test(href) ||
-      /\/careers?(\/|\?|#|$)/i.test(href) ||
-      /\/positions?(\/|\?|#|$)/i.test(href) ||
-      /\/openings?(\/|\?|#|$)/i.test(href) ||
-      /\/opportunities?(\/|\?|#|$)/i.test(href) ||
-      /\/apply(?:\/|\?|$)/i.test(href) ||
-      /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com|selectedItem=|oppstatus=/i.test(href)
-    const titleLike = Boolean(text && text.length >= 3 && text.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(text))
-
-    if (jobDestination || titleLike) {
-      if (text.length >= 25 && text.length <= 2500) {
-        addCandidate(anchor)
+    const addCandidate = (el: HTMLElement | null) => {
+      if (!el || seenElements.has(el)) return
+      const text = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+      // A single job card should be bounded in text length
+      if (text.length >= 20 && text.length <= 2500) {
+        seenElements.add(el)
+        candidates.push(el)
       }
-      // Also look up parent containers up to 4 levels
-      let node: HTMLElement | null = anchor.parentElement
-      let depth = 0
-      while (node && depth < 4) {
-        const nodeText = node.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (nodeText.length >= 25 && nodeText.length <= 2500) {
-          addCandidate(node)
-          break
+    }
+
+    // 1. Common semantic selectors
+    const selectors = [
+      '[class*="job-card" i]', '[class*="jobCard" i]', '[class*="job_card" i]', '[class*="job-listing" i]', '[class*="job-item" i]', '[class*="job_item" i]',
+      '[data-job-id]', '[data-testid*="job" i]', '[data-automation-id*="job" i]', '[data-automation-id*="composite" i]', 'article[class*="job" i]',
+      'li[class*="job" i]', '.card[class*="job" i]', '[class*="opportunity_card" i]', '[class*="opp-card" i]',
+      '[class*="opp_card" i]', '[class*="c-card" i]', '[class*="listing_card" i]', '.single_opportunity',
+      '[class*="opportunity" i]', '[class*="opening" i]', '[class*="vacancy" i]', '[class*="position" i]',
+      '[itemprop="itemListElement"]', '[itemtype*="JobPosting"]', 'app-competition-listing',
+      '.job_seen_beacon', '.resultContent', 'div[class*="cardOutline"]', '[role="listitem"]', '[role="article"]',
+    ]
+    for (const sel of selectors) {
+      for (const el of safeQuerySelectorAll<HTMLElement>(doc, sel)) {
+        const hEl = el as HTMLElement
+        if (hEl.children && hEl.children.length > 25 && safeQuerySelectorAll(hEl, '[class*="opportunity" i]').length > 1) continue
+        addCandidate(hEl)
+      }
+    }
+
+    // 2. Universal anchor-driven discovery (handles full-card anchors & inner job links)
+    const anchors = safeQuerySelectorAll<HTMLAnchorElement>(doc, 'a[href]')
+    for (const anchor of anchors) {
+      const href = anchor.href || ''
+      const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || ''
+      const jobDestination =
+        /\/jobs?(\/|\?|#|$)/i.test(href) ||
+        /\/careers?(\/|\?|#|$)/i.test(href) ||
+        /\/positions?(\/|\?|#|$)/i.test(href) ||
+        /\/openings?(\/|\?|#|$)/i.test(href) ||
+        /\/opportunities?(\/|\?|#|$)/i.test(href) ||
+        /\/apply(?:\/|\?|$)/i.test(href) ||
+        /viewjob|boards\.greenhouse\.io|jobs\.lever\.co|myworkdayjobs\.com|ashbyhq\.com|selectedItem=|oppstatus=/i.test(href)
+      const titleLike = Boolean(text && text.length >= 3 && text.length <= 140 && UNIVERSAL_JOB_ROLE_REGEX.test(text))
+
+      if (jobDestination || titleLike) {
+        if (text.length >= 25 && text.length <= 2500) {
+          addCandidate(anchor)
         }
-        node = node.parentElement
-        depth++
+        // Also look up parent containers up to 4 levels
+        let node: HTMLElement | null = anchor.parentElement
+        let depth = 0
+        while (node && depth < 4) {
+          const nodeText = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+          if (nodeText.length >= 25 && nodeText.length <= 2500) {
+            addCandidate(node)
+            break
+          }
+          node = node.parentElement
+          depth++
+        }
       }
     }
-  }
 
-  const validityCache = new Map<HTMLElement, boolean>()
-  const getValidity = (el: HTMLElement): boolean => {
-    let v = validityCache.get(el)
-    if (v === undefined) {
-      v = isValidJobCard(el).isValid
-      validityCache.set(el, v)
+    const validityCache = new Map<HTMLElement, boolean>()
+    const getValidity = (el: HTMLElement): boolean => {
+      let v = validityCache.get(el)
+      if (v === undefined) {
+        v = isValidJobCard(el).isValid
+        validityCache.set(el, v)
+      }
+      return v
     }
-    return v
-  }
 
-  // 3. Universal repeated-card structure discovery (works across ANY framework without classes)
-  const containers = Array.from(doc.querySelectorAll?.('ul, ol, section, main, article, [role="feed"], [role="list"], [role="region"], [class*="list" i], [class*="card" i], [class*="feed" i], [class*="results" i], [class*="grid" i], app-*') || []) as HTMLElement[]
-  for (const container of containers) {
-    if (seenElements.has(container)) continue
-    const children = Array.from(container.children) as HTMLElement[]
-    if (children.length >= 2 && children.length <= 150) {
-      let jobCardCount = 0
-      const validChildren: HTMLElement[] = []
-      for (const child of children) {
-        const childText = child.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (childText.length >= 20 && childText.length <= 2500) {
-          if (getValidity(child)) {
-            jobCardCount++
-            validChildren.push(child)
+    // 3. Universal repeated-card structure discovery (works across ANY framework without classes)
+    // Standards-compliant container selector: NO invalid selectors like app-*
+    const containerSelector = 'ul, ol, section, main, article, [role="feed"], [role="list"], [role="region"], [class*="list" i], [class*="card" i], [class*="feed" i], [class*="results" i], [class*="grid" i]'
+    const containers: HTMLElement[] = safeQuerySelectorAll<HTMLElement>(doc, containerSelector)
+
+    // Standards-valid custom element discovery (e.g. Angular <app-*>, custom web components)
+    // Query valid elements and filter by tagName rather than passing invalid wildcards to querySelectorAll
+    try {
+      const root = doc.body || doc.documentElement || doc
+      if (root && typeof root.querySelectorAll === 'function') {
+        const allElements = safeQuerySelectorAll<HTMLElement>(root, '*')
+        for (const el of allElements) {
+          const tag = el.tagName ? el.tagName.toLowerCase() : ''
+          if (tag.startsWith('app-')) {
+            // If it has multiple children, it could be a container (e.g. <app-job-list>)
+            if (el.children && el.children.length >= 2) {
+              containers.push(el)
+            }
+            // If it is an individual custom card itself (e.g. <app-job-card>)
+            const text = el.textContent?.replace(/\s+/g, ' ').trim() || ''
+            if (text.length >= 20 && text.length <= 2500) {
+              addCandidate(el)
+            }
           }
         }
       }
-      if (jobCardCount >= 2) {
-        for (const vc of validChildren) {
-          addCandidate(vc)
+    } catch (customErr) {
+      console.warn('[Talvyn] Custom element discovery warning:', customErr)
+    }
+
+    for (const container of containers) {
+      if (seenElements.has(container)) continue
+      const children = Array.from(container.children || []) as HTMLElement[]
+      if (children.length >= 2 && children.length <= 150) {
+        let jobCardCount = 0
+        const validChildren: HTMLElement[] = []
+        for (const child of children) {
+          const childText = child.textContent?.replace(/\s+/g, ' ').trim() || ''
+          if (childText.length >= 20 && childText.length <= 2500) {
+            if (getValidity(child)) {
+              jobCardCount++
+              validChildren.push(child)
+            }
+          }
+        }
+        if (jobCardCount >= 2) {
+          for (const vc of validChildren) {
+            addCandidate(vc)
+          }
         }
       }
     }
+
+    // 4. Intelligent containment filtering:
+    // - Drop parent containers that enclose 2 or more valid job candidates (prevent feeds/lists from swallowing cards)
+    // - Retain individual leaf job cards
+    const filteredCandidates = candidates.filter((card) => {
+      // If this card encloses 2 or more other valid candidates, it is a container/feed
+      const childValidCards = candidates.filter((other) => other !== card && card.contains && card.contains(other) && getValidity(other))
+      if (childValidCards.length >= 2) {
+        return false
+      }
+
+      // If an enclosing parent candidate exists:
+      for (const other of candidates) {
+        if (other !== card && other.contains && other.contains(card)) {
+          if (getValidity(other)) {
+            const otherChildValid = candidates.filter((c) => c !== other && other.contains && other.contains(c) && getValidity(c))
+            // If "other" contains 2 or more valid cards, "other" is a feed and should NOT suppress "card"
+            if (otherChildValid.length >= 2) continue
+            // If "other" wraps only this card, prefer the one with greater or equal content
+            const otherLen = other.textContent?.length || 0
+            const cardLen = card.textContent?.length || 0
+            if (otherLen > cardLen) return false
+          }
+        }
+      }
+      return true
+    })
+
+    return filteredCandidates
+  } catch (err) {
+    console.warn('[Talvyn] findJobCardCandidates encountered an unexpected error:', err)
+    return []
   }
-
-  // 4. Intelligent containment filtering:
-  // - Drop parent containers that enclose 2 or more valid job candidates (prevent feeds/lists from swallowing cards)
-  // - Retain individual leaf job cards
-  const filteredCandidates = candidates.filter((card) => {
-    // If this card encloses 2 or more other valid candidates, it is a container/feed
-    const childValidCards = candidates.filter((other) => other !== card && card.contains && card.contains(other) && getValidity(other))
-    if (childValidCards.length >= 2) {
-      return false
-    }
-
-    // If an enclosing parent candidate exists:
-    for (const other of candidates) {
-      if (other !== card && other.contains && other.contains(card)) {
-        if (getValidity(other)) {
-          const otherChildValid = candidates.filter((c) => c !== other && other.contains && other.contains(c) && getValidity(c))
-          // If "other" contains 2 or more valid cards, "other" is a feed and should NOT suppress "card"
-          if (otherChildValid.length >= 2) continue
-          // If "other" wraps only this card, prefer the one with greater or equal content
-          const otherLen = other.textContent?.length || 0
-          const cardLen = card.textContent?.length || 0
-          if (otherLen > cardLen) return false
-        }
-      }
-    }
-    return true
-  })
-
-  return filteredCandidates
 }
 
 /**
@@ -440,30 +503,35 @@ export function findJobCardCandidates(doc: Document): HTMLElement[] {
  * containers are candidate cards.
  */
 export function isLikelyJobListing(doc: Document, url: string): boolean {
-  if (isExplicitlyNonJobSite(url)) return false
+  try {
+    if (isExplicitlyNonJobSite(url)) return false
 
-  const scripts = doc.querySelectorAll?.('script[type="application/ld+json"]') || []
-  for (const script of Array.from(scripts)) {
-    try {
-      const parsed = JSON.parse(script.textContent || '{}')
-      const roots = Array.isArray(parsed) ? parsed : [parsed]
-      for (const root of roots) {
-        if (root?.['@type'] === 'ItemList' && Array.isArray(root.itemListElement)) {
-          const count = root.itemListElement.filter((x: any) => (x?.item || x)?.['@type'] === 'JobPosting').length
-          if (count >= 1) return true
+    const scripts = safeQuerySelectorAll<HTMLScriptElement>(doc, 'script[type="application/ld+json"]')
+    for (const script of scripts) {
+      try {
+        const parsed = JSON.parse(script.textContent || '{}')
+        const roots = Array.isArray(parsed) ? parsed : [parsed]
+        for (const root of roots) {
+          if (root?.['@type'] === 'ItemList' && Array.isArray(root.itemListElement)) {
+            const count = root.itemListElement.filter((x: any) => (x?.item || x)?.['@type'] === 'JobPosting').length
+            if (count >= 1) return true
+          }
         }
-      }
-    } catch { /* ignore */ }
-  }
-
-  const candidates = findJobCardCandidates(doc)
-  let validCount = 0
-  for (const card of candidates) {
-    if (isValidJobCard(card).isValid) {
-      validCount++
-      if (validCount >= 1) return true
+      } catch { /* ignore */ }
     }
+
+    const candidates = findJobCardCandidates(doc)
+    let validCount = 0
+    for (const card of candidates) {
+      if (isValidJobCard(card).isValid) {
+        validCount++
+        if (validCount >= 1) return true
+      }
+    }
+    return false
+  } catch (err) {
+    console.warn('[Talvyn] isLikelyJobListing encountered an unexpected error:', err)
+    return false
   }
-  return false
 }
 

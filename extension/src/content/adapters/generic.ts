@@ -9,6 +9,20 @@ export class GenericAdapter implements SiteAdapter {
 
   isJobDetailPage(url: string, doc: Document): boolean {
     if (isExplicitlyNonJobSite(url)) return false
+    // If there are 2 or more primary (non-sidebar/non-recommendation) job cards, it is a listing page, not a single job detail
+    const primaryCards = findJobCardCandidates(doc).filter((c) => {
+      if (!isValidJobCard(c).isValid) return false
+      const isSidebar = Boolean(
+        c.closest?.('aside') ||
+        c.closest?.('[class*="recommend" i]') ||
+        c.closest?.('[class*="similar" i]') ||
+        c.closest?.('[class*="related" i]') ||
+        c.closest?.('[class*="other-jobs" i]')
+      )
+      return !isSidebar
+    })
+    if (primaryCards.length >= 2) return false
+
     return isLikelyJobPage(doc, url)
   }
 

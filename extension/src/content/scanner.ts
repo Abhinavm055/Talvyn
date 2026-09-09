@@ -96,72 +96,77 @@ export class JobScanner {
    * never classify a page as a job.
    */
   classifyPage(url: string, doc: Document): { classification: PageClassification; adapterName: string } {
-    if (isExplicitlyNonJobSite(url)) {
-      return { classification: 'OTHER', adapterName: 'None' }
-    }
+    try {
+      if (isExplicitlyNonJobSite(url)) {
+        return { classification: 'OTHER', adapterName: 'None' }
+      }
 
-    const adapter = adapterRegistry.getAdapter(url, doc)
-    const pageJobEvidence = isLikelyJobPage(doc, url)
-    const pageListingEvidence = isLikelyJobListing(doc, url)
-    const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|usertype=|domain=|course=|specialization=|\b(search|results|q=|keywords=)\b/i.test(url)
+      const adapter = adapterRegistry.getAdapter(url, doc)
+      const pageJobEvidence = isLikelyJobPage(doc, url)
+      const pageListingEvidence = isLikelyJobListing(doc, url)
+      const hasListingParam = /selectedItem=|currentJobId=|oppstatus=|usertype=|domain=|course=|specialization=|\b(search|results|q=|keywords=)\b/i.test(url)
 
-    // Check if multiple legitimate jobs can be extracted from the listing DOM
-    const rawJobs = adapter.extractJobList(doc)
-    if (adapter.name !== 'Generic' && rawJobs.length === 0) {
-      rawJobs.push(...this.genericAdapter.extractJobList(doc))
-    }
-    const seen = new Set<string>()
-    const listingJobs = rawJobs.filter((job: ExtractedJob) => {
-      if (!this.isPlausibleExtractedJob(job, url)) return false
-      const key = `${job.title.toLowerCase().trim()}|${job.company.toLowerCase().trim()}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+      // Check if multiple legitimate jobs can be extracted from the listing DOM
+      const rawJobs = adapter.extractJobList(doc)
+      if (adapter.name !== 'Generic' && rawJobs.length === 0) {
+        rawJobs.push(...this.genericAdapter.extractJobList(doc))
+      }
+      const seen = new Set<string>()
+      const listingJobs = rawJobs.filter((job: ExtractedJob) => {
+        if (!this.isPlausibleExtractedJob(job, url)) return false
+        const key = `${job.title.toLowerCase().trim()}|${job.company.toLowerCase().trim()}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
 
-    // If page has listing search parameters and valid listing evidence or extracted jobs
-    if (hasListingParam && (pageListingEvidence || listingJobs.length >= 1 || adapter.isJobListingPage(url, doc))) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // A single job requires the universal job evidence gate, even when a
-    // site-specific adapter recognizes a detail URL.
-    // If not on a listing search param and the page exhibits single job evidence,
-    // prioritize SINGLE_JOB over sidebar recommendation cards.
-    if (pageJobEvidence && adapter.isJobDetailPage(url, doc) && !hasListingParam) {
-      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
-    }
-
-    // Multiple validated jobs always means a job listing page, even if previewing one
-    if (listingJobs.length >= 2) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // A listing requires actual listing evidence, not merely /jobs or ?q= in URL.
-    if (pageListingEvidence && adapter.isJobListingPage(url, doc)) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // Universal fallback classification. This is intentionally evidence-based.
-    if (pageListingEvidence) {
-      return { classification: 'JOB_LIST', adapterName: adapter.name }
-    }
-
-    // If the universal card gate cannot recognize a site's custom DOM but its
-    // adapter produced genuine job-shaped records, accept the listing only when
-    // at least one real job record exists. URL patterns are never sufficient.
-    if (adapter.isJobListingPage(url, doc)) {
-      const adapterJobs = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
-      if (adapterJobs.length > 0) {
+      // If page has listing search parameters and valid listing evidence or extracted jobs
+      if (hasListingParam && (pageListingEvidence || listingJobs.length >= 1 || adapter.isJobListingPage(url, doc))) {
         return { classification: 'JOB_LIST', adapterName: adapter.name }
       }
-    }
 
-    if (pageJobEvidence) {
-      return { classification: 'SINGLE_JOB', adapterName: adapter.name }
-    }
+      // A single job requires the universal job evidence gate, even when a
+      // site-specific adapter recognizes a detail URL.
+      // If not on a listing search param and the page exhibits single job evidence,
+      // prioritize SINGLE_JOB over sidebar recommendation cards.
+      if (pageJobEvidence && adapter.isJobDetailPage(url, doc) && !hasListingParam) {
+        return { classification: 'SINGLE_JOB', adapterName: adapter.name }
+      }
 
-    return { classification: 'OTHER', adapterName: adapter.name }
+      // Multiple validated jobs always means a job listing page, even if previewing one
+      if (listingJobs.length >= 2) {
+        return { classification: 'JOB_LIST', adapterName: adapter.name }
+      }
+
+      // A listing requires actual listing evidence, not merely /jobs or ?q= in URL.
+      if (pageListingEvidence && adapter.isJobListingPage(url, doc)) {
+        return { classification: 'JOB_LIST', adapterName: adapter.name }
+      }
+
+      // Universal fallback classification. This is intentionally evidence-based.
+      if (pageListingEvidence) {
+        return { classification: 'JOB_LIST', adapterName: adapter.name }
+      }
+
+      // If the universal card gate cannot recognize a site's custom DOM but its
+      // adapter produced genuine job-shaped records, accept the listing only when
+      // at least one real job record exists. URL patterns are never sufficient.
+      if (adapter.isJobListingPage(url, doc)) {
+        const adapterJobs = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
+        if (adapterJobs.length > 0) {
+          return { classification: 'JOB_LIST', adapterName: adapter.name }
+        }
+      }
+
+      if (pageJobEvidence) {
+        return { classification: 'SINGLE_JOB', adapterName: adapter.name }
+      }
+
+      return { classification: 'OTHER', adapterName: adapter.name }
+    } catch (err) {
+      console.warn('[Talvyn] classifyPage encountered an unexpected error; falling back to OTHER:', err)
+      return { classification: 'OTHER', adapterName: 'None' }
+    }
   }
 
   /**
