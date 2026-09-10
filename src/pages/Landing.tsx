@@ -50,7 +50,7 @@ export default function Landing() {
 
       {/* ─── TOP NAVBAR ─── */}
       <header className="w-full z-50 bg-[#06070D]/80 backdrop-blur-md transition-all">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 h-24 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 md:px-12 h-16 md:h-20 flex items-center justify-between">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group focus:outline-none">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#5054EA] to-[#3B3FB6] shadow-[0_0_16px_rgba(80,84,234,0.35)] transition-transform duration-200 group-hover:scale-105">
@@ -169,20 +169,20 @@ export default function Landing() {
       {/* ─── MAIN CONTENT ─── */}
       <main className="flex-1">
         {/* ─── HERO SECTION ─── */}
-        <section className="pt-16 md:pt-24 pb-12 text-center px-6 max-w-5xl mx-auto flex flex-col items-center">
+        <section className="pt-8 md:pt-12 pb-6 text-center px-6 max-w-5xl mx-auto flex flex-col items-center">
           {/* Eyebrow */}
-          <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-6">
+          <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-4">
             A SMARTER WAY TO YOUR NEXT OPPORTUNITY
           </p>
 
           {/* Headline */}
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[76px] font-bold tracking-tight text-white leading-[1.08] mb-6">
+          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[76px] font-bold tracking-tight text-white leading-[1.08] mb-4">
             From Potential <br />
             <span className="text-[#8B8DF8]">to Offer.</span>
           </h1>
 
           {/* Subtitle */}
-          <p className="text-slate-400 text-sm sm:text-base md:text-lg font-normal leading-relaxed max-w-2xl mx-auto mb-10">
+          <p className="text-slate-400 text-sm sm:text-base md:text-lg font-normal leading-relaxed max-w-2xl mx-auto mb-7">
             Talvyn helps you save jobs, track applications, and stay organized —
             <br className="hidden sm:inline" />
             so you can focus on what really matters: landing the role you deserve.
@@ -208,11 +208,11 @@ export default function Landing() {
         </section>
 
         {/* ─── CELESTIAL HORIZON ARC & SCROLL INDICATOR ─── */}
-        <section className="relative w-full overflow-hidden pt-4 pb-16 flex flex-col items-center">
+        <section className="relative w-full overflow-hidden pt-2 pb-10 md:pb-12 flex flex-col items-center">
           {/* Scroll to explore pill indicator */}
-          <div className="flex flex-col items-center gap-2 mb-4 relative z-10">
-            <div className="w-5 h-8 rounded-full border border-white/20 flex items-start justify-center p-1 bg-white/[0.02]">
-              <div className="w-1 h-2 bg-white/70 rounded-full animate-bounce" />
+          <div className="flex flex-col items-center gap-1.5 mb-2 relative z-10">
+            <div className="w-4 h-7 rounded-full border border-white/20 flex items-start justify-center p-1 bg-white/[0.02]">
+              <div className="w-1 h-1.5 bg-white/70 rounded-full animate-bounce" />
             </div>
             <span className="text-[10px] font-medium tracking-[0.2em] text-slate-400 uppercase">
               Scroll to explore
@@ -220,10 +220,10 @@ export default function Landing() {
           </div>
 
           {/* Large Arc Canvas SVG */}
-          <div className="w-full max-w-[1600px] h-[180px] sm:h-[220px] md:h-[260px] relative pointer-events-none">
+          <div className="w-full max-w-[1600px] h-[150px] sm:h-[180px] md:h-[220px] relative pointer-events-none">
             <svg
               className="w-full h-full overflow-visible"
-              viewBox="0 0 1440 260"
+              viewBox="0 0 1440 220"
               fill="none"
               preserveAspectRatio="none"
             >
@@ -252,22 +252,22 @@ export default function Landing() {
 
               {/* Faint ambient atmospheric glow line */}
               <path
-                d="M -100,260 Q 720,20 1540,260"
+                d="M -100,220 Q 720,15 1540,220"
                 stroke="#6366F1"
-                strokeWidth="8"
+                strokeWidth="7"
                 strokeOpacity="0.25"
                 filter="url(#arcBlur)"
               />
 
               {/* Crisp illuminated celestial arc */}
               <path
-                d="M -100,260 Q 720,20 1540,260"
+                d="M -100,220 Q 720,15 1540,220"
                 stroke="url(#horizonGlow)"
                 strokeWidth="1.5"
               />
 
               {/* Luminous Bead on the curve at x ≈ 1080 (75%) */}
-              <g transform="translate(1080, 80)">
+              <g transform="translate(1080, 68)">
                 {/* Soft outer halo */}
                 <circle cx="0" cy="0" r="14" fill="url(#beadGlow)" opacity="0.35" />
                 <circle cx="0" cy="0" r="8" fill="#818CF8" opacity="0.6" />
@@ -279,7 +279,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION 2: A FOCUSED TOOLKIT ─── */}
-        <section id="features" className="pt-8 pb-20 px-6 max-w-6xl mx-auto text-center">
+        <section id="features" className="pt-4 pb-14 md:pb-16 px-6 max-w-6xl mx-auto text-center">
           {/* Eyebrow */}
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
             EVERYTHING YOU NEED
@@ -292,7 +292,7 @@ export default function Landing() {
           </h2>
 
           {/* Subtitle */}
-          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-lg mx-auto mb-16">
+          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-lg mx-auto mb-10 md:mb-12">
             Powerful tools, seamlessly connected — all in one place.
           </p>
 
@@ -345,7 +345,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION 3: KEY STATS ROW ─── */}
-        <section className="pt-6 pb-28 px-6 max-w-5xl mx-auto">
+        <section className="pt-4 pb-16 md:pb-20 px-6 max-w-5xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             <div>
               <div className="text-3xl sm:text-4xl font-bold tracking-tight text-[#8B8DF8]">
@@ -378,7 +378,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION 4: TAKE CONTROL OF YOUR CAREER (BOTTOM CTA) ─── */}
-        <section className="relative pt-16 pb-28 text-center px-6 max-w-4xl mx-auto overflow-hidden">
+        <section className="relative pt-8 pb-20 text-center px-6 max-w-4xl mx-auto overflow-hidden">
           {/* Subtle Ambient Cosmic Curved Waves */}
           <div className="absolute inset-0 -z-10 pointer-events-none flex items-center justify-center opacity-35">
             <svg
