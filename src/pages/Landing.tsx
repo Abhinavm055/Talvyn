@@ -196,7 +196,7 @@ export default function Landing() {
         </section>
 
         {/* ─── CELESTIAL HORIZON ARC ─── */}
-        <section className="relative w-full overflow-hidden pt-0 pb-4 md:pb-6 flex flex-col items-center">
+        <section className="relative w-full overflow-hidden pt-6 sm:pt-8 md:pt-12 pb-4 md:pb-6 flex flex-col items-center">
           {/* Large Arc Canvas SVG */}
           <div className="w-full max-w-[1600px] h-[90px] sm:h-[110px] md:h-[130px] relative pointer-events-none">
             <svg
