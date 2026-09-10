@@ -257,7 +257,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION 2: A FOCUSED TOOLKIT ─── */}
-        <section id="features" className="pt-8 md:pt-14 pb-12 md:pb-16 px-6 max-w-6xl mx-auto text-center">
+        <section id="features" className="pt-16 sm:pt-20 md:pt-28 pb-14 md:pb-20 px-6 max-w-6xl mx-auto text-center">
           {/* Eyebrow */}
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
             EVERYTHING YOU NEED
@@ -323,7 +323,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION: HOW IT WORKS ─── */}
-        <section id="how-it-works" className="pt-12 md:pt-16 pb-16 md:pb-20 px-6 max-w-6xl mx-auto text-center relative">
+        <section id="how-it-works" className="pt-16 sm:pt-20 md:pt-24 pb-20 md:pb-28 px-6 max-w-6xl mx-auto text-center relative">
           {/* Eyebrow */}
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
             HOW IT WORKS
