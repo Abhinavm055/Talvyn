@@ -2,6 +2,7 @@ import { ExtractedJob, UserProfile } from '../types'
 import {
   evaluateRoleMatch,
 } from '../services/roleMatcher'
+import { isInvalidJobTitle } from './jobEvidenceDetector'
 import {
   evaluateExperienceMatchStrict,
   evaluateEducationMatchStrict,
@@ -39,6 +40,7 @@ export interface NormalizedJob {
   description: string | null
   jobType: BackendJobType
   status: 'SAVED'
+  applyUrl?: string
 }
 
 export interface JobNormalizationResult {
@@ -156,7 +158,21 @@ export function normalizeJob(
   rawJob: ExtractedJob,
   userProfile?: UserProfile | null
 ): JobNormalizationResult {
-  const title = (rawJob.title || '').trim() || 'Untitled Job'
+  let rawTitle = (rawJob.title || '').trim()
+  if (isInvalidJobTitle(rawTitle)) {
+    let recoveredTitle: string | null = null
+    if (typeof document !== 'undefined') {
+      const el = document.querySelector(
+        '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h1[class*="jobTitle" i], h2[class*="jobTitle" i], .jobsearch-JobInfoHeader-title-container h1, .job-details-jobs-unified-top-card__job-title, .topcard__title'
+      )
+      const cand = el?.textContent?.trim()
+      if (cand && !isInvalidJobTitle(cand)) {
+        recoveredTitle = cand
+      }
+    }
+    rawTitle = recoveredTitle || 'Untitled Job'
+  }
+  const title = rawTitle
   const company = (rawJob.company || '').trim() || 'Unknown Company'
   const rawUrl = (rawJob.jobUrl || '').trim() || (typeof window !== 'undefined' ? window.location.href : '')
   const jobUrl = normalizeJobUrl(rawUrl)
@@ -398,6 +414,7 @@ export function normalizeJob(
     description,
     jobType,
     status: 'SAVED',
+    applyUrl: (rawJob.applyUrl || '').trim() || undefined,
   }
 
   const canSave = Boolean(title && jobUrl)

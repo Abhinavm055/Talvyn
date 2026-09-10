@@ -1,5 +1,6 @@
 import { ExtractedJob } from '../../types'
 import { SiteAdapter } from './types'
+import { isInvalidJobTitle } from '../jobEvidenceDetector'
 
 function extractCompanyFromJsonLd(doc: Document): string | undefined {
   try {
@@ -86,7 +87,7 @@ export class IndeedAdapter implements SiteAdapter {
       const snippetLis = Array.from(snippetEl?.querySelectorAll('li') || [])
       const snippetBullets = snippetLis.map((li) => li.textContent?.replace(/\s+/g, ' ').trim() || '').filter((t) => t.length > 8)
 
-      if (title && title.length > 2 && !seen.has(jobUrl)) {
+      if (title && !isInvalidJobTitle(title) && !seen.has(jobUrl)) {
         seen.add(jobUrl)
         jobs.push({
           title,
@@ -113,35 +114,106 @@ export class IndeedAdapter implements SiteAdapter {
       ) || doc.body || doc
 
     // 2. Extract job title strictly from authoritative container or specific selectors (never naked h1 from root)
-    let titleEl = container.querySelector(
-      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title, h1[class*="jobTitle" i], h2[class*="jobTitle" i]'
-    )
-
-    if (!titleEl && container !== doc && container !== doc.body) {
-      titleEl = container.querySelector('h1, h2')
+    const isExcluded = (el: Element | null): boolean => {
+      if (!el || typeof el.closest !== 'function') return false
+      const excluded = el.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="account" i], [class*="user" i]')
+      if (!excluded) return false
+      const className = (excluded.className || '').toString().toLowerCase()
+      if (className.includes('jobinfo') || className.includes('jobsearch')) return false
+      return true
     }
 
-    if (!titleEl) {
-      titleEl = doc.querySelector(
-        '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title'
-      )
+    const titleSelectors = [
+      '[data-testid="jobsearch-JobInfoHeader-title"]',
+      'h1.jobsearch-JobInfoHeader-title',
+      'h1[class*="jobsearch-JobInfoHeader-title"]',
+      'h2.jobsearch-JobInfoHeader-title',
+      '[class*="jobsearch-JobInfoHeader-title"]',
+      'h1[class*="jobTitle" i]',
+      'h2[class*="jobTitle" i]',
+      '.jobsearch-JobInfoHeader-title-container h1',
+      '[data-testid="simpler-job-title"]',
+      'span[id^="jobTitle"]',
+      'a[id^="job_"]',
+    ]
+
+    let title: string | null = null
+
+    // First search within authoritative container
+    for (const sel of titleSelectors) {
+      if (typeof container.querySelectorAll === 'function') {
+        const candidates = Array.from(container.querySelectorAll(sel))
+        for (const el of candidates) {
+          if (isExcluded(el)) continue
+          const candidateText = el.textContent?.trim()
+          if (candidateText && !isInvalidJobTitle(candidateText)) {
+            title = candidateText
+            break
+          }
+        }
+      }
+      if (!title && typeof container.querySelector === 'function') {
+        const single = container.querySelector(sel)
+        if (single && !isExcluded(single)) {
+          const candidateText = single.textContent?.trim()
+          if (candidateText && !isInvalidJobTitle(candidateText)) {
+            title = candidateText
+          }
+        }
+      }
+      if (title) break
     }
 
-    if (!titleEl) return null
+    // Fallback within container if still not found
+    if (!title && container !== doc && container !== doc.body) {
+      const headings = typeof container.querySelectorAll === 'function' ? Array.from(container.querySelectorAll('h1, h2')) : []
+      for (const el of headings) {
+        if (isExcluded(el)) continue
+        const candidateText = el.textContent?.trim()
+        if (candidateText && !isInvalidJobTitle(candidateText)) {
+          title = candidateText
+          break
+        }
+      }
+      if (!title && typeof container.querySelector === 'function') {
+        const singleH = container.querySelector('h1, h2')
+        if (singleH && !isExcluded(singleH)) {
+          const candidateText = singleH.textContent?.trim()
+          if (candidateText && !isInvalidJobTitle(candidateText)) {
+            title = candidateText
+          }
+        }
+      }
+    }
 
-    // Ensure title element is not inside navigation, header, account, or banner regions
-    const isInsideNav = Boolean(
-      typeof titleEl.closest === 'function' &&
-      titleEl.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="header" i], [class*="account" i]')
-    )
-    if (isInsideNav && container === doc.body) return null
+    // Fallback to document level specific selectors
+    if (!title) {
+      for (const sel of titleSelectors) {
+        if (typeof doc.querySelectorAll === 'function') {
+          const candidates = Array.from(doc.querySelectorAll(sel))
+          for (const el of candidates) {
+            if (isExcluded(el)) continue
+            const candidateText = el.textContent?.trim()
+            if (candidateText && !isInvalidJobTitle(candidateText)) {
+              title = candidateText
+              break
+            }
+          }
+        }
+        if (!title && typeof doc.querySelector === 'function') {
+          const single = doc.querySelector(sel)
+          if (single && !isExcluded(single)) {
+            const candidateText = single.textContent?.trim()
+            if (candidateText && !isInvalidJobTitle(candidateText)) {
+              title = candidateText
+            }
+          }
+        }
+        if (title) break
+      }
+    }
 
-    const title = titleEl.textContent?.trim()
-    if (!title || title.length < 3 || title.length > 150) return null
-
-    // Reject user greeting, account, and navigation text
-    const nonJobPattern = /^(welcome\b|hello\b|hi\b|good\s+(morning|afternoon|evening)|my\s+account\b|sign\s+in\b|sign\s+up\b|log\s+in\b|log\s+out\b|dashboard\b|notifications\b|messages\b|settings\b|feedback\b)/i
-    if (nonJobPattern.test(title)) return null
+    if (!title || isInvalidJobTitle(title)) return null
 
     // 3. Extract company from the same container
     const companyEl = container.querySelector(

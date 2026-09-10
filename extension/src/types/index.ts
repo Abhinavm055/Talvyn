@@ -324,6 +324,7 @@ export interface ExtractedJob {
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'
   seniority?: string
   extractedAt?: string
+  applyUrl?: string
 }
 
 // ─── Role Matching & Scoring (Phase 2B) ───────────────────────────────────────

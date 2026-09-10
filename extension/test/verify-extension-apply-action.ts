@@ -216,8 +216,54 @@ async function runTests() {
 
   assert(panel.innerHTML.includes('Could not connect to backend'), '5a. Displays error message in status banner')
 
+  // ─── 6. Autofill State Machine Transitions ──────────────────────────────────
+  console.log('\n--- 6. Testing Autofill State Machine & Button States ---')
+  updatePanelState({
+    type: 'autofilling',
+    job: normResult.normalized,
+    normalization: normResult,
+  })
+  const applyBtn = panel.querySelector('#talvyn-apply-btn')
+  assert(applyBtn?.textContent?.includes('Autofilling'), '6a. Apply button displays "⏳ Autofilling..." while in progress')
+  assert(applyBtn?.disabled === true, '6b. Apply button is disabled during autofill')
+
+  updatePanelState({
+    type: 'autofill-complete',
+    job: normResult.normalized,
+    normalization: normResult,
+  })
+  assert(applyBtn?.textContent?.includes('Apply with Talvyn'), '6c. Apply button restored to "⚡ Apply with Talvyn"')
+  assert(applyBtn?.disabled === false, '6d. Apply button is re-enabled on completion')
+
+  // Test Scenario F exact error message
+  updatePanelState({
+    type: 'error',
+    message: "We couldn't determine the application destination. Please open the job and apply directly.",
+    job: normResult.normalized,
+    normalization: normResult,
+  })
+  const statusEl = panel.querySelector('#talvyn-status')
+  assert(
+    statusEl?.innerHTML?.includes('determine the application destination') ||
+    panel.innerHTML.includes('determine the application destination'),
+    '6e. Displays Scenario F unresolvable destination error message'
+  )
+  assert(applyBtn?.disabled === false, '6f. Apply button is re-enabled on error')
+
+  // ─── 7. Sub-Screen Modal Footer Management ───────────────────────────────────
+  console.log('\n--- 7. Testing Sub-Screen Modal Footer Management ---')
+  const footer = panel.querySelector('#talvyn-actions-footer')
+  assert(footer !== null, '7a. Action footer is mounted in panel')
+
+  const { openReviewScreen } = await import('../src/content/panel')
+  openReviewScreen(panel, normResult.normalized, {})
+  assert(footer?.style?.display === 'none', '7b. Footer is hidden (display: none) when review/confirm modal is open')
+
+  const cancelBtn = panel.querySelector('#talvyn-cancel-save-btn')
+  assert(cancelBtn !== null, '7c. Cancel button present in review modal')
+
   removePanel()
-  assert(document.getElementById('talvyn-panel') === null, '5b. Panel cleanly removed on dismissal')
+  assert(document.getElementById('talvyn-panel') === null, '8. Panel cleanly removed on dismissal')
 
   console.log('\n===========================================================')
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)

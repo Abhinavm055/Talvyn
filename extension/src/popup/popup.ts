@@ -668,9 +668,30 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
     </div>
   `
 
-  const analyzeBtn = document.getElementById('btn-analyze-page') || document.getElementById('btn-open-floating')
+  const analyzeBtn = (document.getElementById('btn-analyze-page') || document.getElementById('btn-open-floating')) as HTMLButtonElement | null
   analyzeBtn?.addEventListener('click', async () => {
-    await triggerActiveTabIntelligencePanel()
+    const originalContent = analyzeBtn.innerHTML
+    analyzeBtn.disabled = true
+    analyzeBtn.style.opacity = '0.85'
+    analyzeBtn.innerHTML = `
+      <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="14" stroke-dashoffset="5"></circle></svg>
+      <span>Analyzing Page...</span>
+    `
+    try {
+      await triggerActiveTabIntelligencePanel()
+      analyzeBtn.innerHTML = `
+        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        <span>✓ Intelligence Active</span>
+      `
+    } catch {
+      analyzeBtn.innerHTML = originalContent
+    } finally {
+      setTimeout(() => {
+        analyzeBtn.disabled = false
+        analyzeBtn.style.opacity = '1'
+        analyzeBtn.innerHTML = originalContent
+      }, 2500)
+    }
   })
 
   document.getElementById('btn-open-dashboard')?.addEventListener('click', () => {

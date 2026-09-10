@@ -535,3 +535,50 @@ export function isLikelyJobListing(doc: Document, url: string): boolean {
   }
 }
 
+/**
+ * Validates whether a candidate string is an invalid / non-job title.
+ * Rejects greetings (e.g. "Welcome, Abhinav"), account headers, navigation items,
+ * site banners, and generic non-job portal words.
+ */
+export function isInvalidJobTitle(title?: string | null): boolean {
+  if (!title || typeof title !== 'string') return true
+  const t = title.trim()
+  if (t.length < 3 || t.length > 150) return true
+
+  // 1. Personal greetings and welcome messages (e.g. "Welcome, Abhinav", "Welcome back", "Hello John")
+  const greetingPattern = /^(welcome\b|hello\b|hi\b|hey\b|good\s+(morning|afternoon|evening)|greetings\b|howdy\b)/i
+  if (greetingPattern.test(t)) {
+    // Exception: specific roles like "Welcome Center Coordinator", "Welcome Ambassador"
+    const isWelcomeRole = /welcome\s+(center|ambassador|host|desk|greeter|specialist|coordinator|associate)\b/i.test(t)
+    if (!isWelcomeRole) return true
+  }
+
+  const userGreetingPattern = /(welcome|hello|hi|hey)\s*,\s*[a-z0-9_\-\s]+/i
+  if (userGreetingPattern.test(t)) return true
+
+  const invertedGreeting = /^[a-z0-9_\-\s]+,\s*welcome(\s+back)?$/i
+  if (invertedGreeting.test(t)) return true
+
+  // 2. Account, user profile, and authentication navigation
+  const accountPattern = /^(my\s*account|my\s*profile|account\s*settings|user\s*profile|sign\s*in|sign\s*up|log\s*in|log\s*out|register|create\s*account|login|signup|logout|dashboard|notifications|messages|inbox|settings|preferences|privacy|terms|help|support|feedback|faq)\b/i
+  if (accountPattern.test(t)) return true
+
+  // 3. Generic site / navigation / search titles
+  const genericNavPattern = /^(home|homepage|careers|jobs|job\s*search|search\s*jobs|find\s*jobs|browse\s*jobs|job\s*openings|openings|all\s*jobs|job\s*board|overview|details|about\s*us|contact\s*us)\b/i
+  if (genericNavPattern.test(t)) return true
+
+  // 4. Exact match against known job board brand names or non-job keywords
+  const exactNonJob = /^(indeed|linkedin|glassdoor|unstop|google|careers|jobs|home|welcome|profile|search|dashboard|login|register|untitled(\s+job)?)$/i
+  if (exactNonJob.test(t)) return true
+
+  // 5. Promotional phrases
+  const promoPattern = /^(sponsored|advertisement|promo|promoted|create\s+job\s+alert|get\s+job\s+alerts)\b/i
+  if (promoPattern.test(t)) return true
+
+  return false
+}
+
+export function isValidJobTitle(title?: string | null): boolean {
+  return !isInvalidJobTitle(title)
+}
+

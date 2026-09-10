@@ -289,6 +289,8 @@ export function makeElementDraggable(
 
 // ─── Attach Listeners ───────────────────────────────────────────────────────
 
+let isApplying = false
+
 function attachActionListeners(panel: HTMLElement, job?: ExtractedJob, options?: any): void {
   const saveBtn = panel.querySelector('#talvyn-save-btn')
   saveBtn?.addEventListener('click', () => {
@@ -306,6 +308,12 @@ function attachActionListeners(panel: HTMLElement, job?: ExtractedJob, options?:
   })
 
   panel.querySelector('#talvyn-apply-btn')?.addEventListener('click', () => {
+    if (isApplying) {
+      console.log('[Talvyn Apply] Apply already in progress. Ignoring duplicate click.')
+      return
+    }
+
+    console.log('[Talvyn Apply] "Apply with Talvyn" clicked. Opening review screen...')
     openApplyReviewScreen(panel, job || currentJobData!, options || currentOptionsData)
   })
 
@@ -403,6 +411,9 @@ export function restorePanel(panel: HTMLElement): void {
 export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, options?: any): void {
   const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
   if (!body) return
+
+  const footer = panel.querySelector('#talvyn-actions-footer') as HTMLElement | null
+  if (footer) footer.style.display = 'none'
 
   const norm = options?.normalization
   const borderCard = isPanelDark ? '#334155' : '#e2e8f0'
@@ -534,6 +545,7 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
   `
 
   const restoreCurrentView = () => {
+    if (footer) footer.style.display = 'block'
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
   }
@@ -564,6 +576,10 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
       jobUrl: urlVal,
     }
 
+    if (footer) footer.style.display = 'block'
+    body.innerHTML = buildBodyHTML(job, options, isPanelDark)
+    attachActionListeners(panel, job, options)
+
     if (currentOnSave) {
       await currentOnSave(updatedJob, options?.userProfile)
     }
@@ -577,6 +593,9 @@ export const openReviewScreen = openConfirmSaveScreen
 function openApplyReviewScreen(panel: HTMLElement, job: ExtractedJob, options?: any): void {
   const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
   if (!body) return
+
+  const footer = panel.querySelector('#talvyn-actions-footer') as HTMLElement | null
+  if (footer) footer.style.display = 'none'
 
   const profile = options?.userProfile
   const borderCard = isPanelDark ? '#334155' : '#e2e8f0'
@@ -670,6 +689,7 @@ function openApplyReviewScreen(panel: HTMLElement, job: ExtractedJob, options?: 
   `
 
   const cancelAction = () => {
+    if (footer) footer.style.display = 'block'
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
   }
@@ -682,6 +702,13 @@ function openApplyReviewScreen(panel: HTMLElement, job: ExtractedJob, options?: 
   })
 
   body.querySelector('#talvyn-review-continue-btn')?.addEventListener('click', () => {
+    if (isApplying) {
+      console.log('[Talvyn Apply] Duplicate Review & Continue click ignored (already applying)')
+      return
+    }
+
+    if (footer) footer.style.display = 'block'
+    console.log('[Talvyn Apply] Review & Continue confirmed. Launching application workflow...')
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
     if (currentOnApply) {
@@ -695,6 +722,9 @@ function openApplyReviewScreen(panel: HTMLElement, job: ExtractedJob, options?: 
 function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): void {
   const body = panel.querySelector('#talvyn-panel-body') as HTMLElement | null
   if (!body) return
+
+  const footer = panel.querySelector('#talvyn-actions-footer') as HTMLElement | null
+  if (footer) footer.style.display = 'none'
 
   const profile = options?.userProfile
   const borderCard = isPanelDark ? '#334155' : '#e2e8f0'
@@ -814,6 +844,7 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
 
   // Cancel action
   const cancelAction = () => {
+    if (footer) footer.style.display = 'block'
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
   }
@@ -900,6 +931,7 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
       } catch {}
     }
 
+    if (footer) footer.style.display = 'block'
     // Restore intelligence view with new normalization
     body.innerHTML = buildBodyHTML(job, options, isPanelDark)
     attachActionListeners(panel, job, options)
@@ -993,10 +1025,18 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
       </div>
 
       <div id="talvyn-panel-body" style="
-        flex:1;overflow-y:auto;padding:12px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
+        flex:1;min-height:0;overflow-y:auto;padding:12px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
         display:flex;flex-direction:column;
       ">
         ${buildBodyHTML(job, options, isDark)}
+      </div>
+
+      <!-- Persistent Pinned Action Footer (never scrolls or jumps) -->
+      <div id="talvyn-actions-footer" style="
+        flex-shrink:0;padding:10px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
+        border-top:1px solid ${borderCard};z-index:10;box-shadow:0 -4px 12px rgba(0,0,0,0.05);
+      ">
+        ${buildActionsFooterHTML(options, isDark)}
       </div>
     </div>
   `
@@ -1054,6 +1094,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     const text = job.description
     const respMatch = text.match(/(?:responsibilities|duties|what you(?:'ll|\s+will)\s+do|key responsibilities|major responsibilities|primary responsibilities|your role|role and responsibilities|role & responsibilities|day[ -]to[ -]day)[:\s]+([\s\S]*?)(?:requirements|qualifications|skills|who you are|eligibility|what you(?:'ll|\s+will)\s+need|what we offer|benefits|about us|$)/i)
     const targetText = (respMatch && respMatch[1]) ? respMatch[1] : (text || '')
+    const actionVerbRegex = /^(design|develop|build|collaborate|lead|manage|maintain|implement|create|deliver|support|coordinate|review|test|activate|enroll|convert|drive|sell|promote|execute|identify|generate|assist|prepare|conduct|ensure|participate|oversee|work|write|scale|architect|integrate|optimize|debug|deploy|operate|troubleshoot|analyze|monitor|provide|handle|guide|mentor|partner|liaise|contribute|own|define|establish|you will|responsible for|responsible to|duties include|responsibilities include)\b/i
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
       .map((l) => l.replace(/<[^>]+>/g, '').trim())
@@ -1062,13 +1103,31 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
         const isBullet = /^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]|\d+[\.\)]/.test(l)
         if (isBullet) return true
         if (respMatch && l.length >= 15 && l.length <= 250 && !/^(about|overview|details|company|salary|location|apply)/i.test(l)) return true
-        return /^(design|develop|build|collaborate|lead|manage|maintain|implement|create|deliver|support|coordinate|review|test|activate|enroll|convert|drive|sell|promote|execute|identify|generate|assist|prepare|conduct|ensure|participate|oversee)\b/i.test(l)
+        return actionVerbRegex.test(l)
       })
       .map((l) => l.replace(/^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim())
       .filter((l) => l.length > 10 && l.length < 250)
 
     if (lines.length > 0) {
       responsibilities = lines.slice(0, 4)
+    }
+  }
+  if (responsibilities.length === 0) {
+    const roleSkills = (norm?.matchedSkills && norm.matchedSkills.length > 0)
+      ? norm.matchedSkills
+      : (norm?.matchedFactors?.includes('Skills match') && norm?.roleRequiredText)
+      ? [norm.roleRequiredText]
+      : []
+    if (roleSkills.length > 0) {
+      responsibilities = [
+        `Develop and maintain technical solutions leveraging ${roleSkills.slice(0, 2).join(' and ')}`,
+        `Collaborate with team members to deliver core role deliverables and milestones`,
+      ]
+    } else if (norm?.roleRequiredText || job.title) {
+      responsibilities = [
+        `Deliver high quality engineering and operational outcomes for ${job.title || 'the role'}`,
+        `Collaborate across team initiatives, code reviews, and deliverables`,
+      ]
     }
   }
   if (responsibilities.length === 0) {
@@ -1083,6 +1142,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     const text = job.description
     const reqMatch = text.match(/(?:requirements|qualifications|basic qualifications|minimum qualifications|preferred qualifications|what we(?:'re|\s+are)\s+looking\s+for|who you are|must have|what you(?:'ll|\s+will)\s+need|skills and qualifications|skills & requirements|key requirements|eligibility(?: criteria)?|skills)[:\s]+([\s\S]*?)(?:responsibilities|duties|what you will do|what you'll do|benefits|about us|perks|what we offer|$)/i)
     const targetText = (reqMatch && reqMatch[1]) ? reqMatch[1] : (text || '')
+    const reqVerbRegex = /^(bachelor|master|degree|diploma|phd|\d+\+?\s*years|experience|proficiency|strong|knowledge|familiarity|good|ability|willingness|excellent|proven|hands-on|competency|understanding|background|expertise|must have|should have|looking for|candidate|skills?|proficient in|familiar with|experience with|solid understanding|track record)\b/i
     const lines = targetText
       .split(/\n|<br\s*\/?>|<li>/i)
       .map((l) => l.replace(/<[^>]+>/g, '').trim())
@@ -1091,7 +1151,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
         const isBullet = /^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]|\d+[\.\)]/.test(l)
         if (isBullet) return true
         if (reqMatch && l.length >= 15 && l.length <= 250 && !/^(about|overview|details|company|salary|location|apply)/i.test(l)) return true
-        return /^(bachelor|master|degree|\d+\+?\s*years|experience|proficiency|strong|knowledge|familiarity|good|ability|willingness|excellent|proven|hands-on)\b/i.test(l)
+        return reqVerbRegex.test(l)
       })
       .map((l) => l.replace(/^[•\-*–—\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim())
       .filter((l) => l.length > 10 && l.length < 250)
@@ -1100,12 +1160,27 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
       requirements = lines.slice(0, 4)
     }
   }
-  if (requirements.length === 0 && (norm?.missingSkills?.length || norm?.matchedSkills?.length)) {
-    requirements = [
-      currentExp !== '— Not specified' ? `Experience: ${currentExp}` : '',
-      currentEdu !== '— Not specified' ? `Education: ${currentEdu}` : '',
-      ...(norm?.missingSkills || []).slice(0, 2).map((s) => `Proficiency in ${s}`),
-    ].filter(Boolean)
+  if (requirements.length === 0) {
+    const reqItems: string[] = []
+    if (currentExp !== '— Not specified') reqItems.push(`Experience: ${currentExp}`)
+    if (currentEdu !== '— Not specified') reqItems.push(`Education: ${currentEdu}`)
+    if (norm?.matchedSkills?.length) {
+      norm.matchedSkills.slice(0, 2).forEach((s) => reqItems.push(`Knowledge of ${s}`))
+    }
+    if (norm?.missingSkills?.length) {
+      norm.missingSkills.slice(0, 2).forEach((s) => reqItems.push(`Proficiency in ${s}`))
+    }
+    if (reqItems.length === 0 && (norm?.experienceProfileText || norm?.educationProfileText)) {
+      if (norm.experienceProfileText && norm.experienceProfileText !== 'Not specified') {
+        reqItems.push(`Experience: ${norm.experienceProfileText}`)
+      }
+      if (norm.educationProfileText && norm.educationProfileText !== 'Not specified') {
+        reqItems.push(`Education: ${norm.educationProfileText}`)
+      }
+    }
+    if (reqItems.length > 0) {
+      requirements = reqItems
+    }
   }
   if (requirements.length === 0) {
     requirements = ['— Not specified']
@@ -1420,48 +1495,49 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
       </div>
     </div>
 
-    <!-- Persistent Sticky Action Footer -->
-    <div id="talvyn-actions-footer" style="
-      position:sticky;bottom:-12px;margin:14px -14px -12px -14px;
-      padding:10px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
-      border-top:1px solid ${borderCard};z-index:10;box-shadow:0 -4px 12px rgba(0,0,0,0.05);
-    ">
-      <div id="talvyn-status" style="display:none;margin-bottom:8px;"></div>
+  `
+}
 
-      <!-- Action Buttons -->
-      <div id="talvyn-actions" style="display:flex;flex-direction:column;gap:6px;">
-        <button id="talvyn-save-btn" style="
-          width:100%;padding:9px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
-          color:white;border:none;border-radius:8px;font-size:12.5px;font-weight:700;
-          cursor:pointer;transition:opacity 0.15s, transform 0.1s;box-shadow:0 2px 6px rgba(79,70,229,0.25);
+function buildActionsFooterHTML(options?: any, isDark: boolean = false): string {
+  const borderCard = isDark ? '#334155' : '#e2e8f0'
+  const textMuted = isDark ? '#94a3b8' : '#64748b'
+
+  return `
+    <div id="talvyn-status" style="display:none;margin-bottom:8px;"></div>
+
+    <!-- Action Buttons -->
+    <div id="talvyn-actions" style="display:flex;flex-direction:column;gap:6px;">
+      <button id="talvyn-save-btn" style="
+        width:100%;padding:9px 12px;background:linear-gradient(to right, #4f46e5, #6366f1);
+        color:white;border:none;border-radius:8px;font-size:12.5px;font-weight:700;
+        cursor:pointer;transition:opacity 0.15s, transform 0.1s;box-shadow:0 2px 6px rgba(79,70,229,0.25);
+      ">
+        ★ Save Job
+      </button>
+
+      <button id="talvyn-apply-btn" style="
+        width:100%;padding:8px 12px;background:#ffffff;
+        color:#4f46e5;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;
+        cursor:pointer;transition:background 0.15s;display:flex;align-items:center;justify-content:center;gap:5px;
+      ">
+        <span>⚡</span> Apply with Talvyn
+      </button>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px;">
+        <button id="talvyn-open-job-btn" style="
+          padding:5px 8px;background:transparent;color:${textMuted};
+          border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:500;
+          cursor:pointer;text-align:center;
         ">
-          ★ Save Job
+          Open Job ↗
         </button>
-
-        <button id="talvyn-apply-btn" style="
-          width:100%;padding:8px 12px;background:#ffffff;
-          color:#4f46e5;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;
-          cursor:pointer;transition:background 0.15s;display:flex;align-items:center;justify-content:center;gap:5px;
+        <button id="talvyn-dashboard-btn" style="
+          padding:5px 8px;background:transparent;color:#6366f1;
+          border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:600;
+          cursor:pointer;text-align:center;
         ">
-          <span>⚡</span> Apply with Talvyn
+          Dashboard
         </button>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px;">
-          <button id="talvyn-open-job-btn" style="
-            padding:5px 8px;background:transparent;color:${textMuted};
-            border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:500;
-            cursor:pointer;text-align:center;
-          ">
-            Open Job ↗
-          </button>
-          <button id="talvyn-dashboard-btn" style="
-            padding:5px 8px;background:transparent;color:#6366f1;
-            border:1px solid ${borderCard};border-radius:7px;font-size:11px;font-weight:600;
-            cursor:pointer;text-align:center;
-          ">
-            Dashboard
-          </button>
-        </div>
       </div>
     </div>
   `
@@ -1745,20 +1821,25 @@ export function updatePanelState(state: PanelState): void {
       break
 
     case 'autofilling':
+      isApplying = true
       if (applyBtn) {
         applyBtn.textContent = '⏳ Autofilling...'
         applyBtn.disabled = true
+        applyBtn.style.opacity = '0.7'
       }
       break
 
     case 'autofill-complete':
+      isApplying = false
       if (applyBtn) {
         applyBtn.textContent = '⚡ Apply with Talvyn'
         applyBtn.disabled = false
+        applyBtn.style.opacity = '1'
       }
       break
 
     case 'error':
+      isApplying = false
       if (saveBtn) {
         saveBtn.textContent = '★ Save Job'
         saveBtn.disabled = false
@@ -1766,7 +1847,9 @@ export function updatePanelState(state: PanelState): void {
         saveBtn.style.cursor = 'pointer'
       }
       if (applyBtn) {
+        applyBtn.textContent = '⚡ Apply with Talvyn'
         applyBtn.disabled = false
+        applyBtn.style.opacity = '1'
       }
       statusEl.innerHTML = `
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;margin-bottom:8px;color:#dc2626;font-size:11.5px;line-height:1.4;">

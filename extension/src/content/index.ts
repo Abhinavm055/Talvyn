@@ -353,6 +353,8 @@ function enrichSelectedDiscoveryJobFromDom(job: ExtractedJob, doc: Document = do
   if (!doc) return job
 
   try {
+    const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
     // 1. Try to find authoritative job detail container currently active in DOM
     const detailContainer = doc.querySelector(
       '[data-testid="jobsearch-JobComponent"], [data-testid="jobsearch-ViewJobLayout-mainContent"], #jobsearch-ViewjobPaneWrapper, .jobsearch-JobComponent, #viewJobSSRRoot, article[class*="job" i], [role="main"]'
@@ -369,12 +371,11 @@ function enrichSelectedDiscoveryJobFromDom(job: ExtractedJob, doc: Document = do
       const cTitle = containerTitleEl?.textContent?.trim() || ''
       const cComp = containerCompanyEl?.textContent?.trim() || ''
 
-      const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
       const titleMatch = cTitle && job.title && (clean(cTitle).includes(clean(job.title)) || clean(job.title).includes(clean(cTitle)))
-      const compMatch = cComp && job.company && (clean(cComp).includes(clean(job.company)) || clean(job.company).includes(clean(cComp)))
+      const compMatch = cComp && job.company && job.company !== 'Unknown Company' && (clean(cComp).includes(clean(job.company)) || clean(job.company).includes(clean(cComp)))
 
-      // Only enrich if this active detail container belongs to the selected job!
-      if (titleMatch || compMatch) {
+      // Strict check: Only enrich if this active detail container definitively belongs to the selected job!
+      if (titleMatch || (compMatch && (!cTitle || titleMatch))) {
         const descEl = detailContainer.querySelector(
           '#jobDescriptionText, [data-testid="jobsearch-JobComponent-description"], [class*="job-description" i], [class*="jobDescription" i], [class*="description" i]'
         )
@@ -406,7 +407,32 @@ function enrichSelectedDiscoveryJobFromDom(job: ExtractedJob, doc: Document = do
       }
     }
 
-    // 2. Structured data fallback (JSON-LD)
+    // 2. Look for the specific job card in the listing for this job to extract snippet bullets & metadata
+    const cards = Array.from(doc.querySelectorAll('[data-jk], [class*="jobCard" i], [class*="job-card" i], [data-job-id], article, li'))
+    for (const card of cards) {
+      const cardText = card.textContent || ''
+      if (clean(cardText).includes(clean(job.title))) {
+        const snippetEl = card.querySelector('.job-snippet, [data-testid="job-snippet"], [class*="job-snippet"], [class*="jobCardShelfContainer"], .underShelfFooter, ul, p')
+        const snippetText = snippetEl?.textContent?.replace(/\s+/g, ' ').trim()
+        const snippetLis = Array.from(card.querySelectorAll('ul li, .job-snippet li, [class*="job-snippet"] li'))
+        const bullets = snippetLis.map((li) => li.textContent?.replace(/\s+/g, ' ').trim() || '').filter((t) => t.length > 8 && t.length < 250)
+
+        const locEl = card.querySelector('[data-testid="text-location"], [data-testid="inlineHeader-companyLocation"], .companyLocation, [class*="location" i]')
+        const salEl = card.querySelector('[data-testid="attribute_snippet_testid"], .salary-snippet-container, [class*="salary" i]')
+
+        if (snippetText || bullets.length > 0 || locEl || salEl) {
+          return {
+            ...job,
+            location: job.location || locEl?.textContent?.trim() || undefined,
+            salary: job.salary || salEl?.textContent?.trim() || undefined,
+            description: job.description && job.description.length > (snippetText?.length || 0) ? job.description : (snippetText || job.description),
+            responsibilities: (job.responsibilities && job.responsibilities.length > 0) ? job.responsibilities : (bullets.length > 0 ? bullets.slice(0, 4) : undefined),
+          }
+        }
+      }
+    }
+
+    // 3. Structured data fallback (JSON-LD)
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]')
     for (const script of Array.from(scripts)) {
       const text = script.textContent
@@ -415,7 +441,6 @@ function enrichSelectedDiscoveryJobFromDom(job: ExtractedJob, doc: Document = do
       const items = Array.isArray(data) ? data : [data]
       for (const item of items) {
         if (item['@type'] === 'JobPosting') {
-          const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
           const jTitle = item.title || item.name || ''
           if (clean(jTitle).includes(clean(job.title)) || clean(job.title).includes(clean(jTitle))) {
             const rawDesc = item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -627,59 +652,318 @@ async function showSinglePanel(
   )
 }
 
+let isSingleApplyRunning = false
+
 async function handleSingleApply(): Promise<void> {
-  if (!currentSingleJob) return
-  console.log(`[Talvyn] AUTOFILL_STARTED for ${currentSingleJob.title} at ${currentSingleJob.company}`)
-  updatePanelState({ type: 'autofilling' })
-
-  const profile = await getUserPreferences()
-  const url = window.location.href
-  const doc = document
-
-  // 1. Try to open native application modal/button if not already open
-  const applyBtn = doc.querySelector<HTMLElement>(
-    'button[class*="apply" i], a[class*="apply" i], button[data-testid*="apply" i], button[id*="apply" i], .jobs-apply-button, [class*="register" i]'
-  )
-  if (applyBtn && !autofillCoordinator.isApplicationFormPage(url, doc)) {
-    try {
-      applyBtn.click()
-    } catch {}
+  if (isSingleApplyRunning) {
+    console.log('[Talvyn Apply] Application workflow already active. Ignoring duplicate invocation.')
+    return
   }
+  isSingleApplyRunning = true
 
-  // 2. Wait for modal/form rendering and run autofill
-  setTimeout(async () => {
-    try {
-      const summary = await autofillCoordinator.scanAndAnalyzeForm(url, doc, profile)
-      const safeFields = summary.matchedFields.filter((f) => f.canAutofill && !f.isSensitive)
-      const reviewFields = summary.matchedFields.filter((f) => f.requiresReview || f.isSensitive || f.isCustomQuestion)
+  try {
+    if (!currentSingleJob) {
+      console.warn('[Talvyn Apply] No active job selected to apply.')
+      updatePanelState({
+        type: 'error',
+        message: 'No active job opportunity selected to apply for.',
+      })
+      return
+    }
 
-      // Run autofill on safe fields
-      await assistantCoordinator.activate(url, doc, profile, currentSingleJob)
-      await autofillCoordinator.activateAutofill(url, doc, profile, true)
+    const job = currentSingleJob
+    console.log(`[Talvyn Apply] Starting apply workflow for: "${job.title}" at "${job.company}"`)
+    updatePanelState({ type: 'autofilling' })
 
-      const filledFieldNames = safeFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
-      const reviewFieldNames = reviewFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
+    const profile = await getUserPreferences()
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : ''
+    const doc = document
 
-      console.log(`[Talvyn] AUTOFILL_COMPLETED (Filled: ${filledFieldNames.length}, Review: ${reviewFieldNames.length})`)
+    // Helper to validate whether a string is a valid web URL
+    const isValidHttpUrl = (str?: string | null): boolean => {
+      if (!str) return false
+      try {
+        const parsed = new URL(str, window.location.origin)
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      } catch {
+        return false
+      }
+    }
 
+    // Check if current page differs from job's canonical URL or target apply URL (e.g. Discovery listing view)
+    const isDifferentDestination = (targetUrl?: string | null): boolean => {
+      if (!targetUrl || !isValidHttpUrl(targetUrl)) return false
+      try {
+        const target = new URL(targetUrl, window.location.origin)
+        const current = new URL(currentUrl)
+        if (target.origin !== current.origin) return true
+        if (target.pathname !== current.pathname) return true
+        if (target.search && target.search !== current.search) return true
+        return false
+      } catch {
+        return false
+      }
+    }
+
+    // 1. Scenario A: Explicit applyUrl stored on job
+    if (job.applyUrl && isValidHttpUrl(job.applyUrl)) {
+      console.log(`[Talvyn Apply] Scenario A: Explicit applyUrl found: ${job.applyUrl}`)
+      try {
+        await applicationSessionManager.createOrUpdateSession({
+          pageUrl: job.applyUrl,
+          jobUrl: job.jobUrl || job.applyUrl,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+        })
+      } catch (sessionErr) {
+        console.warn('[Talvyn Apply] Could not record application session:', sessionErr)
+      }
+
+      window.open(job.applyUrl, '_blank')
+      const normResult = normalizeJob(job, profile)
+      updatePanelState({
+        type: 'autofill-complete',
+        job: normResult.normalized,
+        normalization: normResult,
+        autofillStats: {
+          filledFields: ['Application Tab Opened', 'Job Context Preserved'],
+          reviewFields: ['Review requirements and submission on destination page'],
+        },
+      })
+      return
+    }
+
+    // 2. Scenario B: Discovery Job Selected from listing
+    const isDiscoverySelected = activePanelMode === 'SELECTED_DISCOVERY' || Boolean(selectedDiscoveryJob && selectedDiscoveryJob.title === job.title)
+    if (isDiscoverySelected && job.jobUrl && isValidHttpUrl(job.jobUrl)) {
+      console.log(`[Talvyn Apply] Scenario B: Discovery job selected. Navigating to job destination: ${job.jobUrl}`)
+      try {
+        await applicationSessionManager.createOrUpdateSession({
+          pageUrl: job.jobUrl,
+          jobUrl: job.jobUrl,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+        })
+      } catch (sessionErr) {
+        console.warn('[Talvyn Apply] Could not record application session:', sessionErr)
+      }
+
+      window.open(job.jobUrl, '_blank')
+      const normResult = normalizeJob(job, profile)
+      updatePanelState({
+        type: 'autofill-complete',
+        job: normResult.normalized,
+        normalization: normResult,
+        autofillStats: {
+          filledFields: ['Job Page Opened', 'Candidate Context Preserved'],
+          reviewFields: ['Review application instructions on job page'],
+        },
+      })
+      return
+    }
+
+    // 3. Scenario D: In-page application form already active (or external ATS form page)
+    if (autofillCoordinator.isApplicationFormPage(currentUrl, doc)) {
+      console.log('[Talvyn Apply] Scenario D: In-page application form detected. Running assistant & autofill...')
+      try {
+        await applicationSessionManager.createOrUpdateSession({
+          pageUrl: currentUrl,
+          jobUrl: job.jobUrl || currentUrl,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+        })
+        await assistantCoordinator.activate(currentUrl, doc, profile, job)
+        const autofillSuccess = await autofillCoordinator.activateAutofill(currentUrl, doc, profile, true)
+        const normResult = normalizeJob(job, profile)
+        updatePanelState({
+          type: 'autofill-complete',
+          job: normResult.normalized,
+          normalization: normResult,
+          autofillStats: {
+            filledFields: autofillSuccess ? ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'] : ['Assistant Ready'],
+            reviewFields: ['Sensitive / Custom Questions (Review Required)'],
+          },
+        })
+        return
+      } catch (formErr) {
+        console.error('[Talvyn Apply] Failed autofilling on application form page:', formErr)
+        updatePanelState({
+          type: 'error',
+          message: 'Encountered an issue autofilling the form. Please review the form fields directly.',
+        })
+        return
+      }
+    }
+
+    // 4. In-page external apply links (e.g. ATS links, redirect buttons)
+    const externalLink = doc.querySelector<HTMLAnchorElement>(
+      'a[href*="/apply" i], a[href*="apply" i], a[data-testid*="apply" i], a[class*="apply" i], a.jobs-apply-button, a[href*="greenhouse.io" i], a[href*="lever.co" i], a[href*="myworkdayjobs.com" i], a[href*="smartrecruiters.com" i], a[href*="ashbyhq.com" i]'
+    )
+    if (externalLink && externalLink.href && isValidHttpUrl(externalLink.href) && isDifferentDestination(externalLink.href)) {
+      console.log(`[Talvyn Apply] External ATS or application link found on page: ${externalLink.href}`)
+      try {
+        await applicationSessionManager.createOrUpdateSession({
+          pageUrl: externalLink.href,
+          jobUrl: job.jobUrl || externalLink.href,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+        })
+      } catch (sessionErr) {
+        console.warn('[Talvyn Apply] Could not record application session:', sessionErr)
+      }
+      window.open(externalLink.href, '_blank')
+      const normResult = normalizeJob(job, profile)
+      updatePanelState({
+        type: 'autofill-complete',
+        job: normResult.normalized,
+        normalization: normResult,
+        autofillStats: {
+          filledFields: ['Application Portal Opened'],
+          reviewFields: ['Review requirements and submission on destination portal'],
+        },
+      })
+      return
+    }
+
+    // 5. Scenario E: Try to click native apply button or modal trigger on the page
+    const nativeApplyBtn = doc.querySelector<HTMLElement>(
+      [
+        'button[id*="indeedApplyButton" i]',
+        'button[data-testid*="indeedApplyButton" i]',
+        'a[href*="/rc/clk" i]',
+        'a[href*="indeed.com/apply" i]',
+        'button[class*="jobs-apply-button" i]',
+        'button[aria-label*="easy apply" i]',
+        'button[aria-label*="apply now" i]',
+        'button[aria-label*="apply" i]',
+        'a[aria-label*="apply" i]',
+        'button[class*="apply" i]:not(#talvyn-apply-btn)',
+        'a[class*="apply" i]:not(#talvyn-apply-btn)',
+        'button[data-testid*="apply" i]',
+        'a[data-testid*="apply" i]',
+        '[class*="apply-button" i]',
+        '[class*="ApplyButton" i]',
+        'a[href*="unstop.com/api" i]',
+        'button[class*="register" i]',
+        'a[class*="register" i]',
+        '[data-testid*="apply-button" i]',
+      ].join(', ')
+    )
+
+    if (nativeApplyBtn) {
+      if (nativeApplyBtn instanceof HTMLAnchorElement && nativeApplyBtn.href && isValidHttpUrl(nativeApplyBtn.href) && isDifferentDestination(nativeApplyBtn.href)) {
+        console.log(`[Talvyn Apply] Native apply anchor found with external destination: ${nativeApplyBtn.href}`)
+        try {
+          await applicationSessionManager.createOrUpdateSession({
+            pageUrl: nativeApplyBtn.href,
+            jobUrl: job.jobUrl || nativeApplyBtn.href,
+            jobTitle: job.title,
+            company: job.company,
+            location: job.location,
+          })
+          window.open(nativeApplyBtn.href, '_blank')
+          const normResult = normalizeJob(job, profile)
+          updatePanelState({
+            type: 'autofill-complete',
+            job: normResult.normalized,
+            normalization: normResult,
+            autofillStats: {
+              filledFields: ['Application Tab Opened'],
+              reviewFields: ['Complete application on external portal'],
+            },
+          })
+          return
+        } catch (clickErr) {
+          console.warn('[Talvyn Apply] Failed navigating native apply anchor:', clickErr)
+        }
+      } else {
+        // Trigger click on native button to open modal or inline form
+        try {
+          console.log('[Talvyn Apply] Triggering in-page apply button click...')
+          nativeApplyBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
+          nativeApplyBtn.click()
+        } catch (btnErr) {
+          console.warn('[Talvyn Apply] Could not click native apply button:', btnErr)
+        }
+
+        // Wait for potential modal or inline form to render after click
+        await new Promise((resolve) => setTimeout(resolve, 700))
+
+        const summary = await autofillCoordinator.scanAndAnalyzeForm(currentUrl, doc, profile)
+        if (summary.totalFields > 0 || autofillCoordinator.isApplicationFormPage(currentUrl, doc)) {
+          const safeFields = summary.matchedFields.filter((f) => f.canAutofill && !f.isSensitive)
+          const reviewFields = summary.matchedFields.filter((f) => f.requiresReview || f.isSensitive || f.isCustomQuestion)
+
+          await assistantCoordinator.activate(currentUrl, doc, profile, currentSingleJob)
+          await autofillCoordinator.activateAutofill(currentUrl, doc, profile, true)
+
+          const filledFieldNames = safeFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
+          const reviewFieldNames = reviewFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
+
+          console.log(`[Talvyn Apply] In-page modal form autofilled (Filled: ${filledFieldNames.length}, Review: ${reviewFieldNames.length})`)
+          const normResult = normalizeJob(currentSingleJob!, profile)
+          updatePanelState({
+            type: 'autofill-complete',
+            job: normResult.normalized,
+            normalization: normResult,
+            autofillStats: {
+              filledFields: filledFieldNames.length > 0 ? filledFieldNames : ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'],
+              reviewFields: reviewFieldNames.length > 0 ? reviewFieldNames : ['Work Authorization', 'Salary Expectations'],
+            },
+          })
+          return
+        }
+      }
+    }
+
+    // 6. External ATS or fallback navigation if job has a different URL
+    const fallbackDestination = isDifferentDestination(job.jobUrl) ? job.jobUrl : null
+    if (fallbackDestination && isValidHttpUrl(fallbackDestination)) {
+      console.log(`[Talvyn Apply] Opening destination URL: ${fallbackDestination}`)
+      try {
+        await applicationSessionManager.createOrUpdateSession({
+          pageUrl: fallbackDestination,
+          jobUrl: job.jobUrl || fallbackDestination,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+        })
+      } catch (sessionErr) {
+        console.warn('[Talvyn Apply] Could not record application session:', sessionErr)
+      }
+      window.open(fallbackDestination, '_blank')
       const normResult = normalizeJob(currentSingleJob!, profile)
       updatePanelState({
         type: 'autofill-complete',
         job: normResult.normalized,
         normalization: normResult,
         autofillStats: {
-          filledFields: filledFieldNames.length > 0 ? filledFieldNames : ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'],
-          reviewFields: reviewFieldNames.length > 0 ? reviewFieldNames : ['Work Authorization', 'Salary Expectations'],
+          filledFields: ['Job Page Opened'],
+          reviewFields: ['Review and apply on company site'],
         },
       })
-    } catch (err) {
-      console.error('[Talvyn] AUTOFILL_FAILED:', err)
-      updatePanelState({
-        type: 'error',
-        message: 'Could not autofill application. Please review fields directly.',
-      })
+      return
     }
-  }, 600)
+
+    // 7. Scenario F: Unresolvable destination
+    console.warn('[Talvyn Apply] No application form or valid external destination found.')
+    updatePanelState({
+      type: 'error',
+      message: "We couldn't determine the application destination. Please open the job and apply directly.",
+    })
+  } catch (err) {
+    console.error('[Talvyn Apply] Application workflow exception:', err)
+    updatePanelState({
+      type: 'error',
+      message: "We couldn't determine the application destination. Please open the job and apply directly.",
+    })
+  } finally {
+    isSingleApplyRunning = false
+  }
 }
 
 async function handleSingleSave(customJob?: ExtractedJob, customProfile?: any): Promise<void> {
@@ -790,10 +1074,52 @@ async function init() {
   // Initial page evaluation
   await safeAnalyzeAndRender()
 
+  let lastRoute = (() => {
+    try {
+      const u = new URL(typeof window !== 'undefined' ? window.location.href : '')
+      return `${u.origin}${u.pathname}`
+    } catch {
+      return typeof window !== 'undefined' ? window.location.href : ''
+    }
+  })()
+
   // Initialize hardened SPA navigation & History API observer
   navigationObserver.init(async (_newUrl) => {
     if (!isRuntimeActive()) return
     console.log('[Talvyn] SPA URL Navigation detected to:', _newUrl)
+
+    let isSameRoute = false
+    try {
+      const u = new URL(_newUrl)
+      const currentRoute = `${u.origin}${u.pathname}`
+      isSameRoute = currentRoute === lastRoute
+      lastRoute = currentRoute
+    } catch {
+      isSameRoute = false
+    }
+
+    // In-page SPA updates (e.g. query params, tab switching, card selection hash) must NEVER
+    // destroy or flicker open panels when the candidate is actively interacting!
+    if (activePanelMode === 'SELECTED_DISCOVERY' && selectedDiscoveryJob && isSameRoute) {
+      console.log('[Talvyn] Preserving selected discovery job view during in-page SPA URL update.')
+      return
+    }
+
+    if (isSinglePanelVisible && isSameRoute && currentSingleJob) {
+      console.log('[Talvyn] Preserving mounted single job panel during in-page SPA URL update.')
+      return
+    }
+
+    if (isDiscoveryPanelVisible && isSameRoute) {
+      console.log('[Talvyn] In-page listing URL change detected; updating discovery summary in place.')
+      const profile = await getUserPreferences()
+      const freshSummary = jobScanner.scanJobListing(_newUrl, document, profile)
+      if (freshSummary.totalDetected > 0) {
+        discoveryPanelManager.updateSummary(freshSummary)
+      }
+      return
+    }
+
     applicationSuccessDetector.resetPageState()
     jobScanner.clearCache()
     removePanel()

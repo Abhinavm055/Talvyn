@@ -1,6 +1,6 @@
 import { ExtractedJob } from '../../types'
 import { SiteAdapter } from './types'
-import { isLikelyJobPage, isLikelyJobListing, isValidJobCard, isExplicitlyNonJobSite, UNIVERSAL_JOB_ROLE_REGEX, findJobCardCandidates } from '../jobEvidenceDetector'
+import { isLikelyJobPage, isLikelyJobListing, isValidJobCard, isExplicitlyNonJobSite, UNIVERSAL_JOB_ROLE_REGEX, findJobCardCandidates, isInvalidJobTitle } from '../jobEvidenceDetector'
 
 export class GenericAdapter implements SiteAdapter {
   name = 'Generic'
@@ -146,9 +146,9 @@ export class GenericAdapter implements SiteAdapter {
     )
 
     for (const el of titleCandidates) {
-      if (isExcluded(el) && container === doc.body) continue
+      if (isExcluded(el)) continue
       const txt = el.textContent?.trim() || ''
-      if (txt.length >= 3 && txt.length <= 150 && !nonJobHeadingPattern.test(txt)) {
+      if (txt.length >= 3 && txt.length <= 150 && !isInvalidJobTitle(txt)) {
         if (UNIVERSAL_JOB_ROLE_REGEX.test(txt) || el.className.toString().toLowerCase().includes('title') || ['H1', 'H2'].includes(el.tagName)) {
           title = txt
           break
@@ -161,7 +161,7 @@ export class GenericAdapter implements SiteAdapter {
       for (const el of docHeadings) {
         if (isExcluded(el)) continue
         const txt = el.textContent?.trim() || ''
-        if (txt.length >= 3 && txt.length <= 150 && !nonJobHeadingPattern.test(txt)) {
+        if (txt.length >= 3 && txt.length <= 150 && !isInvalidJobTitle(txt)) {
           title = txt
           break
         }
@@ -170,11 +170,11 @@ export class GenericAdapter implements SiteAdapter {
 
     if (!title || title.length < 3 || title.length > 150) {
       const metaTitle = (doc.querySelector('meta[property="og:title"], meta[name="title"]') as HTMLMetaElement)?.content || ''
-      if (metaTitle && !nonJobHeadingPattern.test(metaTitle)) {
-        title = metaTitle
+      if (metaTitle && !isInvalidJobTitle(metaTitle)) {
+        title = metaTitle.trim()
       }
     }
-    if (!title || title.length < 3 || title.length > 150) return null
+    if (!title || isInvalidJobTitle(title)) return null
 
     // 3. Company from container
     const companyEl = container.querySelector(
@@ -278,7 +278,7 @@ export class GenericAdapter implements SiteAdapter {
       const txt = el.textContent?.replace(/\s+/g, ' ').trim() || ''
       const cls = (el.className || '').toString().toLowerCase()
       if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
-      if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
+      if (txt.length >= 3 && txt.length <= 120 && UNIVERSAL_JOB_ROLE_REGEX.test(txt) && !isInvalidJobTitle(txt)) {
         title = txt
         if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
         break
@@ -294,7 +294,7 @@ export class GenericAdapter implements SiteAdapter {
         if (cls.includes('sub') || cls.includes('company') || cls.includes('org') || cls.includes('brand') || cls.includes('employer')) continue
         const tag = el.tagName.toUpperCase()
         const isHeadingLike = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'A'].includes(tag) || cls.includes('title') || cls.includes('role') || cls.includes('heading')
-        if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(txt)) {
+        if (isHeadingLike && txt.length >= 3 && txt.length <= 120 && !isInvalidJobTitle(txt)) {
           title = txt
           if (!titleLink) titleLink = (el.tagName === 'A' ? el : el.closest?.('a')) as HTMLAnchorElement | null
           break
@@ -306,7 +306,7 @@ export class GenericAdapter implements SiteAdapter {
     if (!title) {
       const lines = cardText.split(/\n|<br\s*\/?>/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 120)
       for (const line of lines.slice(0, 4)) {
-        if (UNIVERSAL_JOB_ROLE_REGEX.test(line) && !/^(home|about|careers?|jobs?|login|sign in|privacy|terms|menu|search|share|watch|video|playlist|trending|apply|apply now|save|bookmark|filters|details|view all|view details|register|register now)$/i.test(line)) {
+        if (UNIVERSAL_JOB_ROLE_REGEX.test(line) && !isInvalidJobTitle(line)) {
           title = line
           break
         }

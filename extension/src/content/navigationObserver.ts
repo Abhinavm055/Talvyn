@@ -127,12 +127,33 @@ export class NavigationObserver {
   private setupMutationObserver(): void {
     if (typeof document === 'undefined' || !document.body) return
 
-    this.mutationObserver = new MutationObserver(() => {
+    this.mutationObserver = new MutationObserver((mutations) => {
       if (!isRuntimeActive()) {
         this.cleanup()
         return
       }
       if (typeof window === 'undefined') return
+
+      // Filter out Talvyn's own UI mutations so the extension never triggers its own re-evaluation
+      const isTalvynNode = (node: any): boolean => {
+        if (!node) return false
+        if (node.id === 'talvyn-host' || node.id === 'talvyn-panel' || node.id === 'talvyn-capsule') return true
+        if (typeof node.getAttribute === 'function' && (node.getAttribute('data-talvyn-host') || node.getAttribute('data-talvyn') || node.getAttribute('data-talvyn-capsule'))) return true
+        if (typeof node.id === 'string' && node.id.startsWith('talvyn-')) return true
+        if (typeof node.closest === 'function' && node.closest('#talvyn-host, [data-talvyn-host], [data-talvyn], [data-talvyn-capsule]')) return true
+        return false
+      }
+
+      const allInternal = mutations.every((m) => {
+        if (isTalvynNode(m.target)) return true
+        const addedAllTalvyn = Array.from(m.addedNodes).every(isTalvynNode)
+        const removedAllTalvyn = Array.from(m.removedNodes).every(isTalvynNode)
+        return (m.addedNodes.length === 0 || addedAllTalvyn) && (m.removedNodes.length === 0 || removedAllTalvyn)
+      })
+
+      if (allInternal && mutations.length > 0) {
+        return
+      }
 
       // If URL changed in the meantime
       if (window.location.href !== this.lastUrl) {

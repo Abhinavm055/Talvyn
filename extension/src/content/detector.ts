@@ -1,5 +1,5 @@
 import { ExtractedJob } from '../types'
-import { isExplicitlyNonJobSite, isLikelyJobPage } from './jobEvidenceDetector'
+import { isExplicitlyNonJobSite, isLikelyJobPage, isInvalidJobTitle } from './jobEvidenceDetector'
 
 /**
  * Job Page Detector
@@ -87,25 +87,28 @@ function extractFromJsonLd(doc: Document = document): Partial<ExtractedJob> | nu
       const data = JSON.parse(script.textContent || '{}')
       const items = Array.isArray(data) ? data : [data]
       for (const item of items) {
-        if (item['@type'] === 'JobPosting') {
-          return {
-            title: item.title || item.name,
-            company:
-              item.hiringOrganization?.name ||
-              item.employerOverview ||
-              item.author?.name,
-            location:
-              typeof item.jobLocation === 'string'
-                ? item.jobLocation
-                : item.jobLocation?.address?.addressLocality ||
-                  item.jobLocation?.address?.addressRegion,
-            salary:
-              item.baseSalary?.value?.value ||
-              (item.baseSalary?.value?.minValue && item.baseSalary?.value?.maxValue
-                ? `${item.baseSalary.value.minValue}–${item.baseSalary.value.maxValue} ${item.baseSalary.value.unitText || ''}`
-                : undefined),
-            jobType: item.employmentType,
-            description: item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000),
+        if (item && item['@type'] === 'JobPosting') {
+          const rawTitle = item.title || item.name
+          if (rawTitle && typeof rawTitle === 'string' && !isInvalidJobTitle(rawTitle)) {
+            return {
+              title: rawTitle.trim(),
+              company:
+                item.hiringOrganization?.name ||
+                item.employerOverview ||
+                item.author?.name,
+              location:
+                typeof item.jobLocation === 'string'
+                  ? item.jobLocation
+                  : item.jobLocation?.address?.addressLocality ||
+                    item.jobLocation?.address?.addressRegion,
+              salary:
+                item.baseSalary?.value?.value ||
+                (item.baseSalary?.value?.minValue && item.baseSalary?.value?.maxValue
+                  ? `${item.baseSalary.value.minValue}–${item.baseSalary.value.maxValue} ${item.baseSalary.value.unitText || ''}`
+                  : undefined),
+              jobType: item.employmentType,
+              description: item.description?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000),
+            }
           }
         }
       }
@@ -144,8 +147,11 @@ function extractFromMeta(doc: Document = document): Partial<ExtractedJob> {
   const get = (name: string) =>
     (doc.querySelector ? (doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`) as HTMLMetaElement | null)?.content : undefined)
 
+  const metaTitle = get('og:title') || get('twitter:title') || get('title') || undefined
+  const validTitle = metaTitle && !isInvalidJobTitle(metaTitle) ? metaTitle.trim() : undefined
+
   return {
-    title: get('og:title') || get('twitter:title') || get('title') || undefined,
+    title: validTitle,
     company: get('og:site_name') || undefined,
     description: get('og:description') || get('description') || undefined,
   }
@@ -166,8 +172,11 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
 
   // LinkedIn-specific
   if (hostname.includes('linkedin.com')) {
-    result.title =
+    const rawTitle =
       doc.querySelector('.job-details-jobs-unified-top-card__job-title, .topcard__title')?.textContent?.trim()
+    if (rawTitle && !isInvalidJobTitle(rawTitle)) {
+      result.title = rawTitle
+    }
     result.company =
       doc.querySelector('.job-details-jobs-unified-top-card__company-name a, .topcard__org-name-link')?.textContent?.trim()
     result.location =
@@ -178,8 +187,13 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
 
   // Indeed-specific
   if (hostname.includes('indeed.com')) {
-    result.title =
-      doc.querySelector('[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"]')?.textContent?.trim()
+    const indeedTitleEl = doc.querySelector(
+      '[data-testid="jobsearch-JobInfoHeader-title"], h1.jobsearch-JobInfoHeader-title, h1[class*="jobsearch-JobInfoHeader-title"], h2.jobsearch-JobInfoHeader-title, [class*="jobsearch-JobInfoHeader-title"], h1[class*="jobTitle" i], h2[class*="jobTitle" i], .jobsearch-JobInfoHeader-title-container h1, [data-testid="simpler-job-title"], span[id^="jobTitle"], a[id^="job_"]'
+    )
+    const rawIndeedTitle = indeedTitleEl?.textContent?.trim()
+    if (rawIndeedTitle && !isInvalidJobTitle(rawIndeedTitle)) {
+      result.title = rawIndeedTitle
+    }
     result.company =
       doc.querySelector('[data-testid="inlineHeader-companyName"], [data-testid="inlineHeader-companyName"] a, [data-testid="company-name"], div[data-testid="jobsearch-CompanyInfoContainer"] a, .icl-u-lg-mr--sm, [class*="companyName"]')?.textContent?.trim() ||
       extractJsonLdCompany(doc) ||
@@ -194,7 +208,10 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
 
   // Greenhouse
   if (hostname.includes('greenhouse.io') || hostname.includes('boards.greenhouse.io')) {
-    result.title = doc.querySelector('.app-title, h1.heading')?.textContent?.trim()
+    const rawGhTitle = doc.querySelector('.app-title, h1.heading')?.textContent?.trim()
+    if (rawGhTitle && !isInvalidJobTitle(rawGhTitle)) {
+      result.title = rawGhTitle
+    }
     result.company = doc.querySelector('.company-name, .logo span')?.textContent?.trim()
     result.location = doc.querySelector('.location')?.textContent?.trim()
     result.description = doc.querySelector('#content, .job-post-content')?.textContent?.trim()
@@ -202,7 +219,10 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
 
   // Lever
   if (hostname.includes('lever.co') || hostname.includes('jobs.lever.co')) {
-    result.title = doc.querySelector('.posting-headline h2')?.textContent?.trim()
+    const rawLeverTitle = doc.querySelector('.posting-headline h2')?.textContent?.trim()
+    if (rawLeverTitle && !isInvalidJobTitle(rawLeverTitle)) {
+      result.title = rawLeverTitle
+    }
     result.company =
       doc.querySelector('.posting-headline .posting-categories .sort-by-team')?.textContent?.trim() ||
       doc.querySelector('.main-header-logo img')?.getAttribute('alt') || undefined
@@ -227,14 +247,13 @@ function extractFromDom(doc: Document = document, url: string = ''): Partial<Ext
       if (!el) return true
       return Boolean(el.closest?.('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="navbar" i], [class*="header" i], [class*="account" i]'))
     }
-    const nonJobTitlePattern = /^(home|careers|jobs|search|openings|login|sign\s*in|sign\s*up|welcome|hello|hi|my\s*account|dashboard|notifications|messages|settings|feedback)\b/i
 
     for (const sel of headingSelectors) {
       const el = doc.querySelector(sel)
       if (el) {
-        if (sel === 'h1' && isExcluded(el)) continue
+        if (isExcluded(el)) continue
         const text = el.textContent?.trim() || ''
-        if (text.length > 3 && text.length < 140 && !nonJobTitlePattern.test(text)) {
+        if (!isInvalidJobTitle(text)) {
           result.title = text
           break
         }
@@ -360,11 +379,17 @@ function parsePageTitle(doc: Document = document): Partial<ExtractedJob> {
   // Common pattern: "Job Title at Company | Board" or "Job Title - Company"
   const atMatch = title.match(/^(.+?)\s+at\s+(.+?)(?:\s*[|\-–]|$)/i)
   if (atMatch) {
-    return { title: atMatch[1].trim(), company: atMatch[2].trim() }
+    const cand = atMatch[1].trim()
+    if (!isInvalidJobTitle(cand)) {
+      return { title: cand, company: atMatch[2].trim() }
+    }
   }
   const dashMatch = title.match(/^(.+?)\s*[-–]\s*(.+?)(?:\s*[|\-–]|$)/)
   if (dashMatch) {
-    return { title: dashMatch[1].trim(), company: dashMatch[2].trim() }
+    const cand = dashMatch[1].trim()
+    if (!isInvalidJobTitle(cand)) {
+      return { title: cand, company: dashMatch[2].trim() }
+    }
   }
   return {}
 }
@@ -430,9 +455,19 @@ export function detectJob(
     }
   }
 
-  // Merge: JSON-LD > DOM > meta > page title
+  // Merge: JSON-LD > DOM > meta > page title with strict title validation
+  const candidateTitles = [
+    jsonLd?.title,
+    dom?.title,
+    meta?.title,
+    pageTitleParsed?.title,
+  ].filter((t): t is string => typeof t === 'string' && !isInvalidJobTitle(t))
+
+  const authoritativeTitle = candidateTitles[0]
+  if (!authoritativeTitle) return null
+
   const merged = {
-    title: jsonLd?.title || dom?.title || meta?.title || pageTitleParsed?.title,
+    title: authoritativeTitle,
     company: jsonLd?.company || dom?.company || meta?.company || pageTitleParsed?.company,
     location: jsonLd?.location || dom?.location,
     salary: jsonLd?.salary || dom?.salary,
