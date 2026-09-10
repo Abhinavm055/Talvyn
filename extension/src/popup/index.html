@@ -6,21 +6,199 @@
   <title>Talvyn</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      width: 320px;
-      min-height: 200px;
-      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13px;
-      background: #f8fafc;
-      color: #0f172a;
-      -webkit-font-smoothing: antialiased;
+
+    :root, body.theme-dark {
+      --bg-main: #06070D;
+      --bg-card: #0C0D1A;
+      --bg-card-subtle: rgba(255, 255, 255, 0.03);
+      --bg-card-hover: #131526;
+      --bg-input: #101222;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: #5054EA;
+      --text-primary: #F3F4F8;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --accent: #5054EA;
+      --accent-hover: #4347D4;
+      --accent-glow: rgba(80, 84, 234, 0.4);
+      --badge-connected-bg: rgba(16, 185, 129, 0.12);
+      --badge-connected-text: #34D399;
+      --badge-connected-dot: #10B981;
+      --badge-offline-bg: rgba(245, 158, 11, 0.12);
+      --badge-offline-text: #FBBF24;
+      --badge-offline-dot: #F59E0B;
+      --glow-top: radial-gradient(ellipse at 50% 0%, rgba(80, 84, 234, 0.2), transparent 70%);
+      --glow-bottom: radial-gradient(ellipse at 50% 100%, rgba(124, 58, 237, 0.12), transparent 70%);
+      --toggle-track-bg: #14162B;
+      --toggle-track-border: rgba(255, 255, 255, 0.14);
     }
-    #app { padding: 0; }
+
+    body.theme-light {
+      --bg-main: #F8FAFC;
+      --bg-card: #FFFFFF;
+      --bg-card-subtle: #F1F5F9;
+      --bg-card-hover: #E2E8F0;
+      --bg-input: #FFFFFF;
+      --border-color: #E2E8F0;
+      --border-focus: #5054EA;
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --accent: #5054EA;
+      --accent-hover: #4347D4;
+      --accent-glow: rgba(80, 84, 234, 0.25);
+      --badge-connected-bg: #ECFDF5;
+      --badge-connected-text: #059669;
+      --badge-connected-dot: #10B981;
+      --badge-offline-bg: #FEF3C7;
+      --badge-offline-text: #B45309;
+      --badge-offline-dot: #F59E0B;
+      --glow-top: radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.08), transparent 70%);
+      --glow-bottom: radial-gradient(ellipse at 50% 100%, rgba(168, 85, 247, 0.05), transparent 70%);
+      --toggle-track-bg: #E2E8F0;
+      --toggle-track-border: #CBD5E1;
+    }
+
+    body {
+      width: 350px;
+      min-height: 480px;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      transition: background-color 0.25s ease, color 0.25s ease;
+      position: relative;
+    }
+
+    #app {
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Ambient Cosmic Background Glows */
+    .ambient-glow-top {
+      position: fixed;
+      top: -40px;
+      left: 0;
+      right: 0;
+      height: 180px;
+      background: var(--glow-top);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.3s ease;
+    }
+
+    .ambient-glow-bottom {
+      position: fixed;
+      bottom: -40px;
+      left: 0;
+      right: 0;
+      height: 140px;
+      background: var(--glow-bottom);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.3s ease;
+    }
+
+    /* ─── Celestial Sun & Moon "Touches" Theme Toggle ─── */
+    .celestial-toggle {
+      position: relative;
+      width: 52px;
+      height: 26px;
+      border-radius: 999px;
+      background: var(--toggle-track-bg);
+      border: 1px solid var(--toggle-track-border);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
+      outline: none;
+    }
+
+    .celestial-toggle:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .celestial-icon {
+      width: 13px;
+      height: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .sun-icon {
+      color: #F59E0B;
+    }
+
+    .moon-icon {
+      color: #818CF8;
+    }
+
+    /* Celestial Sliding Thumb ("Sun touches Moon" Eclipse Orb) */
+    .celestial-orb {
+      position: absolute;
+      top: 2px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #FDE68A 0%, #F59E0B 100%);
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.35s ease, box-shadow 0.35s ease;
+      z-index: 1;
+    }
+
+    /* Dark mode: orb slides over the moon and glows purple/indigo */
+    body.theme-dark .celestial-orb {
+      transform: translateX(24px);
+      background: linear-gradient(135deg, #818CF8 0%, #4F46E5 100%);
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Touching / Eclipse effect when active */
+    .celestial-toggle.touching .celestial-orb {
+      transform: translateX(12px) scale(1.15);
+      filter: brightness(1.25);
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
   </style>
 </head>
-<body>
+<body class="theme-dark">
+  <div class="ambient-glow-top"></div>
+  <div class="ambient-glow-bottom"></div>
   <div id="app">
-    <div id="loading" style="display:flex;align-items:center;justify-content:center;height:160px;color:#94a3b8;font-size:13px;">
+    <div id="loading" style="display:flex;align-items:center;justify-content:center;height:240px;color:#94a3b8;font-size:13px;">
       Loading…
     </div>
   </div>

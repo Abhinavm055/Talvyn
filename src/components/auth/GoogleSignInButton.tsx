@@ -236,7 +236,7 @@ export function GoogleSignInButton({
         onClick={handleCustomButtonClick}
         disabled={isLoading}
         title={!isConfigured ? 'Google Sign-In is not configured in .env' : undefined}
-        className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-lg border border-slate-300 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+        className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white dark:bg-[#0C0D1A] hover:bg-slate-50 dark:hover:bg-[#141629] text-slate-700 dark:text-slate-200 font-medium text-sm rounded-xl border border-slate-300 dark:border-white/[0.1] hover:dark:border-white/[0.2] shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-white/20 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
       >
         {isLoading ? (
           <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />

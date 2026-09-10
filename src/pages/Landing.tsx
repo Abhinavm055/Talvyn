@@ -50,16 +50,14 @@ export default function Landing() {
 
       {/* ─── TOP NAVBAR ─── */}
       <header className="w-full z-50 bg-[#06070D]/80 backdrop-blur-md transition-all">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 h-16 md:h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 md:px-12 h-16 flex items-center justify-between">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group focus:outline-none">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#5054EA] to-[#3B3FB6] shadow-[0_0_16px_rgba(80,84,234,0.35)] transition-transform duration-200 group-hover:scale-105">
-              <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
-                <path d="M 7 10.5 C 7 9.12 8.12 8 9.5 8 L 14 8 L 12.5 12 L 7 12 Z" fill="white" />
-                <path d="M 18 8 L 22.5 8 C 23.88 8 25 9.12 25 10.5 L 25 12 L 19.5 12 Z" fill="white" />
-                <path d="M 13 11 L 16 6 L 19 11 L 18 24 C 18 25.1 17.1 26 16 26 C 14.9 26 14 25.1 14 24 Z" fill="white" />
-              </svg>
-            </div>
+            <img
+              src="/logo-talvyn.png"
+              alt="Talvyn"
+              className="w-8 h-8 object-contain drop-shadow-[0_0_14px_rgba(80,84,234,0.45)] transition-transform duration-200 group-hover:scale-105"
+            />
             <span className="text-xl font-bold tracking-tight text-white group-hover:text-slate-100 transition-colors">
               Talvyn
             </span>
@@ -72,9 +70,6 @@ export default function Landing() {
             </a>
             <a href="#how-it-works" className="hover:text-white transition-colors duration-150">
               How It Works
-            </a>
-            <a href="#testimonials" className="hover:text-white transition-colors duration-150">
-              Testimonials
             </a>
             <button
               type="button"
@@ -129,13 +124,6 @@ export default function Landing() {
             >
               How It Works
             </a>
-            <a
-              href="#testimonials"
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-slate-300 hover:text-white font-medium text-sm py-1"
-            >
-              Testimonials
-            </a>
             <button
               type="button"
               onClick={() => {
@@ -169,20 +157,20 @@ export default function Landing() {
       {/* ─── MAIN CONTENT ─── */}
       <main className="flex-1">
         {/* ─── HERO SECTION ─── */}
-        <section className="pt-8 md:pt-12 pb-6 text-center px-6 max-w-5xl mx-auto flex flex-col items-center">
+        <section className="pt-4 md:pt-6 pb-2 text-center px-6 max-w-5xl mx-auto flex flex-col items-center">
           {/* Eyebrow */}
-          <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-4">
+          <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
             A SMARTER WAY TO YOUR NEXT OPPORTUNITY
           </p>
 
           {/* Headline */}
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[76px] font-bold tracking-tight text-white leading-[1.08] mb-4">
+          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[76px] font-bold tracking-tight text-white leading-[1.08] mb-3">
             From Potential <br />
             <span className="text-[#8B8DF8]">to Offer.</span>
           </h1>
 
           {/* Subtitle */}
-          <p className="text-slate-400 text-sm sm:text-base md:text-lg font-normal leading-relaxed max-w-2xl mx-auto mb-7">
+          <p className="text-slate-400 text-sm sm:text-base md:text-lg font-normal leading-relaxed max-w-2xl mx-auto mb-5">
             Talvyn helps you save jobs, track applications, and stay organized —
             <br className="hidden sm:inline" />
             so you can focus on what really matters: landing the role you deserve.
@@ -207,23 +195,13 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ─── CELESTIAL HORIZON ARC & SCROLL INDICATOR ─── */}
-        <section className="relative w-full overflow-hidden pt-2 pb-10 md:pb-12 flex flex-col items-center">
-          {/* Scroll to explore pill indicator */}
-          <div className="flex flex-col items-center gap-1.5 mb-2 relative z-10">
-            <div className="w-4 h-7 rounded-full border border-white/20 flex items-start justify-center p-1 bg-white/[0.02]">
-              <div className="w-1 h-1.5 bg-white/70 rounded-full animate-bounce" />
-            </div>
-            <span className="text-[10px] font-medium tracking-[0.2em] text-slate-400 uppercase">
-              Scroll to explore
-            </span>
-          </div>
-
+        {/* ─── CELESTIAL HORIZON ARC ─── */}
+        <section className="relative w-full overflow-hidden pt-0 pb-4 md:pb-6 flex flex-col items-center">
           {/* Large Arc Canvas SVG */}
-          <div className="w-full max-w-[1600px] h-[150px] sm:h-[180px] md:h-[220px] relative pointer-events-none">
+          <div className="w-full max-w-[1600px] h-[90px] sm:h-[110px] md:h-[130px] relative pointer-events-none">
             <svg
               className="w-full h-full overflow-visible"
-              viewBox="0 0 1440 220"
+              viewBox="0 0 1440 130"
               fill="none"
               preserveAspectRatio="none"
             >
@@ -252,7 +230,7 @@ export default function Landing() {
 
               {/* Faint ambient atmospheric glow line */}
               <path
-                d="M -100,220 Q 720,15 1540,220"
+                d="M -100,130 Q 720,10 1540,130"
                 stroke="#6366F1"
                 strokeWidth="7"
                 strokeOpacity="0.25"
@@ -261,13 +239,13 @@ export default function Landing() {
 
               {/* Crisp illuminated celestial arc */}
               <path
-                d="M -100,220 Q 720,15 1540,220"
+                d="M -100,130 Q 720,10 1540,130"
                 stroke="url(#horizonGlow)"
                 strokeWidth="1.5"
               />
 
               {/* Luminous Bead on the curve at x ≈ 1080 (75%) */}
-              <g transform="translate(1080, 68)">
+              <g transform="translate(1080, 42)">
                 {/* Soft outer halo */}
                 <circle cx="0" cy="0" r="14" fill="url(#beadGlow)" opacity="0.35" />
                 <circle cx="0" cy="0" r="8" fill="#818CF8" opacity="0.6" />
@@ -279,7 +257,7 @@ export default function Landing() {
         </section>
 
         {/* ─── SECTION 2: A FOCUSED TOOLKIT ─── */}
-        <section id="features" className="pt-4 pb-14 md:pb-16 px-6 max-w-6xl mx-auto text-center">
+        <section id="features" className="pt-8 md:pt-14 pb-12 md:pb-16 px-6 max-w-6xl mx-auto text-center">
           {/* Eyebrow */}
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
             EVERYTHING YOU NEED
@@ -292,7 +270,7 @@ export default function Landing() {
           </h2>
 
           {/* Subtitle */}
-          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-lg mx-auto mb-10 md:mb-12">
+          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-lg mx-auto mb-8 md:mb-10">
             Powerful tools, seamlessly connected — all in one place.
           </p>
 
@@ -344,144 +322,105 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ─── SECTION 3: KEY STATS ROW ─── */}
-        <section className="pt-4 pb-16 md:pb-20 px-6 max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <div className="text-3xl sm:text-4xl font-bold tracking-tight text-[#8B8DF8]">
-                100K+
-              </div>
-              <div className="text-xs sm:text-sm text-slate-400 mt-2">Jobs Saved</div>
-            </div>
-
-            <div>
-              <div className="text-3xl sm:text-4xl font-bold tracking-tight text-[#8B8DF8]">
-                50K+
-              </div>
-              <div className="text-xs sm:text-sm text-slate-400 mt-2">Applications Tracked</div>
-            </div>
-
-            <div>
-              <div className="text-3xl sm:text-4xl font-bold tracking-tight text-[#8B8DF8]">
-                10K+
-              </div>
-              <div className="text-xs sm:text-sm text-slate-400 mt-2">Users</div>
-            </div>
-
-            <div>
-              <div className="text-3xl sm:text-4xl font-bold tracking-tight text-[#8B8DF8]">
-                4.9/5
-              </div>
-              <div className="text-xs sm:text-sm text-slate-400 mt-2">User Satisfaction</div>
-            </div>
-          </div>
-        </section>
-
-        {/* ─── SECTION 4: TAKE CONTROL OF YOUR CAREER (BOTTOM CTA) ─── */}
-        <section className="relative pt-8 pb-20 text-center px-6 max-w-4xl mx-auto overflow-hidden">
-          {/* Subtle Ambient Cosmic Curved Waves */}
-          <div className="absolute inset-0 -z-10 pointer-events-none flex items-center justify-center opacity-35">
-            <svg
-              className="w-full h-full max-w-[900px] overflow-visible"
-              viewBox="0 0 900 300"
-              fill="none"
-            >
-              <path
-                d="M -100,220 C 200,80 700,280 1000,140"
-                stroke="#5054EA"
-                strokeWidth="1.2"
-                strokeOpacity="0.4"
-              />
-              <path
-                d="M -100,160 C 250,260 650,80 1000,200"
-                stroke="#8B8DF8"
-                strokeWidth="1"
-                strokeOpacity="0.3"
-              />
-            </svg>
-          </div>
-
+        {/* ─── SECTION: HOW IT WORKS ─── */}
+        <section id="how-it-works" className="pt-12 md:pt-16 pb-16 md:pb-20 px-6 max-w-6xl mx-auto text-center relative">
           {/* Eyebrow */}
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-[#8B8DF8] mb-3">
-            YOUR NEXT OPPORTUNITY AWAITS
+            HOW IT WORKS
           </p>
 
           {/* Headline */}
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white mb-4">
-            Take control of your career
+            Less chaos. <br className="sm:hidden" />
+            <span className="text-[#8B8DF8]">More progress.</span>
           </h2>
 
           {/* Subtitle */}
-          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-md mx-auto mb-8">
-            Join thousands of job seekers who are landing better opportunities with Talvyn.
+          <p className="text-slate-400 text-sm sm:text-base font-normal max-w-lg mx-auto mb-14">
+            Talvyn guides your job hunt from bookmark to offer in four intuitive steps.
           </p>
 
-          {/* CTA Button */}
-          <div className="flex justify-center">
-            <Link
-              to="/signup"
-              className="inline-flex items-center gap-2 bg-[#5054EA] hover:bg-[#4347D4] text-white text-sm md:text-base font-medium px-8 py-3 rounded-full shadow-[0_0_24px_rgba(80,84,234,0.45)] hover:shadow-[0_0_32px_rgba(80,84,234,0.65)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
-            >
-              <span>Get Started</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+          {/* 4 Steps Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+            {/* Step 1 */}
+            <div className="bg-[#0C0D1A] border border-white/[0.08] rounded-2xl p-6 relative group hover:border-[#8B8DF8]/40 transition-all duration-200">
+              <div className="text-3xl font-black text-[#8B8DF8]/40 group-hover:text-[#8B8DF8]/80 transition-colors mb-4">
+                01
+              </div>
+              <h3 className="text-base font-semibold text-white mb-2">Save with One Click</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Save jobs from LinkedIn, Indeed, company career pages, or any job board directly into your personal workspace.
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div className="bg-[#0C0D1A] border border-white/[0.08] rounded-2xl p-6 relative group hover:border-[#8B8DF8]/40 transition-all duration-200">
+              <div className="text-3xl font-black text-[#8B8DF8]/40 group-hover:text-[#8B8DF8]/80 transition-colors mb-4">
+                02
+              </div>
+              <h3 className="text-base font-semibold text-white mb-2">Readiness Scoring</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Analyze job requirements against your verified profile to calculate your real match score before applying.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="bg-[#0C0D1A] border border-white/[0.08] rounded-2xl p-6 relative group hover:border-[#8B8DF8]/40 transition-all duration-200">
+              <div className="text-3xl font-black text-[#8B8DF8]/40 group-hover:text-[#8B8DF8]/80 transition-colors mb-4">
+                03
+              </div>
+              <h3 className="text-base font-semibold text-white mb-2">1-Click Auto-Fill</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Autofill job applications in seconds without repetitive copy-pasting. Sensitive questions stay in your control.
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div className="bg-[#0C0D1A] border border-white/[0.08] rounded-2xl p-6 relative group hover:border-[#8B8DF8]/40 transition-all duration-200">
+              <div className="text-3xl font-black text-[#8B8DF8]/40 group-hover:text-[#8B8DF8]/80 transition-colors mb-4">
+                04
+              </div>
+              <h3 className="text-base font-semibold text-white mb-2">Track to the Offer</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Stay on top of deadlines, interview dates, follow-ups, and offers with an automated pipeline board.
+              </p>
+            </div>
           </div>
         </section>
+
       </main>
 
       {/* ─── FOOTER ─── */}
       <footer className="w-full border-t border-white/[0.08] bg-[#06070D]">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
-          {/* Top Row: Brand & Horizontal Nav */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8">
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#5054EA] to-[#3B3FB6]">
-                <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-                  <path d="M 7 10.5 C 7 9.12 8.12 8 9.5 8 L 14 8 L 12.5 12 L 7 12 Z" fill="white" />
-                  <path d="M 18 8 L 22.5 8 C 23.88 8 25 9.12 25 10.5 L 25 12 L 19.5 12 Z" fill="white" />
-                  <path d="M 13 11 L 16 6 L 19 11 L 18 24 C 18 25.1 17.1 26 16 26 C 14.9 26 14 25.1 14 24 Z" fill="white" />
-                </svg>
-              </div>
-              <span className="text-lg font-bold tracking-tight text-white">Talvyn</span>
-            </Link>
+        <div className="max-w-7xl mx-auto px-6 md:px-12 py-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 group focus:outline-none">
+            <img
+              src="/logo-talvyn.png"
+              alt="Talvyn"
+              className="w-7 h-7 object-contain drop-shadow-[0_0_12px_rgba(80,84,234,0.45)] transition-transform duration-200 group-hover:scale-105"
+            />
+            <span className="text-lg font-bold tracking-tight text-white group-hover:text-slate-100 transition-colors">
+              Talvyn
+            </span>
+          </Link>
 
-            {/* Nav links */}
-            <nav className="flex flex-wrap items-center justify-center gap-8 text-sm font-normal text-slate-400">
-              <a href="#features" className="hover:text-white transition-colors duration-150">
-                Features
-              </a>
-              <a href="#how-it-works" className="hover:text-white transition-colors duration-150">
-                How It Works
-              </a>
-              <a href="#testimonials" className="hover:text-white transition-colors duration-150">
-                Testimonials
-              </a>
-              <button
-                type="button"
-                onClick={() => setFaqModalOpen(true)}
-                className="hover:text-white transition-colors duration-150 focus:outline-none"
-              >
-                FAQ
-              </button>
-            </nav>
-          </div>
-
-          {/* Bottom Row: Copyright & Legal */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-white/[0.04] text-xs text-slate-500">
-            <div>© 2024 Talvyn. All rights reserved.</div>
-            <div className="flex items-center gap-6">
-              <Link to="/privacy" className="hover:text-slate-400 transition-colors">
-                Privacy
-              </Link>
-              <Link to="/terms" className="hover:text-slate-400 transition-colors">
-                Terms
-              </Link>
-              <a href="mailto:support@talvyn.com" className="hover:text-slate-400 transition-colors">
-                Contact
-              </a>
-            </div>
-          </div>
+          {/* Nav links */}
+          <nav className="flex flex-wrap items-center justify-center gap-8 text-sm font-normal text-slate-400">
+            <a href="#features" className="hover:text-white transition-colors duration-150">
+              Features
+            </a>
+            <a href="#how-it-works" className="hover:text-white transition-colors duration-150">
+              How It Works
+            </a>
+            <button
+              type="button"
+              onClick={() => setFaqModalOpen(true)}
+              className="hover:text-white transition-colors duration-150 focus:outline-none"
+            >
+              FAQ
+            </button>
+          </nav>
         </div>
       </footer>
 
