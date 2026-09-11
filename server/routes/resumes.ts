@@ -4,6 +4,7 @@ import multer from 'multer'
 import { prisma } from '../lib/prisma'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import { storageService } from '../services/storageService'
+import { resumeParserService } from '../services/resumeParserService'
 
 const router = Router()
 router.use(authenticate)
@@ -102,6 +103,122 @@ router.post('/upload', (req: AuthRequest, res: Response) => {
       res.status(500).json({ error: 'Failed to process resume file upload' })
     }
   })
+})
+
+// POST /api/resumes/upload-and-extract — Upload resume file and extract structured candidate profile
+router.post('/upload-and-extract', (req: AuthRequest, res: Response) => {
+  resumeUpload.single('file')(req, res, async (err) => {
+    if (err) {
+      res.status(400).json({ error: err.message || 'File upload failed' })
+      return
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: 'No resume file uploaded. Please select a PDF, DOC, or DOCX file.' })
+      return
+    }
+
+    try {
+      // 1. Text extraction from uploaded buffer
+      let rawText = ''
+      try {
+        rawText = await resumeParserService.extractTextFromBuffer(
+          req.file.buffer,
+          req.file.mimetype,
+          req.file.originalname
+        )
+      } catch (parseError: any) {
+        res.status(422).json({
+          error: parseError?.message || 'Could not parse text from resume. Please verify the file is not corrupted.',
+          details: 'PARSING_ERROR',
+        })
+        return
+      }
+
+      // 2. Fetch existing user context to enrich fallback matching
+      const [userRecord, profileRecord] = await Promise.all([
+        prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } }),
+        prisma.userProfile.findUnique({ where: { userId: req.userId }, select: { givenName: true } }),
+      ])
+
+      // 3. Structured candidate profile extraction
+      const parsedData = resumeParserService.extractProfileFromText(rawText, {
+        email: userRecord?.email,
+        givenName: profileRecord?.givenName || undefined,
+      })
+
+      // 4. Store physical file via storage service
+      const name = (req.body.name || req.file.originalname.replace(/\.[^/.]+$/, '')).trim()
+      const isDefault = req.body.isDefault === 'true' || req.body.isDefault === true
+      const existingCount = await prisma.resume.count({ where: { userId: req.userId } })
+      const shouldBeDefault = isDefault || existingCount === 0
+
+      if (shouldBeDefault) {
+        await prisma.resume.updateMany({
+          where: { userId: req.userId },
+          data: { isDefault: false },
+        })
+      }
+
+      const stored = await storageService.uploadFile(req.file, 'resumes')
+
+      const resume = await prisma.resume.create({
+        data: {
+          userId: req.userId!,
+          name,
+          description: req.body.description ? req.body.description.trim() : 'Uploaded during onboarding',
+          isDefault: shouldBeDefault,
+          fileUrl: `/api/resumes/${stored.storagePath}`,
+          fileName: stored.fileName,
+          fileSize: stored.fileSize,
+          mimeType: stored.mimeType,
+          storagePath: stored.storagePath,
+        },
+      })
+
+      res.status(201).json({
+        success: true,
+        resume,
+        extracted: parsedData.extracted,
+        extractedFields: parsedData.extractedFields,
+        rawTextLength: rawText.length,
+      })
+    } catch (processErr: any) {
+      console.error('[Talvyn] Resume upload-and-extract error:', processErr)
+      res.status(500).json({ error: 'Failed to process and analyze resume file' })
+    }
+  })
+})
+
+// POST /api/resumes/extract-text — Direct text extraction from raw text payload
+router.post('/extract-text', async (req: AuthRequest, res: Response) => {
+  try {
+    const { text } = req.body
+    if (!text || typeof text !== 'string' || text.trim().length < 15) {
+      res.status(400).json({ error: 'Resume text is required and must be at least 15 characters' })
+      return
+    }
+
+    const [userRecord, profileRecord] = await Promise.all([
+      prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } }),
+      prisma.userProfile.findUnique({ where: { userId: req.userId }, select: { givenName: true } }),
+    ])
+
+    const parsedData = resumeParserService.extractProfileFromText(text, {
+      email: userRecord?.email,
+      givenName: profileRecord?.givenName || undefined,
+    })
+
+    res.json({
+      success: true,
+      extracted: parsedData.extracted,
+      extractedFields: parsedData.extractedFields,
+      rawTextLength: text.length,
+    })
+  } catch (err: any) {
+    console.error('[Talvyn] Resume extract-text error:', err)
+    res.status(500).json({ error: 'Failed to extract information from resume text' })
+  }
 })
 
 // POST /api/resumes — Metadata-only creation (backwards compatibility)

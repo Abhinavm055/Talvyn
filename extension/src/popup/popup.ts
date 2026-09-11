@@ -14,13 +14,19 @@ import { AuthUser, Job, JobStatus } from '../types'
 
 type PopupState = 'loading' | 'disconnected' | 'connected' | 'expired' | 'error'
 type ThemeMode = 'dark' | 'light'
+export type PopupMode = 'analyze' | 'manual-save'
 
 let currentState: PopupState = 'loading'
 let currentUser: AuthUser | null = null
 let isOfflineMode = false
 let currentTheme: ThemeMode = 'dark'
 let activeTabUrl = ''
-let manualFormExpanded = false
+export let currentMode: PopupMode = 'analyze'
+
+export function setPopupMode(mode: PopupMode): void {
+  currentMode = mode
+  renderModeContent()
+}
 
 const app = document.getElementById('app')!
 
@@ -62,37 +68,49 @@ function applyTheme(theme: ThemeMode): void {
 
 function toggleTheme(): void {
   const nextTheme: ThemeMode = currentTheme === 'dark' ? 'light' : 'dark'
+  applyTheme(nextTheme)
   const toggleBtn = document.getElementById('celestial-theme-toggle')
   if (toggleBtn) {
-    toggleBtn.classList.add('touching')
-    setTimeout(() => {
-      toggleBtn.classList.remove('touching')
-    }, 280)
+    const isLight = nextTheme === 'light'
+    toggleBtn.innerHTML = isLight
+      ? `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #F59E0B;">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+      `
+      : `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #818CF8;">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+      `
   }
-  applyTheme(nextTheme)
 }
 
 function renderThemeToggleHtml(): string {
+  const isLight = currentTheme === 'light'
   return `
     <button
       type="button"
       id="celestial-theme-toggle"
-      class="celestial-toggle"
+      class="round-theme-toggle"
       title="Toggle Light / Dark Mode"
       aria-label="Toggle Sun/Moon Theme"
     >
-      <span class="celestial-icon sun-icon" title="Light Mode">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      ${
+        isLight
+          ? `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #F59E0B;">
           <circle cx="12" cy="12" r="4"></circle>
           <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
         </svg>
-      </span>
-      <div class="celestial-orb"></div>
-      <span class="celestial-icon moon-icon" title="Dark Mode">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      `
+          : `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #818CF8;">
           <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
         </svg>
-      </span>
+      `
+      }
     </button>
   `
 }
@@ -246,6 +264,7 @@ export async function triggerActiveTabIntelligencePanel(): Promise<void> {
 // ─── State Machine ────────────────────────────────────────────────────────────
 
 async function init() {
+  console.log('[Talvyn] POPUP_AUTH_CHECK_STARTED')
   await initTheme()
   renderLoading()
 
@@ -268,11 +287,14 @@ async function init() {
     }
 
     if (response.state === 'connected' && response.user) {
+      console.log('[Talvyn] SESSION_FOUND')
+      console.log('[Talvyn] SESSION_VALID')
       currentState = 'connected'
       currentUser = response.user
       isOfflineMode = Boolean(response.isOffline)
       renderConnected(response.user, { isOffline: isOfflineMode })
     } else if (response.state === 'expired') {
+      console.log('[Talvyn] SESSION_EXPIRED')
       currentState = 'expired'
       renderExpired()
     } else {
@@ -301,7 +323,7 @@ function renderLoading() {
         style="width: 46px; height: 46px; border-radius: 12px; filter: drop-shadow(0 0 16px rgba(80,84,234,0.45)); margin-bottom: 16px; object-fit: contain;"
       />
       <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); margin-bottom: 4px;">Talvyn</div>
-      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 22px;">Connecting to career pipeline…</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 22px;">Connecting...</div>
       <div style="width: 28px; height: 28px; border: 2.5px solid var(--border-color); border-top-color: #5054EA; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
     </div>
   `
@@ -582,341 +604,94 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
   const logoUrl = getLogoUrl()
   const fallbackUrl = getFallbackIconUrl()
 
-  const displayName =
-    user.profile?.preferredName ||
-    user.profile?.givenName ||
-    user.profile?.legalFullName ||
-    user.email.split('@')[0]
-
-  const avatarUrl = user.avatarUrl || (user.profile as any)?.avatarUrl
-
   app.innerHTML = `
     <div style="padding: 16px; min-height: 480px; display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-main); color: var(--text-primary);">
       <div>
-        <!-- Top Bar: Logo, Status Badge, and Sun/Moon Toggle -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
+        <!-- Top Bar: Logo, Tagline, Connection Status, and Round Sun/Moon Toggle -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 9px;">
             <img
               src="${logoUrl}"
               alt="Talvyn"
               onerror="this.onerror=null;this.src='${fallbackUrl}';"
-              style="width: 28px; height: 28px; border-radius: 8px; filter: drop-shadow(0 0 10px rgba(80,84,234,0.4)); flex-shrink: 0; object-fit: contain;"
+              style="width: 32px; height: 32px; border-radius: 9px; object-fit: contain; flex-shrink: 0;"
             />
             <div>
-              <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); letter-spacing: -0.2px;">Talvyn</div>
-              <div style="font-size: 10px; color: var(--text-muted);">From Potential to Offer.</div>
+              <div style="font-weight: 700; font-size: 14.5px; color: var(--text-primary); letter-spacing: -0.2px; line-height: 1.2;">Talvyn</div>
+              <div style="font-size: 10.5px; color: var(--text-muted); line-height: 1.2;">From Potential to Offer.</div>
             </div>
           </div>
 
           <div style="display: flex; align-items: center; gap: 8px;">
             <div style="
               display: inline-flex; align-items: center; gap: 5px;
-              padding: 2.5px 8px; border-radius: 999px;
+              padding: 3px 9px; border-radius: 999px;
               background: ${options.isOffline ? 'var(--badge-offline-bg)' : 'var(--badge-connected-bg)'};
               color: ${options.isOffline ? 'var(--badge-offline-text)' : 'var(--badge-connected-text)'};
-              font-size: 10px; font-weight: 700; border: 1px solid var(--border-color);
+              font-size: 10.5px; font-weight: 600;
+              border: 1px solid var(--border-color);
             ">
-              <span style="width: 5.5px; height: 5.5px; border-radius: 50%; background: ${options.isOffline ? 'var(--badge-offline-dot)' : 'var(--badge-connected-dot)'}; display: inline-block;"></span>
-              ${options.isOffline ? 'Offline' : 'Connected'}
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${options.isOffline ? 'var(--badge-offline-dot)' : 'var(--badge-connected-dot)'}; display: inline-block;"></span>
+              <span>${options.isOffline ? 'Offline' : 'Connected'}</span>
             </div>
             ${renderThemeToggleHtml()}
           </div>
         </div>
 
-        <!-- User Identity Card -->
-        <div style="
-          display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-          background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 11px; margin-bottom: 10px;
-        ">
-          ${
-            avatarUrl
-              ? `<img src="${avatarUrl}" alt="${displayName}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--border-color); flex-shrink: 0;" />`
-              : `<div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #5054EA, #7C3AED); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0; box-shadow: 0 0 10px rgba(80,84,234,0.35);">${(displayName[0] || 'U').toUpperCase()}</div>`
-          }
-          <div style="min-width: 0; flex: 1;">
-            <div style="font-weight: 700; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
-            <div style="font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${user.email}</div>
-          </div>
-        </div>
-
-        <!-- Primary Action Button: Analyze This Page -->
-        <button type="button" id="btn-analyze-page" style="
-          width: 100%; margin-bottom: 10px; padding: 10px 14px; background: #5054EA;
-          color: white; border: none; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer;
-          display: flex; align-items: center; justify-content: center; gap: 7px;
-          box-shadow: 0 0 16px rgba(80,84,234,0.4); transition: all 0.2s ease;
-        ">
-          <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          <span>Analyze This Page</span>
-        </button>
-
-        <!-- 4 Core Navigation Route Buttons: Dashboard, Profile, Tracker, Settings -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px;">
-          <button type="button" id="btn-open-dashboard" style="
-            padding: 8px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);
-            border-radius: 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s;
-          ">
-            <span>Dashboard</span>
-            <svg style="width: 11px; height: 11px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-          </button>
-
-          <button type="button" id="btn-open-profile" style="
-            padding: 8px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);
-            border-radius: 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s;
-          ">
-            <span>Profile</span>
-            <svg style="width: 11px; height: 11px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-          </button>
-
-          <button type="button" id="btn-open-tracker" style="
-            padding: 8px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);
-            border-radius: 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s;
-          ">
-            <span>Tracker</span>
-            <svg style="width: 11px; height: 11px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-          </button>
-
-          <button type="button" id="btn-open-settings" style="
-            padding: 8px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);
-            border-radius: 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s;
-          ">
-            <span>Settings</span>
-            <svg style="width: 11px; height: 11px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-          </button>
-        </div>
-
-        <!-- ─── NEW: Manual Job Save Section ─── -->
-        <div style="
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 11px;
-          margin-bottom: 12px;
-          overflow: hidden;
-          transition: border-color 0.2s ease;
-        ">
-          <!-- Accordion Toggle Header -->
+        <!-- Top Two Action Buttons: Analyze This Page & Save Job Manually (Mutually Exclusive Modes) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
           <button
             type="button"
-            id="toggle-manual-save-btn"
-            style="
-              width: 100%;
-              padding: 9px 12px;
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              background: none;
-              border: none;
-              color: var(--text-primary);
-              cursor: pointer;
-              text-align: left;
-              font-size: 11.5px;
-              font-weight: 700;
-            "
+            id="btn-analyze-page"
+            class="popup-mode-btn ${currentMode === 'analyze' ? 'active' : 'inactive'}"
           >
-            <div style="display: flex; align-items: center; gap: 7px;">
-              <div style="
-                width: 19px;
-                height: 19px;
-                border-radius: 6px;
-                background: rgba(80, 84, 234, 0.18);
-                color: #8B8DF8;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 13px;
-                font-weight: bold;
-              ">+</div>
-              <span>Save Job Manually</span>
-            </div>
-            <svg id="manual-chevron" style="width: 13px; height: 13px; color: var(--text-muted); transition: transform 0.2s ease; transform: ${manualFormExpanded ? 'rotate(180deg)' : 'rotate(0deg)'};" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            <svg style="width: 14px; height: 14px; flex-shrink: 0;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
+            <span>Analyze This Page</span>
           </button>
 
-          <!-- Form Area -->
-          <div id="manual-save-form" style="display: ${manualFormExpanded ? 'block' : 'none'}; padding: 0 12px 12px 12px; border-top: 1px solid var(--border-color);">
-            <form id="form-manual-job" style="display: flex; flex-direction: column; gap: 7px; margin-top: 9px;">
-              <div>
-                <label style="display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px;">
-                  Job Title *
-                </label>
-                <input
-                  type="text"
-                  id="manual-job-title"
-                  required
-                  placeholder="e.g. Frontend Engineer"
-                  style="
-                    width: 100%;
-                    height: 31px;
-                    padding: 0 8px;
-                    font-size: 11.5px;
-                    border-radius: 7px;
-                    background: var(--bg-input);
-                    color: var(--text-primary);
-                    border: 1px solid var(--border-color);
-                    outline: none;
-                  "
-                />
-              </div>
-
-              <div>
-                <label style="display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px;">
-                  Company *
-                </label>
-                <input
-                  type="text"
-                  id="manual-job-company"
-                  required
-                  placeholder="e.g. Google, Stripe"
-                  style="
-                    width: 100%;
-                    height: 31px;
-                    padding: 0 8px;
-                    font-size: 11.5px;
-                    border-radius: 7px;
-                    background: var(--bg-input);
-                    color: var(--text-primary);
-                    border: 1px solid var(--border-color);
-                    outline: none;
-                  "
-                />
-              </div>
-
-              <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 6px;">
-                <div>
-                  <label style="display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px;">
-                    Location
-                  </label>
-                  <input
-                    type="text"
-                    id="manual-job-location"
-                    placeholder="Remote / City"
-                    style="
-                      width: 100%;
-                      height: 31px;
-                      padding: 0 8px;
-                      font-size: 11.5px;
-                      border-radius: 7px;
-                      background: var(--bg-input);
-                      color: var(--text-primary);
-                      border: 1px solid var(--border-color);
-                      outline: none;
-                    "
-                  />
-                </div>
-
-                <div>
-                  <label style="display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px;">
-                    Status
-                  </label>
-                  <select
-                    id="manual-job-status"
-                    style="
-                      width: 100%;
-                      height: 31px;
-                      padding: 0 6px;
-                      font-size: 11px;
-                      border-radius: 7px;
-                      background: var(--bg-input);
-                      color: var(--text-primary);
-                      border: 1px solid var(--border-color);
-                      outline: none;
-                    "
-                  >
-                    <option value="SAVED" selected>Saved</option>
-                    <option value="APPLIED">Applied</option>
-                    <option value="INTERVIEW">Interview</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style="display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px;">
-                  Job URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  id="manual-job-url"
-                  placeholder="https://..."
-                  value="${activeTabUrl}"
-                  style="
-                    width: 100%;
-                    height: 31px;
-                    padding: 0 8px;
-                    font-size: 11.5px;
-                    border-radius: 7px;
-                    background: var(--bg-input);
-                    color: var(--text-primary);
-                    border: 1px solid var(--border-color);
-                    outline: none;
-                  "
-                />
-              </div>
-
-              <!-- Feedback message -->
-              <div id="manual-save-feedback" style="display: none; font-size: 10.5px; padding: 6px 8px; border-radius: 6px; margin-top: 2px;"></div>
-
-              <button
-                type="submit"
-                id="btn-submit-manual-job"
-                style="
-                  margin-top: 4px;
-                  height: 33px;
-                  background: #5054EA;
-                  color: white;
-                  border: none;
-                  border-radius: 8px;
-                  font-size: 11.5px;
-                  font-weight: 700;
-                  cursor: pointer;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  gap: 6px;
-                  box-shadow: 0 0 12px rgba(80,84,234,0.35);
-                  transition: all 0.15s ease;
-                "
-              >
-                <span>Save to Pipeline</span>
-              </button>
-            </form>
-          </div>
+          <button
+            type="button"
+            id="btn-manual-save-mode"
+            data-testid="toggle-manual-save-btn"
+            class="popup-mode-btn ${currentMode === 'manual-save' ? 'active' : 'inactive'}"
+          >
+            <span style="font-size: 15px; font-weight: 700; line-height: 1;">+</span>
+            <span>Save Job Manually</span>
+          </button>
         </div>
 
-        <!-- Recent Saved Jobs Section -->
-        <div>
-          <div style="font-size: 10.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">
-            Recent Saved Jobs
-          </div>
-          <div id="recent-jobs" style="min-height: 50px;">
-            <div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px 0;">Loading jobs...</div>
-          </div>
-        </div>
+        <!-- Mode Content Container: Explicitly renders ONLY Analyze OR Manual Save -->
+        <div id="mode-content-container"></div>
       </div>
 
       <!-- Footer / Disconnect Action -->
       <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
         <button type="button" id="disconnect-btn" style="
-          background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 0;
+          background: none; border: none; color: var(--text-muted); font-size: 11.5px; cursor: pointer; padding: 0;
           font-weight: 500; transition: color 0.15s;
         ">
           Disconnect Account
         </button>
 
-        <span style="font-size: 10px; color: var(--text-muted);">Talvyn v1.1</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Talvyn v1.1</span>
       </div>
     </div>
   `
 
   setupThemeToggleListener()
 
-  // Analyze page button
+  // Top Action Buttons Mode Switch Listeners
   const analyzeBtn = document.getElementById('btn-analyze-page') as HTMLButtonElement | null
   analyzeBtn?.addEventListener('click', async () => {
+    if (currentMode !== 'analyze') {
+      currentMode = 'analyze'
+      renderModeContent()
+      return
+    }
+
+    // Already in analyze mode: trigger page analysis
     const originalContent = analyzeBtn.innerHTML
     analyzeBtn.disabled = true
     analyzeBtn.style.opacity = '0.85'
@@ -941,7 +716,123 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
     }
   })
 
-  // Navigation routes
+  const manualBtn = document.getElementById('btn-manual-save-mode') as HTMLButtonElement | null
+  manualBtn?.addEventListener('click', () => {
+    if (currentMode !== 'manual-save') {
+      currentMode = 'manual-save'
+      renderModeContent()
+    }
+  })
+
+  // Disconnect button
+  document.getElementById('disconnect-btn')?.addEventListener('click', async () => {
+    if (confirm('Disconnect extension from your Talvyn account?')) {
+      await triggerDisconnectAccount()
+    }
+  })
+
+  // Render initial mode content
+  renderModeContent()
+}
+
+function renderModeContent(): void {
+  const container = document.getElementById('mode-content-container')
+  if (!container) return
+
+  const analyzeBtn = document.getElementById('btn-analyze-page')
+  const manualBtn = document.getElementById('btn-manual-save-mode')
+
+  if (analyzeBtn) {
+    analyzeBtn.className = `popup-mode-btn ${currentMode === 'analyze' ? 'active' : 'inactive'}`
+  }
+  if (manualBtn) {
+    manualBtn.className = `popup-mode-btn ${currentMode === 'manual-save' ? 'active' : 'inactive'}`
+  }
+
+  if (currentMode === 'analyze') {
+    container.innerHTML = getAnalyzeModeHtml()
+    attachAnalyzeModeListeners()
+    loadRecentJobs()
+  } else {
+    container.innerHTML = getManualSaveModeHtml()
+    attachManualSaveModeListeners()
+  }
+}
+
+function getAnalyzeModeHtml(): string {
+  return `
+    <div id="analyze-mode-view">
+      <!-- 4 Core Navigation Icon Buttons: Dashboard, Profile, Tracker, Settings -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;">
+        <button type="button" id="btn-open-dashboard" class="popup-nav-btn" style="
+          padding: 10px 4px; background: var(--bg-card); color: var(--text-primary);
+          border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+          transition: all 0.15s ease;
+        ">
+          <svg style="width: 16px; height: 16px; color: var(--text-secondary);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          </svg>
+          <span style="font-size: 11px; font-weight: 600;">Dashboard</span>
+        </button>
+
+        <button type="button" id="btn-open-profile" class="popup-nav-btn" style="
+          padding: 10px 4px; background: var(--bg-card); color: var(--text-primary);
+          border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+          transition: all 0.15s ease;
+        ">
+          <svg style="width: 16px; height: 16px; color: var(--text-secondary);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span style="font-size: 11px; font-weight: 600;">Profile</span>
+        </button>
+
+        <button type="button" id="btn-open-tracker" class="popup-nav-btn" style="
+          padding: 10px 4px; background: var(--bg-card); color: var(--text-primary);
+          border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+          transition: all 0.15s ease;
+        ">
+          <svg style="width: 16px; height: 16px; color: var(--text-secondary);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"></path>
+          </svg>
+          <span style="font-size: 11px; font-weight: 600;">Tracker</span>
+        </button>
+
+        <button type="button" id="btn-open-settings" class="popup-nav-btn" style="
+          padding: 10px 4px; background: var(--bg-card); color: var(--text-primary);
+          border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+          transition: all 0.15s ease;
+        ">
+          <svg style="width: 16px; height: 16px; color: var(--text-secondary);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span style="font-size: 11px; font-weight: 600;">Settings</span>
+        </button>
+      </div>
+
+      <!-- Recent Saved Jobs Section -->
+      <div>
+        <div style="font-size: 10.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">
+          RECENT SAVED JOBS
+        </div>
+        <div id="recent-jobs" style="min-height: 50px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 12px 0;">Loading jobs...</div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function attachAnalyzeModeListeners(): void {
   document.getElementById('btn-open-dashboard')?.addEventListener('click', () => {
     openDashboardRoute('dashboard')
   })
@@ -954,54 +845,206 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
   document.getElementById('btn-open-settings')?.addEventListener('click', () => {
     openDashboardRoute('settings')
   })
+}
 
-  // Manual save accordion toggle
-  const toggleBtn = document.getElementById('toggle-manual-save-btn')
-  const formArea = document.getElementById('manual-save-form')
-  const chevron = document.getElementById('manual-chevron')
+function getManualSaveModeHtml(): string {
+  const initialUrl = activeTabUrl && activeTabUrl.startsWith('http') ? activeTabUrl : ''
 
-  toggleBtn?.addEventListener('click', () => {
-    manualFormExpanded = !manualFormExpanded
-    if (formArea) {
-      formArea.style.display = manualFormExpanded ? 'block' : 'none'
-    }
-    if (chevron) {
-      chevron.style.transform = manualFormExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
-    }
-  })
+  return `
+    <div id="manual-save-mode-view">
+      <form id="form-manual-job" style="display: flex; flex-direction: column; gap: 9px;">
+        <!-- Row 1: Job Title * & Company Name * -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label class="manual-label" for="manual-job-title">Job Title *</label>
+            <input
+              type="text"
+              id="manual-job-title"
+              name="title"
+              required
+              class="manual-input"
+              placeholder="e.g. Software Engineer"
+            />
+          </div>
+          <div>
+            <label class="manual-label" for="manual-job-company">Company Name *</label>
+            <input
+              type="text"
+              id="manual-job-company"
+              name="company"
+              required
+              class="manual-input"
+              placeholder="e.g. Acme Corp"
+            />
+          </div>
+        </div>
 
-  // Manual save form submission
-  const manualForm = document.getElementById('form-manual-job') as HTMLFormElement | null
+        <!-- Row 2: Location & Job Type -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label class="manual-label" for="manual-job-location">Location</label>
+            <input
+              type="text"
+              id="manual-job-location"
+              name="location"
+              class="manual-input"
+              placeholder="e.g. Bengaluru, Bangalore, Remote, or Hybrid"
+            />
+          </div>
+          <div>
+            <label class="manual-label" for="manual-job-type">Job Type</label>
+            <select id="manual-job-type" name="jobType" class="manual-select">
+              <option value="" selected>Select type...</option>
+              <option value="FULL_TIME">Full-time</option>
+              <option value="PART_TIME">Part-time</option>
+              <option value="CONTRACT">Contract</option>
+              <option value="INTERNSHIP">Internship</option>
+              <option value="FREELANCE">Freelance</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 3: Application Status & Salary / Compensation -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label class="manual-label" for="manual-job-status">Application Status</label>
+            <select id="manual-job-status" name="status" class="manual-select">
+              <option value="SAVED" selected>Saved</option>
+              <option value="APPLIED">Applied</option>
+              <option value="INTERVIEW">Interview</option>
+              <option value="OFFER">Offer</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
+          <div>
+            <label class="manual-label" for="manual-job-salary">Salary / Compensation</label>
+            <input
+              type="text"
+              id="manual-job-salary"
+              name="salary"
+              class="manual-input"
+              placeholder="e.g. $120,000 - $140,000 or 15-20 LPA"
+            />
+          </div>
+        </div>
+
+        <!-- Row 4: Job Posting URL & Source Website -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label class="manual-label" for="manual-job-url">Job Posting URL</label>
+            <input
+              type="url"
+              id="manual-job-url"
+              name="jobUrl"
+              class="manual-input"
+              placeholder="https://company.com/jobs/..."
+              value="${initialUrl}"
+            />
+          </div>
+          <div>
+            <label class="manual-label" for="manual-job-source">Source Website</label>
+            <input
+              type="text"
+              id="manual-job-source"
+              name="sourceWebsite"
+              class="manual-input"
+              placeholder="e.g. LinkedIn, Indeed, Company Site"
+            />
+          </div>
+        </div>
+
+        <!-- Row 5: Date Applied -->
+        <div>
+          <label class="manual-label" for="manual-job-date-applied">Date Applied</label>
+          <input
+            type="date"
+            id="manual-job-date-applied"
+            name="dateApplied"
+            class="manual-input"
+            placeholder="dd-mm-yyyy"
+          />
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2.5px;">
+            Leave blank if you haven't applied yet
+          </div>
+        </div>
+
+        <!-- Row 6: Job Description -->
+        <div>
+          <label class="manual-label" for="manual-job-description">Job Description</label>
+          <textarea
+            id="manual-job-description"
+            name="description"
+            rows="3"
+            class="manual-textarea"
+            placeholder="Paste or review the job description, responsibilities, and requirements here..."
+            style="resize: vertical; min-height: 54px;"
+          ></textarea>
+        </div>
+
+        <!-- Validation / Submission Feedback -->
+        <div id="manual-save-feedback" style="display: none; font-size: 11px; padding: 7px 10px; border-radius: 7px; line-height: 1.4;"></div>
+
+        <!-- Final Action Button: Exactly 'Save Job' -->
+        <button
+          type="submit"
+          id="btn-submit-manual-job"
+          style="
+            margin-top: 2px; height: 36px; width: 100%; background: #5054EA; color: white;
+            border: none; border-radius: 9px; font-size: 12.5px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px;
+            box-shadow: 0 2px 10px rgba(80,84,234,0.35); transition: all 0.15s ease;
+          "
+        >
+          <span>Save Job</span>
+        </button>
+      </form>
+    </div>
+  `
+}
+
+function attachManualSaveModeListeners(): void {
+  const form = document.getElementById('form-manual-job') as HTMLFormElement | null
   const submitBtn = document.getElementById('btn-submit-manual-job') as HTMLButtonElement | null
   const feedback = document.getElementById('manual-save-feedback')
 
-  manualForm?.addEventListener('submit', async (e) => {
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault()
 
     const titleInput = document.getElementById('manual-job-title') as HTMLInputElement | null
     const companyInput = document.getElementById('manual-job-company') as HTMLInputElement | null
     const locationInput = document.getElementById('manual-job-location') as HTMLInputElement | null
+    const typeSelect = document.getElementById('manual-job-type') as HTMLSelectElement | null
     const statusSelect = document.getElementById('manual-job-status') as HTMLSelectElement | null
+    const salaryInput = document.getElementById('manual-job-salary') as HTMLInputElement | null
     const urlInput = document.getElementById('manual-job-url') as HTMLInputElement | null
+    const sourceInput = document.getElementById('manual-job-source') as HTMLInputElement | null
+    const dateInput = document.getElementById('manual-job-date-applied') as HTMLInputElement | null
+    const descTextarea = document.getElementById('manual-job-description') as HTMLTextAreaElement | null
 
     const title = titleInput?.value?.trim() || ''
     const company = companyInput?.value?.trim() || ''
     const location = locationInput?.value?.trim() || ''
+    const jobType = typeSelect?.value || undefined
     const status = (statusSelect?.value as JobStatus) || 'SAVED'
+    const salary = salaryInput?.value?.trim() || ''
     const jobUrl = urlInput?.value?.trim() || ''
+    let sourceWebsite = sourceInput?.value?.trim() || ''
+    const dateApplied = dateInput?.value?.trim() || ''
+    const description = descTextarea?.value?.trim() || ''
 
     if (!title || !company) {
       if (feedback) {
         feedback.style.display = 'block'
-        feedback.style.background = 'rgba(239, 68, 68, 0.15)'
+        feedback.style.background = 'rgba(239, 68, 68, 0.12)'
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.25)'
         feedback.style.color = '#F87171'
-        feedback.innerText = 'Title and Company are required.'
+        feedback.innerText = 'Job Title and Company Name are required.'
       }
       return
     }
 
-    let sourceWebsite = 'manual'
-    if (jobUrl) {
+    if (!sourceWebsite && jobUrl) {
       try {
         sourceWebsite = new URL(jobUrl).hostname.replace(/^www\./, '')
       } catch {
@@ -1011,6 +1054,7 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
 
     if (submitBtn) {
       submitBtn.disabled = true
+      submitBtn.style.opacity = '0.85'
       submitBtn.innerHTML = `
         <div style="width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite;"></div>
         <span>Saving...</span>
@@ -1022,52 +1066,44 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
         title,
         company,
         location: location || undefined,
+        jobType: (jobType as JobType) || undefined,
         status,
+        salary: salary || undefined,
         jobUrl: jobUrl || undefined,
-        sourceWebsite,
+        sourceWebsite: sourceWebsite || undefined,
+        dateApplied: dateApplied ? new Date(dateApplied).toISOString() : null,
+        description: description || undefined,
       })
 
       if (feedback) {
         feedback.style.display = 'block'
-        feedback.style.background = 'rgba(16, 185, 129, 0.15)'
+        feedback.style.background = 'rgba(16, 185, 129, 0.12)'
+        feedback.style.border = '1px solid rgba(16, 185, 129, 0.25)'
         feedback.style.color = '#34D399'
-        feedback.innerText = '✓ Job saved to pipeline!'
+        feedback.innerText = '✓ Job saved successfully!'
       }
 
-      if (titleInput) titleInput.value = ''
-      if (companyInput) companyInput.value = ''
-      if (locationInput) locationInput.value = ''
-
-      // Refresh recent jobs list immediately
-      loadRecentJobs()
+      form.reset()
 
       setTimeout(() => {
         if (feedback) feedback.style.display = 'none'
-      }, 3500)
+      }, 4000)
     } catch (err: any) {
       if (feedback) {
         feedback.style.display = 'block'
-        feedback.style.background = 'rgba(239, 68, 68, 0.15)'
+        feedback.style.background = 'rgba(239, 68, 68, 0.12)'
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.25)'
         feedback.style.color = '#F87171'
         feedback.innerText = err?.message || 'Failed to save job. Try again.'
       }
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false
-        submitBtn.innerHTML = '<span>Save to Pipeline</span>'
+        submitBtn.style.opacity = '1'
+        submitBtn.innerHTML = '<span>Save Job</span>'
       }
     }
   })
-
-  // Disconnect button
-  document.getElementById('disconnect-btn')?.addEventListener('click', async () => {
-    if (confirm('Disconnect extension from your Talvyn account?')) {
-      await triggerDisconnectAccount()
-    }
-  })
-
-  // Load recent jobs
-  loadRecentJobs()
 }
 
 async function loadRecentJobs() {
@@ -1092,30 +1128,43 @@ async function loadRecentJobs() {
         (job: Job) => `
         <div style="
           display: flex; align-items: center; justify-content: space-between;
-          padding: 7px 10px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 4px;
-          transition: background 0.15s ease;
+          padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 6px;
+          transition: border-color 0.15s ease;
         ">
-          <div style="min-width: 0; flex: 1; padding-right: 6px;">
-            <div style="font-weight: 600; font-size: 11.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <div style="min-width: 0; flex: 1; padding-right: 8px;">
+            <div style="font-weight: 700; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
               ${job.title}
             </div>
-            <div style="font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <div style="font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">
               ${job.company}
             </div>
           </div>
-          <span style="
-            font-size: 9.5px; padding: 2px 7px; border-radius: 999px; font-weight: 600; text-transform: capitalize;
-            background: ${job.status === 'APPLIED' ? 'rgba(80,84,234,0.18)' : 'var(--chip-bg, rgba(255,255,255,0.05))'};
-            color: ${job.status === 'APPLIED' ? '#8B8DF8' : 'var(--text-secondary)'};
-            border: 1px solid var(--border-color);
-            flex-shrink: 0;
-          ">
-            ${job.status.toLowerCase()}
-          </span>
+          <button type="button" class="recent-job-pill" style="
+            display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+            border-radius: 999px; font-size: 11px; font-weight: 600;
+            background: var(--bg-card-subtle); color: var(--text-secondary);
+            border: 1px solid var(--border-color); cursor: pointer; flex-shrink: 0;
+            transition: all 0.15s ease;
+          " data-url="${job.jobUrl || ''}">
+            <span>${job.status === 'APPLIED' ? 'Applied' : 'Saved'}</span>
+            <span style="font-size: 13px; line-height: 1; color: var(--text-muted);">&rsaquo;</span>
+          </button>
         </div>
       `
       )
       .join('')
+
+    container.querySelectorAll('.recent-job-pill').forEach((pill) => {
+      pill.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const url = (pill as HTMLElement).getAttribute('data-url')
+        if (url && url.startsWith('http')) {
+          window.open(url, '_blank')
+        } else {
+          openDashboardRoute('tracker')
+        }
+      })
+    })
   } catch {
     container.innerHTML = `
       <div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px 0;">

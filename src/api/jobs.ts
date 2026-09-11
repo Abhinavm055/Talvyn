@@ -21,6 +21,30 @@ export interface CreateJobPayload {
   dateApplied?: string | null
 }
 
+export interface ExtractedJobData {
+  title: string | null
+  company: string | null
+  location: string | null
+  jobType: JobType | null
+  salary: string | null
+  experience: string | null
+  skills: string[]
+  responsibilities: string[]
+  requirements: string[]
+  qualifications: string[]
+  education: string | null
+  benefits: string[]
+  jobUrl: string | null
+  sourceWebsite: string | null
+  description: string
+}
+
+export interface JDExtractResponse {
+  success: boolean
+  extractedJob: ExtractedJobData
+  extractedFields: string[]
+}
+
 export const jobsApi = {
   list: (params?: { status?: string; search?: string; page?: number; limit?: number }) =>
     apiClient.get<JobsResponse>('/jobs', { params }).then((r) => r.data),
@@ -45,5 +69,8 @@ export const jobsApi = {
 
   addTimelineEvent: (id: string, stage: string, note?: string) =>
     apiClient.post<{ success: boolean; timeline: import('../types').TimelineEvent[] }>(`/jobs/${id}/timeline`, { stage, note }).then((r) => r.data),
+
+  extractJD: (text: string, url?: string) =>
+    apiClient.post<JDExtractResponse>('/jobs/extract-jd', { text, url }).then((r) => r.data),
 }
 

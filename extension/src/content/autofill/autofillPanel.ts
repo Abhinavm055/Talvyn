@@ -1,5 +1,6 @@
 import { FormAnalysisSummary, MatchedFormField, Resume } from '../../types'
 import { CONFIG } from '../../utils/config'
+import { getTalvynElement, updatePanelState } from '../panel'
 
 const AUTOFILL_PANEL_ID = 'talvyn-autofill-panel'
 
@@ -26,18 +27,18 @@ export class AutofillPanelManager {
     }
     this.remove()
 
-    const panel = document.createElement('div')
-    panel.id = AUTOFILL_PANEL_ID
-    panel.setAttribute('data-talvyn', 'true')
-
-    panel.innerHTML = this.isMinimized
-      ? this.buildMinimizedHTML(summary)
-      : this.buildExpandedHTML(summary)
-
-    this.applyStyles(panel, this.isMinimized)
-    document.body.appendChild(panel)
-
-    this.attachEventListeners(panel)
+    // Requirement 3: Keep autofill inside main floating window without opening separate popup
+    const mainPanel = getTalvynElement('talvyn-panel')
+    if (mainPanel) {
+      updatePanelState({
+        type: 'in_progress',
+        message: `Autofill identified ${summary.totalFields} form fields (${summary.highConfidenceCount} safe to fill).`,
+        autofillStats: {
+          filledFields: [`${summary.highConfidenceCount} fields matched`],
+          reviewFields: [`${summary.customQuestionsCount} custom/sensitive questions`],
+        },
+      })
+    }
   }
 
   updateSummary(summary: FormAnalysisSummary): void {

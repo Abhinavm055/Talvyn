@@ -219,13 +219,6 @@ export default function Landing() {
                 <filter id="arcBlur" x="-10%" y="-30%" width="120%" height="160%">
                   <feGaussianBlur stdDeviation="8" />
                 </filter>
-
-                {/* Bead Glow */}
-                <radialGradient id="beadGlow">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
-                  <stop offset="40%" stopColor="#A5B4FC" stopOpacity="0.9" />
-                  <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
-                </radialGradient>
               </defs>
 
               {/* Faint ambient atmospheric glow line */}
@@ -243,15 +236,6 @@ export default function Landing() {
                 stroke="url(#horizonGlow)"
                 strokeWidth="1.5"
               />
-
-              {/* Luminous Bead on the curve at x ≈ 1080 (75%) */}
-              <g transform="translate(1080, 42)">
-                {/* Soft outer halo */}
-                <circle cx="0" cy="0" r="14" fill="url(#beadGlow)" opacity="0.35" />
-                <circle cx="0" cy="0" r="8" fill="#818CF8" opacity="0.6" />
-                {/* Sharp center core */}
-                <circle cx="0" cy="0" r="3.5" fill="#FFFFFF" />
-              </g>
             </svg>
           </div>
         </section>

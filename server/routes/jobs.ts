@@ -2,6 +2,7 @@ import { Router, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, AuthRequest } from '../middleware/auth'
+import { jdParserService } from '../services/jdParserService'
 
 type JobStatus = 'SAVED' | 'INTERESTED' | 'IN_PROGRESS' | 'APPLIED' | 'ASSESSMENT' | 'INTERVIEW' | 'OFFER' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED'
 type JobType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'FREELANCE' | 'INTERNSHIP' | 'TEMPORARY' | 'GRADUATE_PROGRAM' | 'FELLOWSHIP' | 'COMPETITION' | 'TALENT_OPPORTUNITY' | 'OTHER'
@@ -45,6 +46,35 @@ router.get('/check-url', async (req: AuthRequest, res: Response) => {
     res.json({ exists: !!job, job: job || null })
   } catch (err) {
     res.status(500).json({ error: 'Failed to check URL' })
+  }
+})
+
+// POST /api/jobs/extract-jd — Analyze pasted job description text and return structured autofill payload
+router.post('/extract-jd', async (req: AuthRequest, res: Response) => {
+  try {
+    const { text, url } = req.body
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      res.status(400).json({ error: 'Job description text cannot be empty' })
+      return
+    }
+
+    const trimmed = text.trim()
+    if (trimmed.length < 15) {
+      res.status(400).json({
+        error: 'Job description text is too short. Please provide a more detailed job description.',
+      })
+      return
+    }
+
+    const result = jdParserService.extractJobFromDescription(trimmed, typeof url === 'string' ? url : undefined)
+    res.json({
+      success: true,
+      extractedJob: result.extractedJob,
+      extractedFields: result.extractedFields,
+    })
+  } catch (err: any) {
+    console.error('[Talvyn] JD extraction error:', err)
+    res.status(500).json({ error: err?.message || 'Failed to extract job description details' })
   }
 })
 

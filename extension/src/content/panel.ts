@@ -970,9 +970,10 @@ function renderEditableRow(
 // ─── HTML Builder ─────────────────────────────────────────────────────────────
 
 function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = false): string {
-  const borderCard = isDark ? '#334155' : '#e2e8f0'
+  const borderCard = isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'
   const textPrimary = isDark ? '#f8fafc' : '#0f172a'
   const textMuted = isDark ? '#94a3b8' : '#64748b'
+  const bgHeader = isDark ? '#0B0F19' : '#ffffff'
 
   return `
     <div id="talvyn-panel-container" style="display:flex;flex-direction:column;height:100%;max-height:580px;overflow:hidden;width:100%;box-sizing:border-box;">
@@ -980,52 +981,53 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
       <div id="talvyn-panel-header" style="
         display:flex;align-items:center;justify-content:space-between;
         padding:12px 14px;border-bottom:1px solid ${borderCard};
-        cursor:grab;user-select:none;flex-shrink:0;background:${isDark ? '#1e293b' : '#4f46e5'};
-        color:white;border-top-left-radius:14px;border-top-right-radius:14px;
+        cursor:grab;user-select:none;flex-shrink:0;background:${bgHeader};
+        color:${textPrimary};border-top-left-radius:16px;border-top-right-radius:16px;
       " title="Drag to move panel">
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="
-            width:22px;height:22px;background:rgba(255,255,255,0.25);
-            border-radius:6px;display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:800;color:white;flex-shrink:0;
+            width:24px;height:24px;background:linear-gradient(135deg, #5054EA, #7C3AED);
+            border-radius:7px;display:flex;align-items:center;justify-content:center;
+            font-size:12px;font-weight:800;color:white;flex-shrink:0;box-shadow:0 0 10px rgba(80,84,234,0.35);
           ">T</div>
-          <span style="font-weight:800;font-size:13px;letter-spacing:0.3px;">Talvyn</span>
+          <div>
+            <div style="font-weight:700;font-size:13.5px;letter-spacing:-0.2px;line-height:1.2;color:${textPrimary};">Talvyn</div>
+            <div style="font-size:10px;color:${textMuted};line-height:1.2;">From Potential to Offer.</div>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           ${options?.isConnected !== false ? `
           <span style="
-            font-size:10.5px;font-weight:700;color:#065f46;background:#ecfdf5;border:1px solid #a7f3d0;
+            font-size:10px;font-weight:600;color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);
             padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
           ">
-            <span style="width:5px;height:5px;border-radius:50%;background:#10b981;display:inline-block;"></span>
             ● Connected
           </span>
           ` : `
           <span style="
-            font-size:10.5px;font-weight:700;color:${isDark ? '#94a3b8' : '#64748b'};background:${isDark ? '#0f172a' : '#f1f5f9'};
-            padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;
+            font-size:10px;font-weight:600;color:${isDark ? '#94a3b8' : '#64748b'};background:${isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9'};
+            padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px;border:1px solid ${borderCard};
           ">
-            <span style="width:5px;height:5px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>
             Guest
           </span>
           `}
           <button id="talvyn-profile-btn" style="
-            background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;
-            padding:2px 6px;cursor:pointer;color:white;font-size:11px;font-weight:600;
+            background:${isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9'};border:1px solid ${borderCard};border-radius:6px;
+            padding:3px 7px;cursor:pointer;color:${textPrimary};font-size:11px;font-weight:600;transition:all 0.15s;
           " title="Candidate Profile">👤 Profile</button>
           <button id="talvyn-collapse-btn" style="
-            background:rgba(255,255,255,0.15);border:none;cursor:pointer;color:white;font-size:15px;
-            font-weight:700;line-height:1;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+            background:${isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9'};border:1px solid ${borderCard};cursor:pointer;color:${textPrimary};font-size:14px;
+            font-weight:700;line-height:1;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;
           " title="Minimize">−</button>
           <button id="talvyn-dismiss-btn" style="
-            background:rgba(255,255,255,0.15);border:none;cursor:pointer;color:white;font-size:16px;
-            line-height:1;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+            background:${isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9'};border:1px solid ${borderCard};cursor:pointer;color:${textPrimary};font-size:15px;
+            line-height:1;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;
           " title="Close">×</button>
         </div>
       </div>
 
       <div id="talvyn-panel-body" style="
-        flex:1;min-height:0;overflow-y:auto;padding:12px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
+        flex:1;min-height:0;overflow-y:auto;padding:12px 14px;background:${isDark ? '#080A14' : '#ffffff'};
         display:flex;flex-direction:column;
       ">
         ${buildBodyHTML(job, options, isDark)}
@@ -1033,8 +1035,8 @@ function buildPanelHTML(job: ExtractedJob, options?: any, isDark: boolean = fals
 
       <!-- Persistent Pinned Action Footer (never scrolls or jumps) -->
       <div id="talvyn-actions-footer" style="
-        flex-shrink:0;padding:10px 14px;background:${isDark ? '#0f172a' : '#ffffff'};
-        border-top:1px solid ${borderCard};z-index:10;box-shadow:0 -4px 12px rgba(0,0,0,0.05);
+        flex-shrink:0;padding:10px 14px;background:${isDark ? '#0B0F19' : '#ffffff'};
+        border-top:1px solid ${borderCard};z-index:10;box-shadow:0 -4px 16px rgba(0,0,0,0.12);
       ">
         ${buildActionsFooterHTML(options, isDark)}
       </div>
@@ -1563,60 +1565,74 @@ export function injectUnsupportedNotice(
       window.matchMedia &&
       window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const borderCard = isDark ? '#334155' : '#e2e8f0'
+  const borderCard = isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'
   const textPrimary = isDark ? '#f8fafc' : '#0f172a'
   const textSecondary = isDark ? '#cbd5e1' : '#475569'
+  const textMuted = isDark ? '#94a3b8' : '#64748b'
+  const bgCard = isDark ? '#0F1222' : '#f8fafc'
 
   panel.innerHTML = `
-    <div id="talvyn-panel-container">
+    <div id="talvyn-panel-container" style="display:flex;flex-direction:column;height:100%;justify-content:space-between;padding:14px;box-sizing:border-box;">
       <div id="talvyn-panel-header" style="
         display:flex;align-items:center;justify-content:space-between;
-        margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid ${borderCard};
+        padding-bottom:10px;border-bottom:1px solid ${borderCard};
         cursor:grab;user-select:none;
       " title="Drag to move">
-        <div style="display:flex;align-items:center;gap:7px;">
+        <div style="display:flex;align-items:center;gap:8px;">
           <div style="
-            width:22px;height:22px;background:linear-gradient(135deg, #4f46e5, #6366f1);
-            border-radius:6px;display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:800;color:white;flex-shrink:0;box-shadow:0 1px 3px rgba(79,70,229,0.3);
+            width:24px;height:24px;background:linear-gradient(135deg, #5054EA, #7C3AED);
+            border-radius:7px;display:flex;align-items:center;justify-content:center;
+            font-size:12px;font-weight:800;color:white;flex-shrink:0;box-shadow:0 0 10px rgba(80,84,234,0.4);
           ">T</div>
-          <span style="font-weight:700;font-size:13px;color:${textPrimary};">Talvyn Intelligence</span>
+          <div>
+            <div style="font-weight:700;font-size:13.5px;color:${textPrimary};line-height:1.2;">Talvyn</div>
+            <div style="font-size:10px;color:${textMuted};line-height:1.2;">From Potential to Offer.</div>
+          </div>
         </div>
-        <button id="talvyn-dismiss-btn" style="
-          background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;line-height:1;padding:0 2px;
-        " title="Close">×</button>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button id="talvyn-dismiss-btn" style="
+            background:none;border:none;cursor:pointer;color:${textMuted};font-size:16px;line-height:1;padding:4px;border-radius:6px;
+          " title="Close">×</button>
+        </div>
       </div>
 
-      <div style="padding:4px 2px;">
+      <div style="padding:20px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;">
         <div style="
-          background:${isDark ? '#1e293b' : '#f8fafc'};
-          border:1px solid ${isDark ? '#334155' : '#e2e8f0'};
-          border-radius:10px;padding:14px 12px;margin-bottom:10px;text-align:center;
+          width:54px;height:54px;border-radius:50%;background:rgba(80,84,234,0.12);
+          border:1px solid rgba(80,84,234,0.25);display:flex;align-items:center;justify-content:center;
+          margin-bottom:16px;box-shadow:0 0 20px rgba(80,84,234,0.2);
         ">
-          <div style="font-size:22px;margin-bottom:6px;">💼</div>
-          <div style="font-weight:700;font-size:13px;color:${textPrimary};margin-bottom:4px;">
-            No job opportunities detected on this page.
-          </div>
-          <p style="font-size:11.5px;color:${textSecondary};line-height:1.4;margin:0;">
-            Make sure you are on an active job posting, detail page, or career listings portal.
-          </p>
+          <svg style="width:24px;height:24px;color:#818CF8;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <button id="talvyn-reanalyze-btn" style="
-            width:100%;padding:9px;background:linear-gradient(to right, #4f46e5, #6366f1);
-            color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;
-            box-shadow:0 2px 6px rgba(79,70,229,0.25);
-          ">
-            Analyze Again
-          </button>
-          <button id="talvyn-dashboard-btn" style="
-            width:100%;padding:8px;background:transparent;color:#6366f1;
-            border:1px solid ${borderCard};border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
-          ">
-            Open Talvyn Dashboard
-          </button>
+        <div style="font-weight:700;font-size:15px;color:${textPrimary};margin-bottom:6px;">
+          No job opportunities detected on this page.
         </div>
+        <p style="font-size:12px;color:${textSecondary};line-height:1.45;margin:0 0 18px 0;max-width:280px;">
+          We'll find the best opportunities and show personalized insights when on a job listing or posting.
+        </p>
+
+        <button id="talvyn-reanalyze-btn" style="
+          width:100%;max-width:280px;padding:11px 16px;background:#5054EA;
+          color:white;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;
+          box-shadow:0 2px 12px rgba(80,84,234,0.35);transition:all 0.15s ease;
+        ">
+          Analyze Again
+        </button>
+
+        <button id="talvyn-dashboard-btn" style="
+          margin-top:8px;background:none;border:none;color:#818CF8;font-size:11.5px;font-weight:600;
+          cursor:pointer;padding:6px;
+        ">
+          Open Talvyn Dashboard →
+        </button>
+      </div>
+
+      <div style="text-align:center;padding-top:10px;border-top:1px solid ${borderCard};">
+        <span style="font-size:10.5px;color:${textMuted};letter-spacing:0.2px;">Made for your career journey</span>
       </div>
     </div>
   `
@@ -1680,16 +1696,16 @@ function applyPanelStyles(panel: HTMLElement, isDark: boolean = false): void {
     width: `${width}px`,
     maxHeight: `${height}px`,
     height: `${height}px`,
-    background: isDark ? '#0f172a' : '#ffffff',
+    background: isDark ? '#0B0F19' : '#ffffff',
     color: isDark ? '#f8fafc' : '#0f172a',
-    borderRadius: '14px',
+    borderRadius: '16px',
     boxShadow: isDark
-      ? '0 12px 40px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.3)'
-      : '0 12px 40px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06)',
+      ? '0 24px 50px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)'
+      : '0 20px 45px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04)',
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     fontSize: '13px',
     lineHeight: '1.4',
-    border: isDark ? '1px solid #334155' : '1px solid rgba(99,102,241,0.2)',
+    border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e2e8f0',
     boxSizing: 'border-box',
     overflow: 'hidden',
     display: 'flex',

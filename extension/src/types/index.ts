@@ -294,10 +294,11 @@ export interface CreateJobPayload {
   jobUrl?: string
   sourceWebsite?: string
   location?: string
-  jobType?: JobType
+  jobType?: JobType | string
   salary?: string
   description?: string
   status?: JobStatus
+  dateApplied?: string | null
 }
 
 export interface CheckUrlResponse {
