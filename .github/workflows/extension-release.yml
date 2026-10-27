@@ -46,13 +46,13 @@ jobs:
       - run: npm run prisma:generate
       - name: Migrate only the disposable CI database
         run: npm run db:deploy
+      - name: Build and package extension before tests
+        run: npm run package:extension
       - run: npm test
       - run: npm run test:integration
       - name: Real saved-search HTTP and database checks
         run: npx --no-install tsx test/verify-saved-searches.ts
       - run: npm run build
-      - name: Typecheck, production-build and package the extension
-        run: npm run package:extension
       - run: npm run verify:extension-package
       - name: Check version tags against the actual packaged version
         if: github.ref_type == 'tag'
