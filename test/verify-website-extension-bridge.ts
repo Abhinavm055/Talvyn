@@ -66,6 +66,44 @@ async function main() {
   const complete = await bridge.completeConnection(requestId)
   check(complete.id === 'user-1' && !JSON.stringify(complete).includes('private-secret'), 'Completion exposes only the connected account')
   check(messages.every(({ message }) => !('accessToken' in message) && !('refreshToken' in message) && !('verifier' in message)), 'Website messages contain no extension credentials or private proof')
+  // ─── Additional Lifecycle, Origin & Browser Tests ───
+  runtime.lastError = { message: 'Access to extension is denied.' }
+  check((await bridge.detect()).state === 'not-installed', 'Access to extension is denied is treated as not-installed')
+  runtime.lastError = { message: 'Invalid extension id' }
+  check((await bridge.detect()).state === 'not-installed', 'Invalid extension ID is treated as not-installed')
+  runtime.lastError = undefined
+
+  // Disallowed website origin response
+  reply = () => ({ success: false, error: 'Unauthorized website message.' })
+  const disallowedOrigin = await bridge.detect()
+  check(disallowedOrigin.state === 'unavailable', 'Disallowed origin is handled safely as unavailable')
+  check(disallowedOrigin.message.includes('Unauthorized website message'), 'Preserves server-supplied error reason')
+
+  // Timeout recovery and retry
+  let timeoutCall = true
+  const retryableRuntime: ExtensionRuntime = {
+    sendMessage: (_id, _msg, callback) => {
+      if (timeoutCall) {
+        // Drop message to simulate timeout
+        timeoutCall = false
+        return
+      }
+      callback({ success: true, installed: true, version: '1.3.0', protocolVersion: 2, state: 'disconnected' })
+    },
+  }
+  const retryBridge = createExtensionBridge({ extensionId: trustedId, runtime: () => retryableRuntime, timeoutMs: 15 })
+  const timedOut = await retryBridge.detect()
+  check(timedOut.state === 'unavailable' && timedOut.message.includes('respond in time'), 'First call times out with friendly message')
+  const recovered = await retryBridge.detect()
+  check(recovered.state === 'disconnected' && recovered.installed === true, 'Subsequent retry call recovers successfully')
+
+  // Reconnect-required state
+  reply = (message) => message.type === 'TALVYN_PING_EXTENSION'
+    ? { success: true, installed: true, version: '1.3.0', protocolVersion: 2 }
+    : { success: true, state: 'reconnect-required', user: null }
+  const reconnectStatus = await bridge.detect()
+  check(reconnectStatus.state === 'reconnect-required', 'Expired/revoked credentials produce reconnect-required state')
+
   const metadata = { extensionVersion: '1.3.0', websiteVersion: '1.0.0', releaseDate: '2026-10-14', title: 'Prepared build', changes: [], backendCompatibility: 'API pairing v2', installInstructions: '', distribution: 'github', repository: 'Abhinavm055/Talvyn', publicationStatus: 'not-published', publishedExtensionVersion: null }
   check(parseRelease(metadata)?.publishedExtensionVersion === null, 'Unpublished local builds cannot create store update claims')
   check(parseRelease({ ...metadata, publicationStatus: 'published' }) === null, 'Local build notes reject claiming published status')

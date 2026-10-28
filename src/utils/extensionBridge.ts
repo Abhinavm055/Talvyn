@@ -26,6 +26,14 @@ const isVersion = isExtensionVersion
 export const isExtensionId = (value: string): boolean => /^[a-p]{32}$/.test(value)
 export const isPairingRequestId = (value: string): boolean => /^[A-Za-z0-9_-]{16,128}$/.test(value)
 
+export function isChromiumBrowser(): boolean {
+  if (typeof window === 'undefined') return true
+  const win = window as any
+  const nav = typeof navigator !== 'undefined' ? navigator : undefined
+  const ua = nav?.userAgent || ''
+  return Boolean(win.chrome) || /Chrome|Chromium|Edg|Brave|OPR/i.test(ua)
+}
+
 class BridgeError extends Error {
   constructor(message: string, public kind: 'not-installed' | 'unavailable' = 'unavailable') { super(message) }
 }
@@ -51,7 +59,13 @@ export function createExtensionBridge(options: {
   function send(message: Message): Promise<RecordValue> {
     if (!extensionId) return Promise.reject(new BridgeError('Trusted extension identity is not configured. The project owner must configure the production public key.'))
     const runtime = runtimeProvider()
-    if (!runtime || typeof runtime.sendMessage !== 'function') return Promise.reject(new BridgeError('Extension messaging is unavailable. Open this page in Chrome or Brave with Talvyn enabled.'))
+    if (!runtime || typeof runtime.sendMessage !== 'function') {
+      const isChromium = isChromiumBrowser()
+      const message = isChromium
+        ? 'Talvyn extension is not detected or is disabled in this browser. Please ensure the extension is installed and enabled in chrome://extensions.'
+        : 'Extension messaging is unavailable. Open this page in Chrome or Brave with Talvyn enabled.'
+      return Promise.reject(new BridgeError(message, 'unavailable'))
+    }
     return new Promise((resolve, reject) => {
       let finished = false
       const finish = (error?: Error, response?: RecordValue) => {
@@ -68,7 +82,7 @@ export function createExtensionBridge(options: {
           // Chrome lastError must be read within this callback.
           const lastError = runtime.lastError?.message
           if (lastError) {
-            const absent = /receiving end does not exist|could not establish connection/i.test(lastError)
+            const absent = /receiving end does not exist|could not establish connection|access to extension is denied|invalid extension id/i.test(lastError)
             finish(new BridgeError(absent ? 'Talvyn is not installed or is disabled in this browser.' : 'Talvyn connection is unavailable. Please retry.', absent ? 'not-installed' : 'unavailable'))
           } else if (!isRecord(response) || response.success !== true) {
             finish(new BridgeError(isRecord(response) && typeof response.error === 'string' ? response.error.slice(0, 300) : 'Talvyn returned an invalid response.'))

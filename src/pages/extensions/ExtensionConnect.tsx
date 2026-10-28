@@ -132,7 +132,31 @@ export default function ExtensionConnect() {
             <div className="text-center space-y-2"><div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto"><Puzzle className="w-6 h-6" /></div><h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F7FF]">Connect Talvyn Browser Extension</h2><p className="text-sm text-slate-500 dark:text-[#A8B0C2]">Authorize the installed extension to synchronize your saved jobs, profile, and application tracker.</p></div>
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#151A29] border border-slate-200/80 dark:border-[#252B3A] flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center font-bold shrink-0">{user.email.charAt(0).toUpperCase()}</div><div className="min-w-0"><div className="text-sm font-bold text-slate-900 dark:text-[#F5F7FF] truncate">{displayName}</div><div className="text-xs text-slate-500 dark:text-[#A8B0C2] truncate">{user.email}</div></div><button onClick={() => void changeAccount()} disabled={status === 'connecting'} className="ml-auto text-xs text-indigo-600 dark:text-indigo-400 shrink-0">Change account</button></div>
             {status === 'checking' && <p role="status" className="text-sm text-slate-500 dark:text-[#A8B0C2] text-center">Checking the installed extension and connection request…</p>}
-            {error && <div role="alert" className="flex items-start gap-2 p-4 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
+            {error && (
+              <div className="space-y-3">
+                <div role="alert" className="flex items-start gap-2 p-4 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold">{error}</p>
+                    {extensionBridge.extensionId && (
+                      <p className="text-[11px] text-red-600/90 dark:text-red-400/90 font-mono">
+                        Target Extension ID: {extensionBridge.extensionId}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#151A29] border border-slate-200 dark:border-[#252B3A] text-xs text-slate-600 dark:text-[#A8B0C2] space-y-2">
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">Troubleshooting Steps:</p>
+                  <ol className="list-decimal pl-4 space-y-1 text-[11px] leading-relaxed">
+                    <li>Open <code className="text-indigo-600 dark:text-indigo-400">chrome://extensions</code> or <code className="text-indigo-600 dark:text-indigo-400">brave://extensions</code> in a new tab.</li>
+                    <li>Ensure <strong>Developer mode</strong> is toggled ON.</li>
+                    <li>If testing locally, ensure the extension is built with <code className="text-indigo-600 dark:text-indigo-400">npm run build:extension:dev</code>, then click the reload icon on the Talvyn card.</li>
+                    <li>Verify the extension ID on the card matches <code className="text-indigo-600 dark:text-indigo-400">{extensionBridge.extensionId || 'configured ID'}</code>.</li>
+                    <li>Click <strong>Retry with a new connection request</strong> below.</li>
+                  </ol>
+                </div>
+              </div>
+            )}
             {!extensionBridge.extensionId && <p className="text-xs text-amber-700 dark:text-amber-300">The project owner must configure the trusted extension public key before production account connection is available. Locally loaded development builds use their own configured ID.</p>}
             {switchingAccount && <label className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-slate-700 dark:text-slate-300"><input type="checkbox" checked={approveAccountSwitch} onChange={(event) => setApproveAccountSwitch(event.target.checked)} disabled={status === 'connecting'} className="mt-0.5 accent-indigo-600" /><span>Replace the extension's current connection to <strong>{connectedAccount?.email}</strong> with <strong>{user.email}</strong>. The previous extension session will be revoked.</span></label>}
             <label className="flex items-start gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/30 p-3 text-xs text-slate-700 dark:text-slate-300"><input type="checkbox" checked={keepConnected} onChange={(event) => setKeepConnected(event.target.checked)} disabled={status === 'connecting' || status === 'checking'} className="mt-0.5 accent-indigo-600" /><span><strong className="block text-slate-900 dark:text-white">Keep the extension connected when I sign out of this website</strong>This grants an independent session with rotating credentials. Disconnecting the extension or signing out of all devices revokes it.</span></label>
