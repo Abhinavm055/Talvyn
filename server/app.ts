@@ -17,6 +17,10 @@ export function createApp(options: { uploadsRoot?: string } = {}) {
   const app = express()
   app.set('trust proxy', 1)
   const configuredOrigins = [...trustedWebsiteOrigins()]
+  app.use((_req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups')
+    next()
+  })
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true)

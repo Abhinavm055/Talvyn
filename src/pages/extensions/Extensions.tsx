@@ -276,20 +276,33 @@ export function InstallationWizard({
               <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 space-y-2 text-xs sm:text-sm text-amber-900 dark:text-amber-100">
                 <p className="font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  The Talvyn extension download is not available yet.
+                  The Talvyn extension download is not published yet.
                 </p>
                 <p className="text-xs leading-relaxed">
-                  The first public release has not been published or cannot currently be verified. Releases are published as verified GitHub Release archives.
+                  The first public release has not been published to GitHub Releases yet. When published, users download a single verified <code>talvyn-extension.zip</code> directly without nested archives.
                   {releaseClient.releasesUrl && (
-                    <> You can check the repository at{' '}
+                    <> You can view published releases at{' '}
                       <a href={releaseClient.releasesUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
                         GitHub Releases
                       </a>.
                     </>
                   )}
                 </p>
+                <div className="pt-1 flex flex-wrap items-center gap-2">
+                  <a
+                    href="/api/releases/extension/download"
+                    download="talvyn-extension.zip"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-sm transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Local talvyn-extension.zip
+                  </a>
+                  <span className="text-[11px] text-slate-500 dark:text-[#A8B0C2]">
+                    (Available locally if built via <code>npm run package:extension</code>)
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-500 dark:text-[#A8B0C2]">
-                  Project owners can test locally using <code>npm run package:extension</code> and loading <code>extension/dist</code> unpacked.
+                  For local development, you can also load <code>extension/dist</code> directly via <strong>Load unpacked</strong> without zipping.
                 </p>
               </div>
             )}
