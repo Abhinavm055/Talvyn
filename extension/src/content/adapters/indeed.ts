@@ -165,7 +165,7 @@ export class IndeedAdapter implements SiteAdapter {
     }
 
     // Fallback within container if still not found
-    if (!title && container !== doc && container !== doc.body) {
+    if (!title && container !== doc.body) {
       const headings = typeof container.querySelectorAll === 'function' ? Array.from(container.querySelectorAll('h1, h2')) : []
       for (const el of headings) {
         if (isExcluded(el)) continue

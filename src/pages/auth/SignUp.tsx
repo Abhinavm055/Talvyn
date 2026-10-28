@@ -7,6 +7,7 @@ import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 import { authApi } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { GoogleSignInButton } from '../../components/auth/GoogleSignInButton'
+import { safeRedirectPath } from '../../utils/safeRedirect'
 
 const schema = z.object({
   givenName: z.string().min(1, 'Please enter your first name'),
@@ -27,22 +28,14 @@ export default function SignUp() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
-  const rawRedirect = searchParams.get('redirect') || searchParams.get('returnTo')
-  let redirectParam = rawRedirect
-  if (redirectParam) {
-    try {
-      if (redirectParam.startsWith('%2F') || redirectParam.startsWith('%2f')) {
-        redirectParam = decodeURIComponent(redirectParam)
-      }
-    } catch {}
-  }
+  const redirectParam = safeRedirectPath(searchParams.get('redirect') || searchParams.get('returnTo'))
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
 
   const handlePostSignUpRedirect = (user: { profile?: { onboardingCompleted?: boolean } | null }) => {
-    if (redirectParam && redirectParam.startsWith('/')) {
+    if (redirectParam) {
       navigate(redirectParam)
       return
     }
@@ -61,7 +54,7 @@ export default function SignUp() {
         password: data.password,
         givenName: data.givenName,
       })
-      setAuth(result.token, result.user)
+      setAuth(result.user)
       handlePostSignUpRedirect(result.user)
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }

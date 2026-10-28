@@ -13,9 +13,15 @@ export interface RegisterPayload {
 }
 
 export interface AuthResponse {
-  token: string
   user: User
   isNewUser?: boolean
+}
+
+export interface ExtensionPairingRequest {
+  requestId: string
+  extensionId: string
+  expiresAt: string
+  approved: boolean
 }
 
 export const authApi = {
@@ -33,4 +39,16 @@ export const authApi = {
 
   getConfig: () =>
     apiClient.get<{ googleConfigured: boolean }>('/auth/config').then((r) => r.data),
+
+  logout: () =>
+    apiClient.post<{ success: boolean }>('/auth/logout').then((r) => r.data),
+
+  getExtensionPairing: (requestId: string) =>
+    apiClient.get<ExtensionPairingRequest>(`/auth/extension-pairing/${encodeURIComponent(requestId)}`).then((r) => r.data),
+
+  approveExtensionPairing: (requestId: string, expectedUserId: string) =>
+    apiClient.post<{ success: boolean }>(`/auth/extension-pairing/${encodeURIComponent(requestId)}/approve`, { keepConnected: true, expectedUserId }).then((r) => r.data),
+
+  signOutAll: () =>
+    apiClient.post<{ success: boolean }>('/auth/signout-all').then((r) => r.data),
 }

@@ -3,6 +3,8 @@ import { adapterRegistry } from './adapters/registry'
 import { GenericAdapter } from './adapters/generic'
 import { analyzeJobRelevance } from '../services/relevanceScorer'
 import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing, isInvalidJobTitle } from './jobEvidenceDetector'
+import { enrichJobFacts } from './jobIntelligence'
+import { SiteAdapter } from './adapters/types'
 
 export type PageClassification = 'SINGLE_JOB' | 'JOB_LIST' | 'OTHER'
 
@@ -55,7 +57,7 @@ export class JobScanner {
    * when a site-specific adapter cannot produce valid job data. This keeps
    * dedicated adapters as an optimization rather than a hard dependency.
    */
-  private extractSingleJobUniversal(url: string, doc: Document, adapter: any): ExtractedJob | null {
+  private extractSingleJobUniversal(url: string, doc: Document, adapter: SiteAdapter): ExtractedJob | null {
     const specific = adapter.extractSingleJob(doc)
     if (specific && this.isPlausibleExtractedJob(specific, url)) return specific
 
@@ -65,7 +67,7 @@ export class JobScanner {
     return null
   }
 
-  private extractJobListUniversal(url: string, doc: Document, adapter: any): ExtractedJob[] {
+  private extractJobListUniversal(url: string, doc: Document, adapter: SiteAdapter): ExtractedJob[] {
     const primary = adapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
     const generic = (adapter.name !== 'Generic' && primary.length === 0)
       ? this.genericAdapter.extractJobList(doc).filter((job: ExtractedJob) => this.isPlausibleExtractedJob(job, url))
@@ -178,7 +180,21 @@ export class JobScanner {
   scanSingleJob(url: string, doc: Document): ExtractedJob | null {
     if (isExplicitlyNonJobSite(url) || !isLikelyJobPage(doc, url)) return null
     const adapter = adapterRegistry.getAdapter(url, doc)
-    return this.extractSingleJobUniversal(url, doc, adapter)
+    const extracted = this.extractSingleJobUniversal(url, doc, adapter)
+    if (!extracted) return null
+    let sourceWebsite = extracted.sourceWebsite
+    try {
+      sourceWebsite = sourceWebsite || new URL(url).hostname.replace(/^www\./i, '')
+    } catch {
+      sourceWebsite = sourceWebsite || ''
+    }
+    return enrichJobFacts({
+      ...extracted,
+      jobUrl: extracted.jobUrl || url,
+      sourceWebsite,
+      extractedAt: new Date().toISOString(),
+      extractionMethod: adapter.name,
+    })
   }
 
   /**
@@ -205,7 +221,7 @@ export class JobScanner {
     }
 
     const adapter = adapterRegistry.getAdapter(url, doc)
-    const rawJobs = this.extractJobListUniversal(url, doc, adapter)
+    const rawJobs = this.extractJobListUniversal(url, doc, adapter).map((job) => enrichJobFacts({ ...job, extractedAt: new Date().toISOString(), extractionMethod: adapter.name }))
     const analyzedJobs: AnalyzedJob[] = []
     const now = Date.now()
 

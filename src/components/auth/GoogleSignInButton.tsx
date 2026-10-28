@@ -146,7 +146,7 @@ export function GoogleSignInButton({
 
     try {
       const authRes = await authApi.googleLogin(response.credential)
-      setAuth(authRes.token, authRes.user)
+      setAuth(authRes.user)
       onSuccess(authRes)
     } catch (err: unknown) {
       const msg =

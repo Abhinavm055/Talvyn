@@ -22,10 +22,11 @@ import { navigationObserver } from './navigationObserver'
 import { opportunityClassifier } from '../opportunityDetection/opportunityClassifier'
 import { readinessScorer } from '../services/readinessScorer'
 import { resumesService } from '../services/resumesService'
-import { getToken, getUser, setToken, setUser, clearAuth } from '../utils/storage'
+import { getUser } from '../utils/storage'
 import { jobsService } from '../services/jobsService'
 import { profileService } from '../services/profileService'
-import { ExtractedJob, UserProfile, AnalyzedJob, Resume } from '../types'
+import { ExtractedJob, UserProfile, AnalyzedJob, Resume, JobListAnalysisSummary } from '../types'
+import { CONFIG } from '../utils/config'
 import {
   isRuntimeActive,
   isExtensionContextValid,
@@ -35,6 +36,7 @@ import {
 } from '../utils/extensionContext'
 
 import { normalizeJob } from './jobNormalizer'
+import { inspectNativeApplicationAction } from './nativeApplicationAction'
 import { isExplicitlyNonJobSite, isLikelyJobPage, isLikelyJobListing } from './jobEvidenceDetector'
 
 let currentSingleJob: ExtractedJob | null = null
@@ -45,7 +47,7 @@ let isSinglePanelVisible = false
 let isDiscoveryPanelVisible = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let hasUserRequestedAnalysis = false
-let lastListingSummary: any = null
+let lastListingSummary: JobListAnalysisSummary | null = null
 
 // Register shutdown cleanup handler for terminal invalidation
 onExtensionShutdown(() => {
@@ -65,54 +67,15 @@ onExtensionShutdown(() => {
 
 // Announce extension presence to Talvyn web app for automatic discovery
 try {
-  if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+  const trustedSite = new URL(CONFIG.DASHBOARD_URL)
+  if (window.location.origin === trustedSite.origin && typeof chrome !== 'undefined' && chrome.runtime?.id) {
     document.documentElement.setAttribute('data-talvyn-extension-id', chrome.runtime.id)
-    try {
-      window.localStorage.setItem('talvyn_connected_extension_id', chrome.runtime.id)
-    } catch {}
     window.dispatchEvent(new CustomEvent('talvyn:extension-ready', { detail: { extensionId: chrome.runtime.id } }))
     console.log('[Talvyn] EXTENSION_READY')
   }
 } catch {
   /* ignore */
 }
-
-// Listen for logout events dispatched by the Talvyn web dashboard to synchronize logout
-try {
-  window.addEventListener('talvyn:auth-logout', () => {
-    try {
-      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-        chrome.runtime.sendMessage({ type: 'DISCONNECT_TALVYN' }, () => {
-          if (chrome.runtime?.lastError) {
-            /* ignore */
-          }
-        })
-      }
-    } catch {
-      /* ignore */
-    }
-  })
-
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return
-    if (event.data?.type === 'TALVYN_DISCONNECT_EXTENSION') {
-      try {
-        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-          chrome.runtime.sendMessage({ type: 'DISCONNECT_TALVYN' }, () => {
-            if (chrome.runtime?.lastError) {
-              /* ignore */
-            }
-          })
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  })
-} catch {
-  /* ignore */
-}
-
 
 console.log('[Talvyn] Content script loaded')
 
@@ -130,14 +93,13 @@ const DEFAULT_GUEST_PROFILE: UserProfile = {
 }
 
 async function getUserPreferences(): Promise<UserProfile> {
-  const token = await getToken()
   const user = await getUser()
 
-  if (token && user?.profile) {
+  if (user?.profile) {
     return user.profile
   }
 
-  if (token) {
+  if (user) {
     try {
       const liveProfile = await Promise.race([
         profileService.get(),
@@ -204,7 +166,9 @@ async function analyzeAndRenderPage(): Promise<void> {
   // Pre-classify page: if classified as OTHER, perform minimal work and exit early
   const { classification, adapterName } = jobScanner.classifyPage(url, doc)
 
-  if (classification === 'OTHER') {
+  const isApplicationPage = autofillCoordinator.isApplicationFormPage(url, doc)
+  const previousApplication = await applicationSessionManager.getActiveSession()
+  if (classification === 'OTHER' && !isApplicationPage && !previousApplication) {
     removePanel()
     discoveryPanelManager.remove()
     autofillCoordinator.dismiss()
@@ -231,14 +195,18 @@ async function analyzeAndRenderPage(): Promise<void> {
   }
 
   // 2. PRIORITY 2: Active Job Application Form (Phase 2C Autofill + Phase 2F Application Assistant)
-  if (autofillCoordinator.isApplicationFormPage(url, doc)) {
-    removePanel()
+  if (isApplicationPage) {
     discoveryPanelManager.remove()
-    isSinglePanelVisible = false
     isDiscoveryPanelVisible = false
 
     // Cache application session before submission
-    const currentJob = detectJob()
+    const currentJob = detectJob() || currentSingleJob || (previousApplication?.jobTitle ? {
+      title: previousApplication.jobTitle,
+      company: previousApplication.company || 'Unknown Company',
+      jobUrl: previousApplication.jobUrl || url,
+      sourceWebsite: new URL(url).hostname,
+      confidence: 'LOW' as const,
+    } : null)
     await applicationSessionManager.createOrUpdateSession({
       pageUrl: url,
       jobUrl: currentJob?.jobUrl || url,
@@ -249,6 +217,14 @@ async function analyzeAndRenderPage(): Promise<void> {
 
     // Observe submit button clicks on the form
     applicationSuccessDetector.observeFormSubmission()
+
+    if (!hasUserRequestedAnalysis) return
+    if (!isSinglePanelVisible) {
+      await showSinglePanel(currentJob || {
+        title: 'Untitled Job', company: 'Unknown Company', jobUrl: url,
+        sourceWebsite: new URL(url).hostname, confidence: 'LOW',
+      })
+    }
 
     // Activate Application Assistant and Progress Tracker (Phase 2F)
     const assistantActivated = await assistantCoordinator.activate(url, doc, profile, currentJob)
@@ -467,8 +443,8 @@ function renderDiscoveryView(summary: JobListAnalysisSummary): void {
   startListingObserver()
   discoveryPanelManager.render(summary, {
     onSaveJob: async (analyzed: AnalyzedJob) => {
-      const token = await getToken()
-      if (!token) {
+      const user = await getUser()
+      if (!user) {
         alert('Please connect your Talvyn account via the extension popup to save jobs.')
         throw new Error('Not authenticated')
       }
@@ -531,7 +507,7 @@ async function showSinglePanel(
   currentSingleJob = job
   isSinglePanelVisible = true
 
-  const token = await getToken()
+  const user = await getUser()
   const profile = await getUserPreferences()
 
   // 1. Normalize job and evaluate match score with profile
@@ -543,7 +519,7 @@ async function showSinglePanel(
 
   // 3. Fetch resumes for Application Readiness calculation
   let resumes: Resume[] = []
-  if (token) {
+  if (user) {
     try {
       resumes = await resumesService.list()
     } catch {
@@ -557,17 +533,10 @@ async function showSinglePanel(
     readiness,
     deadline: opp.deadline,
     normalization: normResult,
-    isConnected: Boolean(token),
+    isConnected: Boolean(user),
     theme: (profile as any)?.themePreference || 'system',
     userProfile: profile,
-    resumeName: resumes[0]?.fileName || 'Default Resume',
-    onProfileUpdated: async (updatedProfile: UserProfile) => {
-      console.log('[Talvyn] Profile updated from intelligence window:', updatedProfile)
-      const user = await getUser()
-      if (user) {
-        await setUser({ ...user, profile: updatedProfile })
-      }
-    },
+    resumeName: resumes[0]?.fileName || resumes[0]?.name || 'No resume available',
     onBackToListing: extraOptions?.onBackToListing,
   }
 
@@ -578,7 +547,7 @@ async function showSinglePanel(
     selectedDiscoveryJob = null
   }
 
-  if (!token) {
+  if (!user) {
     injectPanel(
       normResult.normalized,
       (customJob, customProfile) => handleSingleSave(customJob, customProfile),
@@ -727,7 +696,7 @@ async function handleSingleApply(): Promise<void> {
         job: normResult.normalized,
         normalization: normResult,
         autofillStats: {
-          filledFields: ['Application Tab Opened', 'Job Context Preserved'],
+          filledFields: [],
           reviewFields: ['Review requirements and submission on destination page'],
         },
       })
@@ -757,7 +726,7 @@ async function handleSingleApply(): Promise<void> {
         job: normResult.normalized,
         normalization: normResult,
         autofillStats: {
-          filledFields: ['Job Page Opened', 'Candidate Context Preserved'],
+          filledFields: [],
           reviewFields: ['Review application instructions on job page'],
         },
       })
@@ -775,18 +744,18 @@ async function handleSingleApply(): Promise<void> {
           company: job.company,
           location: job.location,
         })
-        await assistantCoordinator.activate(currentUrl, doc, profile, job)
-        const autofillSuccess = await autofillCoordinator.activateAutofill(currentUrl, doc, profile, true)
         const normResult = normalizeJob(job, profile)
         updatePanelState({
           type: 'autofill-complete',
           job: normResult.normalized,
           normalization: normResult,
           autofillStats: {
-            filledFields: autofillSuccess ? ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'] : ['Assistant Ready'],
+            filledFields: [],
             reviewFields: ['Sensitive / Custom Questions (Review Required)'],
           },
         })
+        const assistantReady = await assistantCoordinator.activate(currentUrl, doc, profile, job)
+        if (!assistantReady) await autofillCoordinator.activateAutofill(currentUrl, doc, profile)
         return
       } catch (formErr) {
         console.error('[Talvyn Apply] Failed autofilling on application form page:', formErr)
@@ -822,102 +791,34 @@ async function handleSingleApply(): Promise<void> {
         job: normResult.normalized,
         normalization: normResult,
         autofillStats: {
-          filledFields: ['Application Portal Opened'],
+          filledFields: [],
           reviewFields: ['Review requirements and submission on destination portal'],
         },
       })
       return
     }
 
-    // 5. Scenario E: Try to click native apply button or modal trigger on the page
-    const nativeApplyBtn = doc.querySelector<HTMLElement>(
-      [
-        'button[id*="indeedApplyButton" i]',
-        'button[data-testid*="indeedApplyButton" i]',
-        'a[href*="/rc/clk" i]',
-        'a[href*="indeed.com/apply" i]',
-        'button[class*="jobs-apply-button" i]',
-        'button[aria-label*="easy apply" i]',
-        'button[aria-label*="apply now" i]',
-        'button[aria-label*="apply" i]',
-        'a[aria-label*="apply" i]',
-        'button[class*="apply" i]:not(#talvyn-apply-btn)',
-        'a[class*="apply" i]:not(#talvyn-apply-btn)',
-        'button[data-testid*="apply" i]',
-        'a[data-testid*="apply" i]',
-        '[class*="apply-button" i]',
-        '[class*="ApplyButton" i]',
-        'a[href*="unstop.com/api" i]',
-        'button[class*="register" i]',
-        'a[class*="register" i]',
-        '[data-testid*="apply-button" i]',
-      ].join(', ')
-    )
-
-    if (nativeApplyBtn) {
-      if (nativeApplyBtn instanceof HTMLAnchorElement && nativeApplyBtn.href && isValidHttpUrl(nativeApplyBtn.href) && isDifferentDestination(nativeApplyBtn.href)) {
-        console.log(`[Talvyn Apply] Native apply anchor found with external destination: ${nativeApplyBtn.href}`)
-        try {
-          await applicationSessionManager.createOrUpdateSession({
-            pageUrl: nativeApplyBtn.href,
-            jobUrl: job.jobUrl || nativeApplyBtn.href,
-            jobTitle: job.title,
-            company: job.company,
-            location: job.location,
-          })
-          window.open(nativeApplyBtn.href, '_blank')
-          const normResult = normalizeJob(job, profile)
-          updatePanelState({
-            type: 'autofill-complete',
-            job: normResult.normalized,
-            normalization: normResult,
-            autofillStats: {
-              filledFields: ['Application Tab Opened'],
-              reviewFields: ['Complete application on external portal'],
-            },
-          })
-          return
-        } catch (clickErr) {
-          console.warn('[Talvyn Apply] Failed navigating native apply anchor:', clickErr)
-        }
-      } else {
-        // Trigger click on native button to open modal or inline form
-        try {
-          console.log('[Talvyn Apply] Triggering in-page apply button click...')
-          nativeApplyBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
-          nativeApplyBtn.click()
-        } catch (btnErr) {
-          console.warn('[Talvyn Apply] Could not click native apply button:', btnErr)
-        }
-
-        // Wait for potential modal or inline form to render after click
-        await new Promise((resolve) => setTimeout(resolve, 700))
-
-        const summary = await autofillCoordinator.scanAndAnalyzeForm(currentUrl, doc, profile)
-        if (summary.totalFields > 0 || autofillCoordinator.isApplicationFormPage(currentUrl, doc)) {
-          const safeFields = summary.matchedFields.filter((f) => f.canAutofill && !f.isSensitive)
-          const reviewFields = summary.matchedFields.filter((f) => f.requiresReview || f.isSensitive || f.isCustomQuestion)
-
-          await assistantCoordinator.activate(currentUrl, doc, profile, currentSingleJob)
-          await autofillCoordinator.activateAutofill(currentUrl, doc, profile, true)
-
-          const filledFieldNames = safeFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
-          const reviewFieldNames = reviewFields.map((f) => f.field.label || f.field.name || f.detectedType).filter(Boolean)
-
-          console.log(`[Talvyn Apply] In-page modal form autofilled (Filled: ${filledFieldNames.length}, Review: ${reviewFieldNames.length})`)
-          const normResult = normalizeJob(currentSingleJob!, profile)
-          updatePanelState({
-            type: 'autofill-complete',
-            job: normResult.normalized,
-            normalization: normResult,
-            autofillStats: {
-              filledFields: filledFieldNames.length > 0 ? filledFieldNames : ['Full Name', 'Email', 'Phone', 'LinkedIn', 'Resume'],
-              reviewFields: reviewFieldNames.length > 0 ? reviewFieldNames : ['Work Authorization', 'Salary Expectations'],
-            },
-          })
-          return
-        }
-      }
+    // Native controls may submit or run arbitrary site handlers: never simulate a click.
+    const nativeAction = inspectNativeApplicationAction(doc)
+    if (nativeAction.kind === 'navigate') {
+      await applicationSessionManager.createOrUpdateSession({
+        pageUrl: nativeAction.url,
+        jobUrl: job.jobUrl || nativeAction.url,
+        jobTitle: job.title,
+        company: job.company,
+        location: job.location,
+      })
+      window.open(nativeAction.url, '_blank')
+      const normResult = normalizeJob(job, profile)
+      updatePanelState({
+        type: 'autofill-complete', job: normResult.normalized, normalization: normResult,
+        autofillStats: { filledFields: [], reviewFields: ['Review requirements and submission on destination portal'] },
+      })
+      return
+    }
+    if (nativeAction.kind === 'manual') {
+      updatePanelState({ type: 'error', message: nativeAction.message })
+      return
     }
 
     // 6. External ATS or fallback navigation if job has a different URL
@@ -942,7 +843,7 @@ async function handleSingleApply(): Promise<void> {
         job: normResult.normalized,
         normalization: normResult,
         autofillStats: {
-          filledFields: ['Job Page Opened'],
+          filledFields: [],
           reviewFields: ['Review and apply on company site'],
         },
       })
@@ -1007,7 +908,7 @@ async function handleSingleSave(customJob?: ExtractedJob, customProfile?: any): 
     updatePanelState({
       type: 'saved',
       existingStatus: 'SAVED',
-      opportunityType: normalized.jobType,
+      opportunityType: opportunityClassifier.classify(normalized.title, normalized.description, normalized.jobType).type,
       job: normalized,
       normalization: normResult,
     })
@@ -1231,6 +1132,10 @@ async function handleOpenIntelligencePanel(): Promise<{ success: boolean; mode: 
   }
 
   // 1. Classification check
+  if (autofillCoordinator.isApplicationFormPage(url, doc)) {
+    await analyzeAndRenderPage()
+    return { success: true, mode: 'application-form' }
+  }
   const { classification, adapterName } = jobScanner.classifyPage(url, doc)
   console.log(`[Talvyn] classifyPage result: ${classification} (adapter: ${adapterName})`)
 

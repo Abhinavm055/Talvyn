@@ -16,8 +16,7 @@ import {
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { cn } from '../../lib/utils'
-
-import { notifyExtensionDisconnect } from '../../utils/extensionSync'
+import { authApi } from '../../api/auth'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -33,16 +32,18 @@ export function Sidebar() {
   const { theme, setTheme } = useThemeStore()
   const navigate = useNavigate()
 
+  const [logoutError, setLogoutError] = useState('')
+  const [logoutPending, setLogoutPending] = useState(false)
   const handleLogout = async () => {
-    // Notify extension through multiple channels (chrome.runtime, DOM event, postMessage)
+    setLogoutPending(true)
+    setLogoutError('')
     try {
-      await notifyExtensionDisconnect()
+      await authApi.logout()
+      logout()
+      navigate('/login')
     } catch {
-      /* ignore messaging errors during logout */
-    }
-
-    logout()
-    navigate('/login')
+      setLogoutError('Could not sign out. Please retry.')
+    } finally { setLogoutPending(false) }
   }
 
   const displayName =
@@ -194,11 +195,13 @@ export function Sidebar() {
         <button
           type="button"
           onClick={handleLogout}
+          disabled={logoutPending}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#5E6678] dark:text-[#A8B0C2] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-150 mt-1 group cursor-pointer"
         >
           <LogOut className="w-4 h-4 text-[#858DA0] group-hover:text-red-500 transition-colors" />
-          <span>Sign Out</span>
+          <span>{logoutPending ? 'Signing Out…' : 'Sign Out'}</span>
         </button>
+        {logoutError && <p role="alert" className="px-3 pt-2 text-xs text-red-600 dark:text-red-400">{logoutError}</p>}
       </div>
     </aside>
   )

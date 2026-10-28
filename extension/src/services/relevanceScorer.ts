@@ -225,9 +225,13 @@ export function evaluateExperienceMatchStrict(
 ): StrictExperienceMatchResult {
   const req = extractExperienceRequirement(jobTitle, jobDescription || '', jobType || '')
   const userYrs = userProfile.experienceYears ?? null
-  const isCandidateFresher = userYrs === 0 || userYrs === null
+  const isCandidateFresher = userYrs === 0
 
-  const profileText = isCandidateFresher ? 'Fresher' : `${userYrs} year${userYrs === 1 ? '' : 's'}`
+  const profileText = userYrs === null
+    ? 'Not specified'
+    : isCandidateFresher
+    ? 'Fresher'
+    : `${userYrs} year${userYrs === 1 ? '' : 's'}`
 
   // Case 1: Job does NOT specify experience requirements
   if (!req) {
@@ -244,6 +248,20 @@ export function evaluateExperienceMatchStrict(
   }
 
   const requiredText = req.rawText
+
+  // An empty profile is unknown, not evidence that the candidate is a fresher.
+  if (userYrs === null) {
+    return {
+      score: 0.5,
+      weight,
+      weightedScore: 0.5 * weight * 100,
+      reason: 'Candidate experience is not specified in the profile',
+      isHardMismatch: false,
+      requiredText,
+      profileText,
+      status: 'UNSPECIFIED',
+    }
+  }
 
   // Case 2: Candidate is FRESHER (0 years)
   if (isCandidateFresher) {
@@ -497,6 +515,18 @@ export function evaluateSkillsMatchStrict(
     .filter(isValidSkillToken)
   const userSkillsLower = userSkills.map((s) => s.toLowerCase())
 
+  if (userSkills.length === 0) {
+    return {
+      score: 0.5,
+      weight,
+      weightedScore: 0.5 * weight * 100,
+      reason: 'Candidate skills are not specified in the profile',
+      matchedSkills: [],
+      missingSkills: detectedJobSkills,
+      status: 'UNSPECIFIED',
+    }
+  }
+
   const matchedSkills: string[] = []
   const missingSkills: string[] = []
 
@@ -532,7 +562,7 @@ export function evaluateSkillsMatchStrict(
       score: 0.85,
       weight,
       weightedScore: 0.85 * weight * 100,
-      reason: 'General technical skill alignment',
+      reason: 'Job skills are not specified in the available text',
       matchedSkills: [],
       missingSkills: [],
       status: 'UNSPECIFIED',

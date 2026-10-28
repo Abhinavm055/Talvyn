@@ -129,7 +129,9 @@ export class GenericAdapter implements SiteAdapter {
     const isExcluded = (el: Element | null): boolean => {
       if (!el) return true
       if (typeof el.closest !== 'function') return false
-      return Boolean(el.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="navbar" i], [class*="header" i], [class*="account" i], [class*="user-menu" i]'))
+      // Job detail headings often live in classes such as JobInfoHeader.
+      // Exclude navigation/page chrome without rejecting those job containers.
+      return Boolean(el.closest('header, nav, [role="banner"], [role="navigation"], [class*="nav" i], [class*="navbar" i], [class~="header" i], [class*="site-header" i], [class*="page-header" i], [class*="account" i], [class*="user-menu" i]'))
     }
 
     const nonJobHeadingPattern = /^(welcome\b|hello\b|hi\b|good\s+(morning|afternoon|evening)|my\s+account\b|sign\s+in\b|sign\s+up\b|log\s+in\b|log\s+out\b|dashboard\b|notifications\b|messages\b|settings\b|feedback\b|search\s+jobs\b|browse\s+jobs\b|find\s+jobs\b)/i

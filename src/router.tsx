@@ -53,6 +53,8 @@ const Profile = lazyWithRetry(() => import('./pages/profile/Profile'))
 const Resumes = lazyWithRetry(() => import('./pages/resumes/Resumes'))
 const Extensions = lazyWithRetry(() => import('./pages/extensions/Extensions'))
 const ExtensionConnect = lazyWithRetry(() => import('./pages/extensions/ExtensionConnect'))
+const ReleaseNotes = lazyWithRetry(() => import('./pages/releases/ReleaseNotes'))
+const Privacy = lazyWithRetry(() => import('./pages/legal/Privacy'))
 
 function PageFallback() {
   return (
@@ -126,6 +128,12 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     element: withSuspense(ExtensionConnect),
   },
+  {
+    path: '/releases',
+    errorElement: <RouteErrorBoundary />,
+    element: withSuspense(ReleaseNotes),
+  },
+  { path: '/privacy', errorElement: <RouteErrorBoundary />, element: withSuspense(Privacy) },
   {
     element: <ProtectedRoute />,
     errorElement: <RouteErrorBoundary />,

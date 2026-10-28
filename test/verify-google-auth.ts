@@ -12,18 +12,23 @@
  * 7. Wrong audience rejection
  * 8. Unverified email rejection
  * 9. Existing email/password login still works
- * 10. Existing protected API routes & JWT generation
+ * 10. HttpOnly website cookie generation and session claims
  * 11. Google user onboarding redirect logic
- * 12. Extension token storage payload formatting
+ * 12. Independent scoped extension session validation
  * 13. User cancels Google sign-in handling
  * 14. Backend failure recovery
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { googleAuthService } from '../server/services/googleAuthService'
 import { prisma } from '../server/lib/prisma'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { config } from '../server/config'
+import { signExtensionAccessToken, signExtensionRefreshToken } from '../server/routes/auth'
+import { WEB_SESSION_COOKIE } from '../server/services/webSession'
+import { validateSessionResponse } from '../extension/src/services/secureConnection'
+import { captureWebsiteSession } from './helpers/websiteSession'
 
 console.log('===========================================================')
 console.log('TALVYN PHASE 2G: GOOGLE SIGN-IN & OAUTH VERIFICATION TESTS')
@@ -50,7 +55,11 @@ async function runTests() {
   console.log('--- 1. Testing New Google User Registration ---')
 
   const newGoogleEmail = `google.new.${timestamp}@example.com`
-  const mockNewToken = `test-google-token:${JSON.stringify({
+  // Payload fixtures exercise claim validation only. Signature verification is
+  // never bypassed by a production credential prefix.
+  const newGoogleClaims = {
+    aud: config.googleClientId || 'fixture-google-client.apps.googleusercontent.com',
+    iat: Math.floor(Date.now() / 1000),
     sub: `g-sub-${timestamp}`,
     email: newGoogleEmail,
     name: 'Sarah Connor',
@@ -60,9 +69,9 @@ async function runTests() {
     email_verified: true,
     exp: Math.floor((Date.now() + 3600000) / 1000),
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
-  const verified1 = await googleAuthService.verifyGoogleToken(mockNewToken)
+  const verified1 = googleAuthService.validatePayload(newGoogleClaims)
   let authResult1: any
   let authResult2: any
   let authResultLink: any
@@ -70,10 +79,13 @@ async function runTests() {
   let isDbConnected = true
 
   try {
+    requireTestDatabase()
     authResult1 = await googleAuthService.authenticateGoogleUser(verified1)
     authResult2 = await googleAuthService.authenticateGoogleUser(verified1)
-  } catch {
+  } catch (error) {
+    allowDatabaseFixtureFallback(error)
     isDbConnected = false
+    console.warn('  SKIP database account persistence: no usable dedicated test database; remaining account-shape assertions use fixtures.')
     authResult1 = {
       isNewUser: true,
       user: {
@@ -128,25 +140,29 @@ async function runTests() {
           profile: { create: { email: existingEmail, legalFullName: 'John Doe' } },
         },
       })
-    } catch {
+    } catch (error) {
+      allowDatabaseFixtureFallback(error)
       isDbConnected = false
     }
   }
 
-  const mockLinkToken = `test-google-token:${JSON.stringify({
+  const linkGoogleClaims = {
+    aud: config.googleClientId || 'fixture-google-client.apps.googleusercontent.com',
+    iat: Math.floor(Date.now() / 1000),
     sub: `g-link-sub-${timestamp}`,
     email: existingEmail,
     name: 'John Doe',
     email_verified: true,
     exp: Math.floor((Date.now() + 3600000) / 1000),
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
-  const verifiedLink = await googleAuthService.verifyGoogleToken(mockLinkToken)
+  const verifiedLink = googleAuthService.validatePayload(linkGoogleClaims)
   if (isDbConnected) {
     try {
       authResultLink = await googleAuthService.authenticateGoogleUser(verifiedLink)
-    } catch {
+    } catch (error) {
+      allowDatabaseFixtureFallback(error)
       authResultLink = {
         isNewUser: false,
         user: { id: existingEmailUser.id, googleId: `g-link-sub-${timestamp}` },
@@ -185,17 +201,19 @@ async function runTests() {
   // ─── 6. Expired Token Rejection ──────────────────────────────────────────────
   console.log('\n--- 6. Testing Expired Token Rejection ---')
 
-  const expiredToken = `test-google-token:${JSON.stringify({
+  const expiredClaims = {
+    aud: config.googleClientId || 'fixture-google-client.apps.googleusercontent.com',
+    iat: Math.floor(Date.now() / 1000) - 7200,
     sub: 'g-exp',
     email: 'expired@test.com',
     email_verified: true,
     exp: Math.floor((Date.now() - 3600000) / 1000), // 1 hour in the past
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
   let expiredCaught = false
   try {
-    await googleAuthService.verifyGoogleToken(expiredToken)
+    googleAuthService.validatePayload(expiredClaims)
   } catch (err: any) {
     if (err.message.includes('expired')) expiredCaught = true
   }
@@ -204,37 +222,42 @@ async function runTests() {
   // ─── 7. Wrong Audience Rejection ─────────────────────────────────────────────
   console.log('\n--- 7. Testing Wrong Audience Rejection ---')
 
-  const wrongAudienceToken = `test-google-token:${JSON.stringify({
+  const wrongAudienceClaims = {
+    iat: Math.floor(Date.now() / 1000),
     sub: 'g-aud',
     email: 'aud@test.com',
     email_verified: true,
     exp: Math.floor((Date.now() + 3600000) / 1000),
     aud: 'wrong-client-id.apps.googleusercontent.com',
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
   let audienceCaught = false
+  const originalClientId = config.googleClientId
+  config.googleClientId = 'expected-fixture-client.apps.googleusercontent.com'
   try {
-    await googleAuthService.verifyGoogleToken(wrongAudienceToken)
+    googleAuthService.validatePayload(wrongAudienceClaims)
   } catch {
     audienceCaught = true
-  }
-  assert(true, 'Token validator enforces client ID audience matching')
+  } finally { config.googleClientId = originalClientId }
+  assert(audienceCaught, 'Actual claim validation rejects an audience different from the configured client ID')
 
   // ─── 8. Unverified Email Rejection ───────────────────────────────────────────
   console.log('\n--- 8. Testing Unverified Email Rejection ---')
 
-  const unverifiedEmailToken = `test-google-token:${JSON.stringify({
+  const unverifiedEmailClaims = {
+    aud: config.googleClientId || 'fixture-google-client.apps.googleusercontent.com',
+    iat: Math.floor(Date.now() / 1000),
     sub: 'g-unverified',
     email: 'unverified@test.com',
     email_verified: false, // Unverified
     exp: Math.floor((Date.now() + 3600000) / 1000),
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
   let unverifiedCaught = false
   try {
-    await googleAuthService.verifyGoogleToken(unverifiedEmailToken)
+    googleAuthService.validatePayload(unverifiedEmailClaims)
   } catch (err: any) {
     if (err.message.includes('not verified')) unverifiedCaught = true
   }
@@ -246,14 +269,22 @@ async function runTests() {
   const passwordMatch = await bcrypt.compare('SecretPass123!', existingEmailUser.passwordHash!)
   assert(passwordMatch, 'Existing email/password credentials hash verification continues working perfectly')
 
-  // ─── 10. JWT Token Generation & Protected API Verification ───────────────────
-  console.log('\n--- 10. Testing Talvyn JWT Issuance & Verification ---')
+  // ─── 10. Website Cookie Issuance ─────────────────────────────────────────────
+  console.log('\n--- 10. Testing HttpOnly Website Session Issuance ---')
 
-  const token = jwt.sign({ userId: authResult1.user.id }, config.jwtSecret, { expiresIn: '7d' })
-  const decoded = jwt.verify(token, config.jwtSecret) as { userId: string }
+  const cookie = captureWebsiteSession(authResult1.user.id, 3)
+  const decoded = jwt.verify(cookie.value, config.jwtSecret) as jwt.JwtPayload
   assert(
-    decoded.userId === authResult1.user.id,
-    'Issues standard Talvyn JWT that decodes and authenticates user against existing protected API middleware'
+    decoded.userId === authResult1.user.id && decoded.tokenUse === 'web_session' && decoded.authVersion === 3,
+    'The real cookie helper binds the Google account to a versioned website session'
+  )
+  assert(
+    cookie.name === WEB_SESSION_COOKIE && cookie.options.httpOnly === true && cookie.options.sameSite === 'lax' && cookie.options.path === '/api' && cookie.options.secure === (config.nodeEnv === 'production'),
+    'Website session cookie uses HttpOnly, same-origin API scope, SameSite Lax and production Secure'
+  )
+  assert(
+    cookie.result === undefined,
+    'Website cookie issuance does not return a bearer token to the login response'
   )
 
   // ─── 11. Google User Onboarding Redirect Logic ───────────────────────────────
@@ -269,22 +300,27 @@ async function runTests() {
   assert(routeNew === '/onboarding', 'Directs uncompleted Google profiles to /onboarding')
   assert(routeExisting === '/dashboard', 'Directs completed Google profiles directly to /dashboard')
 
-  // ─── 12. Extension Token Storage Format ──────────────────────────────────────
-  console.log('\n--- 12. Testing Extension Token Storage Format ---')
+  // ─── 12. Independent Extension Session Claims ────────────────────────────────
+  console.log('\n--- 12. Testing Independent Scoped Extension Credentials ---')
 
-  const extensionAuthResponse = {
-    token,
-    user: {
-      id: authResult1.user.id,
-      email: authResult1.user.email,
-      authProvider: authResult1.user.authProvider,
-      profile: authResult1.user.profile,
-    },
+  const extensionUser = { id: authResult1.user.id as string, email: authResult1.user.email as string, profile: null }
+  const sessionId = `google-extension-session-${timestamp}`
+  const extensionResponse = {
+    sessionId,
+    accessToken: signExtensionAccessToken(extensionUser.id, sessionId, 3),
+    refreshToken: signExtensionRefreshToken(sessionId),
+    user: extensionUser,
   }
-
+  const accessClaims = jwt.verify(extensionResponse.accessToken, config.jwtSecret) as jwt.JwtPayload
+  const refreshClaims = jwt.verify(extensionResponse.refreshToken, config.jwtRefreshSecret) as jwt.JwtPayload
   assert(
-    typeof extensionAuthResponse.token === 'string' && extensionAuthResponse.user.id.length > 0,
-    'Extension payload is formatted cleanly for Chrome extension storage'
+    accessClaims.tokenUse === 'extension_access' && accessClaims.sessionId === sessionId && accessClaims.userId === extensionUser.id && (accessClaims.exp! - accessClaims.iat!) === 15 * 60 && refreshClaims.tokenUse === 'extension_refresh' && refreshClaims.sessionId === sessionId,
+    'Extension helpers issue a short-lived access token and independent refresh token bound to one session'
+  )
+  assert(
+    validateSessionResponse(extensionResponse, extensionUser)?.user.id === extensionUser.id &&
+    validateSessionResponse({ ...extensionResponse, accessToken: cookie.value }, extensionUser) === null,
+    'Worker validation accepts scoped extension credentials and rejects a website cookie token'
   )
 
   // ─── 13. User Cancels Google Sign-In Handling ────────────────────────────────
@@ -334,15 +370,23 @@ async function runTests() {
   console.log('\n--- 16. Testing Backend Rejection when Unconfigured ---')
 
   let unconfiguredRejected = false
+  const clientIdBeforeDisabledProvider = config.googleClientId
+  config.googleClientId = ''
   try {
-    // Attempting real token verification when GOOGLE_CLIENT_ID is unconfigured/empty
-    await googleAuthService.verifyGoogleToken('real-unmocked-token-xyz')
+    // Structurally valid credentials still cannot authenticate without a
+    // configured identity provider. No network verification is bypassed.
+    await googleAuthService.verifyGoogleToken('fixture.fixture.fixture')
   } catch (err: any) {
     if (err.message.includes('not configured') || err.message.includes('GOOGLE_CLIENT_ID') || err.message.includes('verification failed')) {
       unconfiguredRejected = true
     }
-  }
+  } finally { config.googleClientId = clientIdBeforeDisabledProvider }
   assert(unconfiguredRejected, 'Backend securely rejects real token requests when GOOGLE_CLIENT_ID is not configured')
+  let forgedPrefixRejected = false
+  try {
+    await googleAuthService.verifyGoogleToken('test-google-token:' + JSON.stringify(newGoogleClaims))
+  } catch { forgedPrefixRejected = true }
+  assert(forgedPrefixRejected, 'Production token verification rejects the legacy forged fixture-token prefix')
 
   console.log('\n===========================================================')
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)

@@ -1,7 +1,18 @@
 import { ApplicationSession } from './types'
 
-const SESSION_STORAGE_KEY = 'talvyn_active_application_session'
 const SESSION_TTL_MS = 30 * 60 * 1000 // 30 minutes
+
+async function requestSession(action: 'get' | 'set' | 'clear', session?: ApplicationSession): Promise<{ success: boolean; session: ApplicationSession | null }> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return { success: false, session: null }
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ success: false, session: null }), 3000)
+    chrome.runtime.sendMessage({ type: 'TALVYN_APPLICATION_SESSION', action, session }, (response: { success?: boolean; session?: ApplicationSession }) => {
+      clearTimeout(timeout)
+      if (chrome.runtime.lastError || !response?.success) resolve({ success: false, session: null })
+      else resolve({ success: true, session: response.session || null })
+    })
+  })
+}
 
 export class ApplicationSessionManager {
   private inMemorySession: ApplicationSession | null = null
@@ -11,9 +22,13 @@ export class ApplicationSessionManager {
    */
   async getActiveSession(): Promise<ApplicationSession | null> {
     try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const result = await chrome.storage.local.get(SESSION_STORAGE_KEY)
-        const stored = result[SESSION_STORAGE_KEY] as ApplicationSession | undefined
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        const response = await requestSession('get')
+        const stored = response.session
+        if (response.success && !stored) {
+          this.inMemorySession = null
+          return null
+        }
         if (stored) {
           const age = Date.now() - new Date(stored.lastActivityAt).getTime()
           if (age < SESSION_TTL_MS) {
@@ -44,7 +59,12 @@ export class ApplicationSessionManager {
    * Saves or updates current application session.
    */
   async createOrUpdateSession(data: Partial<ApplicationSession>): Promise<ApplicationSession> {
-    const existing = await this.getActiveSession()
+    const previous = await this.getActiveSession()
+    const differentJob = Boolean(previous && (
+      data.jobTitle && previous.jobTitle && data.jobTitle.trim().toLowerCase() !== previous.jobTitle.trim().toLowerCase() ||
+      data.company && previous.company && data.company.trim().toLowerCase() !== previous.company.trim().toLowerCase()
+    ))
+    const existing = differentJob ? null : previous
     const now = new Date().toISOString()
 
     const session: ApplicationSession = {
@@ -62,8 +82,8 @@ export class ApplicationSessionManager {
     this.inMemorySession = session
 
     try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        await chrome.storage.local.set({ [SESSION_STORAGE_KEY]: session })
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        await requestSession('set', session)
       }
     } catch {
       /* ignore storage errors */
@@ -85,8 +105,8 @@ export class ApplicationSessionManager {
   async clearSession(): Promise<void> {
     this.inMemorySession = null
     try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        await chrome.storage.local.remove(SESSION_STORAGE_KEY)
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        await requestSession('clear')
       }
     } catch {
       /* ignore */

@@ -17,6 +17,8 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { config } from '../server/config'
 import { formatUserProfile } from '../server/routes/auth'
+import { captureWebsiteSession } from './helpers/websiteSession'
+import { WEB_SESSION_COOKIE } from '../server/services/webSession'
 
 console.log('===========================================================')
 console.log('TALVYN: AUTHENTICATION & MIGRATION REGRESSION TESTS')
@@ -177,13 +179,14 @@ async function runTests() {
     'First-time Google user routes to /onboarding'
   )
 
-  // ─── Scenario 6: Relational Integrity & Token Generation ────────────────────
-  console.log('\n--- 6. Relational Integrity & Token Generation ---')
+  // ─── Scenario 6: Migrated Identity & Website Cookie Issuance ──────────────────
+  console.log('\n--- 6. Migrated Identity & Website Cookie Issuance ---')
 
-  const token = jwt.sign({ userId: migratedCompletedUser.id }, config.jwtSecret, { expiresIn: '7d' })
-  const decoded = jwt.verify(token, config.jwtSecret) as { userId: string }
+  const cookie = captureWebsiteSession(migratedCompletedUser.id, 2)
+  const decoded = jwt.verify(cookie.value, config.jwtSecret) as jwt.JwtPayload
 
-  assert(decoded.userId === migratedCompletedUser.id, 'JWT token accurately encodes and verifies migrated user ID')
+  assert(decoded.userId === migratedCompletedUser.id && decoded.tokenUse === 'web_session' && decoded.authVersion === 2, 'Website cookie issuance preserves the migrated user identity and session version')
+  assert(cookie.name === WEB_SESSION_COOKIE && cookie.options.httpOnly === true && cookie.options.path === '/api' && cookie.result === undefined, 'Migrated users receive the same HttpOnly cookie contract without a JavaScript bearer token')
 
   console.log('\n===========================================================')
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)

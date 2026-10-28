@@ -6,6 +6,7 @@ import {
   AutofillConfidenceLevel,
 } from '../../types'
 import { FIELD_TAXONOMY, FieldDefinition } from './fieldTaxonomy'
+import { classifyFieldRisk } from './reviewedAutofill'
 
 /**
  * Universal Field Matcher & Profile Resolver (Phase 2C)
@@ -95,7 +96,10 @@ export class FieldMatcher {
       match.def.type === 'workAuthorization' ||
       match.def.type === 'visaStatus' ||
       match.def.type === 'expectedSalary' ||
-      this.isSensitiveQuestion(field)
+      match.def.type === 'dateOfBirth' ||
+      match.def.type === 'gender' ||
+      this.isSensitiveQuestion(field) ||
+      classifyFieldRisk(field).riskLevel === 'USER_ACTION_REQUIRED'
 
     let confidence = match.confidence
     if (requiresManualInput || value === null || value === '') {
@@ -107,6 +111,7 @@ export class FieldMatcher {
 
     const canAutofill =
       !isSensitive &&
+      classifyFieldRisk(field).riskLevel === 'SAFE_AUTOFILL' &&
       !requiresManualInput &&
       value !== null &&
       value !== '' &&
@@ -339,19 +344,11 @@ export class FieldMatcher {
 
       // ── Application ──
       case 'workAuthorization': {
-        if (field.tag === 'radio' || field.tag === 'select') {
-          const yesOpt = this.matchOption(field.options, 'Yes') || this.matchOption(field.options, 'Authorized') || 'yes'
-          return { value: yesOpt }
-        }
-        return { value: profile.workAuthorization || 'Yes, authorized to work' }
+        return { value: profile.workAuthorization?.trim() || null }
       }
 
       case 'visaStatus': {
-        if (field.tag === 'radio' || field.tag === 'select') {
-          const noOpt = this.matchOption(field.options, 'No') || this.matchOption(field.options, 'Not required') || 'no'
-          return { value: noOpt }
-        }
-        return { value: profile.visaStatus || 'No sponsorship required' }
+        return { value: profile.visaStatus?.trim() || null }
       }
 
       case 'expectedSalary':
@@ -364,7 +361,7 @@ export class FieldMatcher {
         return { value: profile.currentCompany || null }
 
       case 'currentJobTitle':
-        return { value: profile.currentJobTitle || (profile.preferredRoles?.[0] ?? null) }
+        return { value: profile.currentJobTitle || null }
 
       case 'yearsOfExperience':
         return { value: profile.experienceYears !== null && profile.experienceYears !== undefined ? String(profile.experienceYears) : null }
@@ -383,15 +380,6 @@ export class FieldMatcher {
     // 1. Exact value or label match
     for (const opt of options) {
       if (opt.value.toLowerCase() === cleanTarget || opt.label.toLowerCase() === cleanTarget) {
-        return opt.value
-      }
-    }
-
-    // 2. Substring match
-    for (const opt of options) {
-      const cleanLabel = opt.label.toLowerCase()
-      const cleanVal = opt.value.toLowerCase()
-      if (cleanLabel.includes(cleanTarget) || cleanTarget.includes(cleanLabel) || cleanVal.includes(cleanTarget)) {
         return opt.value
       }
     }

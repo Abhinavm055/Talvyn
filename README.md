@@ -22,19 +22,19 @@ Talvyn/
 │   ├── main.tsx                  # React DOM entry
 │   └── router.tsx                # React Router v6 configuration
 │
-├── server/                       # Express + Prisma + SQLite Backend
+├── server/                       # Express + Prisma + PostgreSQL Backend
 │   ├── lib/                      # Prisma client instance
-│   ├── middleware/               # Auth middleware (JWT bearer token)
+│   ├── middleware/               # Website cookies and independent extension auth
 │   ├── routes/                   # REST API routes (auth, jobs, notes, profile, resumes)
 │   ├── services/                 # Backend service helpers
 │   ├── config.ts                 # Environment configuration
 │   ├── index.ts                  # Express server entry point
 │   └── tsconfig.json             # Server TypeScript config
 │
-├── prisma/                       # Database schema & SQLite database
+├── prisma/                       # PostgreSQL schema and migrations
 │   ├── schema.prisma             # Universal user, profile, job, note, and resume models
 │   ├── migrations/               # Prisma migrations history
-│   └── talvyn.db                 # SQLite database file
+│   └── talvyn.db                 # Legacy SQLite file, not the current API database
 │
 ├── extension/                    # Chrome Extension (Manifest V3)
 │   ├── src/
@@ -66,16 +66,18 @@ Talvyn/
 
 ## Getting Started
 
+Use the verified [PowerShell development commands](docs/LOCAL-DEVELOPMENT.md) for environment setup, PostgreSQL migrations, frontend/API, extension watch, packaging and tests. The current API uses PostgreSQL. Do not apply the production defaults in `.env.example` unchanged to local development, or overwrite an existing `.env`.
+
 ### 1. Install Dependencies
 ```bash
-npm install
-npm --prefix extension install
+npm ci
 ```
 
 ### 2. Database Setup
 ```bash
 npm run db:generate
-npm run db:migrate
+# Only after DATABASE_URL targets your running local PostgreSQL development database
+npm run db:deploy
 ```
 
 ### 3. Run Development Servers
@@ -92,11 +94,15 @@ npm run dev:web      # Starts frontend Vite server on port 5173
 
 ---
 
-## Chrome Extension Setup
+## Extension installation
+
+Talvyn distributes verified extension packages directly via GitHub Releases as unpacked ZIP archives. Users download the release archive, verify its SHA-256 checksum, extract into a permanent folder, and load unpacked once via `chrome://extensions/` or `brave://extensions/`. Routine updates replace the contents of the same folder and click Reload on the existing browser card. See the complete [extension setup and update guide](EXTENSION_SETUP.md).
+
+### Developer unpacked installation
 
 ### 1. Build the Extension
 ```bash
-npm run build:extension
+npm run build:extension:dev
 ```
 The compiled extension is output to `Talvyn/extension/dist/`.
 
@@ -104,7 +110,7 @@ The compiled extension is output to `Talvyn/extension/dist/`.
 1. Open Google Chrome and navigate to `chrome://extensions/`.
 2. Turn on **Developer mode** (toggle in the top-right corner).
 3. Click **Load unpacked** and select the `Talvyn/extension/dist` folder.
-4. Open any job board (LinkedIn, Indeed, Greenhouse, Lever, Workday) or the mock testing pages in `extension/test/` to see the Talvyn panel in action.
+4. Configure the actual loaded ID in `VITE_TALVYN_EXTENSION_ID` and backend `TALVYN_EXTENSION_IDS`, restart the development website/API and connect with account approval. Test supported job pages or fixtures; runtime compatibility depends on portal/browser behavior.
 
 ---
 

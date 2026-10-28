@@ -202,7 +202,7 @@ assert(structured.responsibilities[0].includes('Lead development of responsive w
 assert(structured.requirements.length >= 2, 'Test C5: Requirements extracted into list items', structured.requirements)
 assert(structured.requirements[0].includes('4+ years of professional frontend engineering experience'), 'Test C6: First requirement correctly parsed')
 
-// Test with truly missing sections -> must return "— Not specified" without fabrication
+// Test with truly missing sections -> must remain explicitly unknown without fabrication
 const minimalJob: ExtractedJob = {
   title: 'General Assistant',
   company: 'Retail Store',
@@ -213,8 +213,8 @@ const minimalJob: ExtractedJob = {
 
 const minimalStructured = extractStructuredSections(minimalJob)
 assert(minimalStructured.descriptionSummary === '— Not specified', 'Test C7: Truly missing description remains "— Not specified"')
-assert(minimalStructured.responsibilities[0] === '— Not specified', 'Test C8: Truly missing responsibilities remain "— Not specified"')
-assert(minimalStructured.requirements[0] === '— Not specified', 'Test C9: Truly missing requirements remain "— Not specified"')
+assert(minimalStructured.responsibilities[0] === '— Not extracted from the available job description', 'Test C8: Missing responsibilities stay unknown')
+assert(minimalStructured.requirements[0] === '— Not explicitly extracted from the available job description', 'Test C9: Missing requirements stay unknown')
 
 // ─── TEST D: Single-Job Panel Layout & Sizing ────────────────────────────────
 console.log('\n--- TEST D: Single-Job Panel Window Sizing & Scrolling ---')

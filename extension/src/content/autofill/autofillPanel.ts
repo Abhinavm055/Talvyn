@@ -1,6 +1,7 @@
 import { FormAnalysisSummary, MatchedFormField, Resume } from '../../types'
 import { CONFIG } from '../../utils/config'
 import { getTalvynElement, updatePanelState } from '../panel'
+import { isReviewedAutofillEligible } from './reviewedAutofill'
 
 const AUTOFILL_PANEL_ID = 'talvyn-autofill-panel'
 
@@ -30,12 +31,13 @@ export class AutofillPanelManager {
     // Requirement 3: Keep autofill inside main floating window without opening separate popup
     const mainPanel = getTalvynElement('talvyn-panel')
     if (mainPanel) {
+      const eligibleCount = summary.matchedFields.filter(isReviewedAutofillEligible).length
       updatePanelState({
         type: 'in_progress',
-        message: `Autofill identified ${summary.totalFields} form fields (${summary.highConfidenceCount} safe to fill).`,
+        message: `Autofill identified ${summary.totalFields} form fields (${eligibleCount} profile values available for review).`,
         autofillStats: {
-          filledFields: [`${summary.highConfidenceCount} fields matched`],
-          reviewFields: [`${summary.customQuestionsCount} custom/sensitive questions`],
+          filledFields: [`${eligibleCount} profile mappings available`],
+          reviewFields: [`${summary.totalFields - eligibleCount} fields need review or already have answers`],
         },
       })
     }

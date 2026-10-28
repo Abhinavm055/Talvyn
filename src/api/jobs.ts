@@ -46,8 +46,8 @@ export interface JDExtractResponse {
 }
 
 export const jobsApi = {
-  list: (params?: { status?: string; search?: string; page?: number; limit?: number }) =>
-    apiClient.get<JobsResponse>('/jobs', { params }).then((r) => r.data),
+  list: (params?: { status?: string; search?: string; company?: string; location?: string; jobType?: string; page?: number; limit?: number }, signal?: AbortSignal) =>
+    apiClient.get<JobsResponse>('/jobs', { params, signal }).then((r) => r.data),
 
   get: (id: string) =>
     apiClient.get<Job>(`/jobs/${id}`).then((r) => r.data),

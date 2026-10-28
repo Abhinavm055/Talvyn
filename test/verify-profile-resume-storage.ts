@@ -17,11 +17,13 @@
  * 12. Storage Abstraction Layer (LocalStorageProvider)
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { prisma } from '../server/lib/prisma'
 import { storageService, LocalStorageProvider } from '../server/services/storageService'
 import { normalizeProfile, safeArray } from '../src/api/profile'
 import jwt from 'jsonwebtoken'
 import { config } from '../server/config'
+import { signExtensionAccessToken } from '../server/routes/auth'
 import fs from 'fs'
 import path from 'path'
 
@@ -204,6 +206,7 @@ async function runTests() {
   let dbOnline = true
 
   try {
+    requireTestDatabase()
     const userA = await prisma.user.create({
       data: {
         email: testEmailA,
@@ -219,8 +222,10 @@ async function runTests() {
       },
     })
     userAId = userA.id
-  } catch {
+  } catch (error) {
+    allowDatabaseFixtureFallback(error)
     dbOnline = false
+    console.warn('  SKIP live profile/resume database persistence: database unavailable; filesystem and normalization checks continue with fixtures.')
   }
 
   // PDF Upload
@@ -422,14 +427,15 @@ async function runTests() {
   // ─── 7. Extension Connection & Sync ────────────────────────────────────────
   console.log('\n--- 7. Testing Extension Connection & Sync Flow ---')
 
-  // Issue Talvyn JWT for Extension
-  const extensionToken = jwt.sign({ userId: userAId }, config.jwtSecret, { expiresIn: '7d' })
+  // Use the real short-lived, extension-scoped access-token helper.
+  const extensionSessionId = `profile-sync-session-${timestamp}`
+  const extensionToken = signExtensionAccessToken(userAId, extensionSessionId, 0)
 
   // Verify Extension decodes token and resolves User A
-  const decodedExtensionAuth = jwt.verify(extensionToken, config.jwtSecret) as { userId: string }
+  const decodedExtensionAuth = jwt.verify(extensionToken, config.jwtSecret) as jwt.JwtPayload
   assert(
-    decodedExtensionAuth.userId === userAId,
-    'Extension authenticates with same Talvyn JWT'
+    decodedExtensionAuth.userId === userAId && decodedExtensionAuth.tokenUse === 'extension_access' && decodedExtensionAuth.sessionId === extensionSessionId && (decodedExtensionAuth.exp! - decodedExtensionAuth.iat!) === 15 * 60,
+    'Profile synchronization uses a short-lived access token bound to the extension account and session'
   )
 
   // Extension fetches latest profile

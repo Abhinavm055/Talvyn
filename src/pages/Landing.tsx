@@ -78,6 +78,7 @@ export default function Landing() {
             >
               FAQ
             </button>
+            <Link to="/privacy" className="hover:text-white transition-colors duration-150">Privacy</Link>
           </nav>
 
           {/* Desktop Actions */}

@@ -10,9 +10,8 @@
  * - DASHBOARD_URL: http://localhost:5173
  */
 
-const isProd =
-  process.env.NODE_ENV === 'production' ||
-  (typeof import.meta !== 'undefined' && Boolean(import.meta.env?.PROD))
+// `vite build --mode development` is also an intentional local build.
+const isProd = import.meta.env?.PROD === true && import.meta.env.MODE !== 'development'
 
 export const CONFIG = {
   API_BASE: isProd
@@ -21,6 +20,8 @@ export const CONFIG = {
   DASHBOARD_URL: isProd
     ? 'https://talvyn.vercel.app'
     : 'http://localhost:5173',
+  WEB_ORIGINS: isProd ? ['https://talvyn.vercel.app'] : ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  PROTOCOL_VERSION: 2,
   STORAGE_KEY_TOKEN: 'talvyn_token',
   STORAGE_KEY_USER: 'talvyn_user',
   STORAGE_KEY_LAST_JOB: 'talvyn_last_job',
@@ -30,7 +31,7 @@ export type Config = typeof CONFIG
 
 export type DashboardRoute = 'dashboard' | 'profile' | 'tracker' | 'settings' | 'signup' | 'connect'
 
-export function getDashboardRouteUrl(route: DashboardRoute, extensionId?: string): string {
+export function getDashboardRouteUrl(route: DashboardRoute): string {
   const base = CONFIG.DASHBOARD_URL.replace(/\/+$/, '')
   switch (route) {
     case 'dashboard':
@@ -44,9 +45,7 @@ export function getDashboardRouteUrl(route: DashboardRoute, extensionId?: string
     case 'signup':
       return `${base}/signup`
     case 'connect':
-      return extensionId
-        ? `${base}/extension/connect?extId=${encodeURIComponent(extensionId)}`
-        : `${base}/extension/connect`
+      return `${base}/extension/connect`
     default:
       return `${base}/dashboard`
   }

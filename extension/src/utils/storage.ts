@@ -11,6 +11,9 @@ import {
  */
 export interface TalvynAuthSession {
   token: string
+  refreshToken?: string
+  sessionId?: string
+  accessExpiresAt?: number
   user: AuthUser
   connectedAt: string
 }
@@ -27,7 +30,7 @@ export const STORAGE_KEYS = {
  * Safe against extension context invalidation.
  */
 export async function getAuthSession(): Promise<TalvynAuthSession | null> {
-  if (!isExtensionContextValid()) {
+  if (!isExtensionContextValid() || !isTrustedStorageContext()) {
     return null
   }
 
@@ -46,15 +49,7 @@ export async function getAuthSession(): Promise<TalvynAuthSession | null> {
       return auth as TalvynAuthSession
     }
 
-    const legacyToken = result[STORAGE_KEYS.TOKEN]
-    const legacyUser = result[STORAGE_KEYS.USER]
-    if (legacyToken) {
-      return {
-        token: legacyToken,
-        user: legacyUser || { id: 'unknown', email: '', authProvider: 'EMAIL', profile: null },
-        connectedAt: new Date().toISOString(),
-      }
-    }
+    // Website JWT copies cannot become independent extension sessions.
     return null
   } catch (err) {
     if (isExtensionContextInvalidated(err)) {
@@ -71,7 +66,7 @@ export async function getAuthSession(): Promise<TalvynAuthSession | null> {
  * Safe against extension context invalidation.
  */
 export async function setAuthSession(session: TalvynAuthSession): Promise<void> {
-  if (!isExtensionContextValid()) {
+  if (!isExtensionContextValid() || !isTrustedStorageContext()) {
     return
   }
 
@@ -79,9 +74,8 @@ export async function setAuthSession(session: TalvynAuthSession): Promise<void> 
     if (typeof chrome === 'undefined' || !chrome.storage?.local) return
     await chrome.storage.local.set({
       [STORAGE_KEYS.AUTH]: session,
-      [STORAGE_KEYS.TOKEN]: session.token,
-      [STORAGE_KEYS.USER]: session.user,
     })
+    await chrome.storage.local.remove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER])
   } catch (err) {
     if (isExtensionContextInvalidated(err)) {
       shutdownExtensionRuntime()
@@ -92,48 +86,23 @@ export async function setAuthSession(session: TalvynAuthSession): Promise<void> 
   }
 }
 
-export async function getToken(): Promise<string | null> {
-  const session = await getAuthSession()
-  return session?.token ?? null
-}
-
-export async function setToken(token: string): Promise<void> {
-  const session = await getAuthSession()
-  const user = session?.user || { id: 'unknown', email: '', authProvider: 'EMAIL', profile: null }
-  await setAuthSession({
-    token,
-    user,
-    connectedAt: session?.connectedAt || new Date().toISOString(),
-  })
-}
-
 export async function getUser(): Promise<AuthUser | null> {
-  const session = await getAuthSession()
-  return session?.user ?? null
+  if (!isExtensionContextValid()) return null
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_AUTH' })
+    return response?.success && response.authenticated ? response.user ?? null : null
+  } catch (error) {
+    if (isExtensionContextInvalidated(error)) shutdownExtensionRuntime()
+    return null
+  }
 }
 
-export async function setUser(user: AuthUser): Promise<void> {
-  const session = await getAuthSession()
-  if (!session?.token) {
-    if (!isExtensionContextValid()) return
-    try {
-      await chrome.storage.local.set({ [STORAGE_KEYS.USER]: user })
-    } catch (err) {
-      if (isExtensionContextInvalidated(err)) {
-        shutdownExtensionRuntime()
-      }
-    }
-    return
-  }
-  await setAuthSession({
-    token: session.token,
-    user,
-    connectedAt: session.connectedAt,
-  })
+function isTrustedStorageContext(): boolean {
+  return typeof location === 'undefined' || location.protocol === 'chrome-extension:'
 }
 
 export async function clearAuth(): Promise<void> {
-  if (!isExtensionContextValid()) {
+  if (!isExtensionContextValid() || !isTrustedStorageContext()) {
     return
   }
 
@@ -154,14 +123,16 @@ export async function clearAuth(): Promise<void> {
 }
 
 export async function getStorageData(): Promise<StorageData> {
-  const session = await getAuthSession()
+  const user = await getUser()
   let lastDetectedJob = null
+  let lastScanSummary = null
 
   if (isExtensionContextValid()) {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const res = await chrome.storage.local.get(STORAGE_KEYS.LAST_JOB)
+        const res = await chrome.storage.local.get([STORAGE_KEYS.LAST_JOB, 'talvyn_last_scan_summary'])
         lastDetectedJob = res[STORAGE_KEYS.LAST_JOB] ?? null
+        lastScanSummary = res.talvyn_last_scan_summary ?? null
       }
     } catch (err) {
       if (isExtensionContextInvalidated(err)) {
@@ -171,9 +142,9 @@ export async function getStorageData(): Promise<StorageData> {
   }
 
   return {
-    token: session?.token ?? null,
-    user: session?.user ?? null,
+    user,
     lastDetectedJob,
+    lastScanSummary,
   }
 }
 

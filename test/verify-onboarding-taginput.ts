@@ -19,10 +19,12 @@
  * 14. React Hook Form defaultValues simulation
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { normalizeTags } from '../src/components/ui/TagInput'
 import { normalizeProfile, safeArray } from '../src/api/profile'
 import { formatUserProfile } from '../server/routes/auth'
 import { googleAuthService } from '../server/services/googleAuthService'
+import { config } from '../server/config'
 
 console.log('=================================================================')
 console.log('TALVYN: TAGINPUT & ONBOARDING ROBUSTNESS VERIFICATION TESTS')
@@ -132,7 +134,9 @@ async function runTests() {
   // ─── 12. Backend Google User Creation Profile Defaults ─────────────────────
   console.log('\n--- 12. Google User Profile Creation Defaults ---')
   const testSub = `sub-onboarding-test-${Date.now()}`
-  const mockToken = `test-google-token:${JSON.stringify({
+  const googleClaims = {
+    aud: config.googleClientId || 'fixture-google-client.apps.googleusercontent.com',
+    iat: Math.floor(Date.now() / 1000),
     sub: testSub,
     email: `onboarding.test.${Date.now()}@example.com`,
     name: 'Alex Johnson',
@@ -141,13 +145,16 @@ async function runTests() {
     email_verified: true,
     exp: Math.floor((Date.now() + 3600000) / 1000),
     iss: 'https://accounts.google.com',
-  })}`
+  }
 
-  const verifiedGoogle = await googleAuthService.verifyGoogleToken(mockToken)
+  const verifiedGoogle = googleAuthService.validatePayload(googleClaims)
   let authResult: any
   try {
+    requireTestDatabase()
     authResult = await googleAuthService.authenticateGoogleUser(verifiedGoogle)
   } catch (dbErr) {
+    allowDatabaseFixtureFallback(dbErr)
+    console.warn('  SKIP Google onboarding persistence: no usable dedicated test database; profile normalization uses fixtures.')
     // Mock user result if remote database is offline
     authResult = {
       isNewUser: true,
@@ -155,7 +162,7 @@ async function runTests() {
         id: 'mock-user-id',
         email: verifiedGoogle.email,
         authProvider: 'GOOGLE',
-        googleId: verifiedGoogle.sub,
+        googleId: verifiedGoogle.googleId,
         profile: {
           id: 'mock-profile-id',
           userId: 'mock-user-id',

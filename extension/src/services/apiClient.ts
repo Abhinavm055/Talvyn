@@ -1,5 +1,3 @@
-import { CONFIG } from '../utils/config'
-import { getToken } from '../utils/storage'
 import {
   isExtensionContextValid,
   isExtensionContextInvalidated,
@@ -8,7 +6,7 @@ import {
 
 /**
  * Base HTTP client for the Talvyn API.
- * Automatically attaches the Bearer token from extension storage.
+ * Credentials stay in the service worker. This client only sends data requests.
  */
 
 export class ApiError extends Error {
@@ -23,15 +21,14 @@ export class ApiError extends Error {
 }
 
 /**
- * Checks if the current execution context is a content script running on a web page.
- * Content scripts run on third-party page origins (e.g. in.indeed.com) and must route
- * API requests through the background service worker to avoid browser CORS blocks.
+ * Route all extension UI requests through the service worker. Content scripts need
+ * this to avoid page-origin CORS restrictions; the popup uses the same path so the
+ * worker can refresh and validate extension credentials before API requests.
  */
-function isContentScript(): boolean {
+function isExtensionUiContext(): boolean {
   return (
     typeof window !== 'undefined' &&
     typeof document !== 'undefined' &&
-    window.location?.protocol !== 'chrome-extension:' &&
     typeof chrome !== 'undefined' &&
     Boolean(chrome.runtime?.sendMessage)
   )
@@ -45,7 +42,9 @@ function requestViaBackground<T>(
   options: RequestInit = {}
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new ApiError(0, {}, 'Talvyn did not respond in time. Please retry.')), 45_000)
     if (!isExtensionContextValid()) {
+      clearTimeout(timeout)
       shutdownExtensionRuntime()
       return reject(
         new ApiError(0, { error: 'Extension context invalidated' }, 'Extension context invalidated')
@@ -59,9 +58,9 @@ function requestViaBackground<T>(
           path,
           method: options.method || 'GET',
           body: options.body,
-          headers: options.headers as Record<string, string>,
         },
         (response) => {
+          clearTimeout(timeout)
           const lastErr = chrome.runtime?.lastError
           if (lastErr) {
             if (isExtensionContextInvalidated(lastErr)) {
@@ -118,6 +117,7 @@ function requestViaBackground<T>(
         }
       )
     } catch (err) {
+      clearTimeout(timeout)
       if (isExtensionContextInvalidated(err)) {
         shutdownExtensionRuntime()
         return reject(
@@ -137,59 +137,8 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  // If running in a content script on a webpage, route via background worker to bypass CORS
-  if (isContentScript()) {
-    return requestViaBackground<T>(path, options)
-  }
-
-  // If running in background worker or popup (extension origin), direct fetch is safe
-  const token = await getToken()
-  const url = `${CONFIG.API_BASE}${path}`
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  }
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const response = await fetch(url, { ...options, headers })
-
-  if (!response.ok) {
-    let body: Record<string, unknown> = {}
-    try {
-      body = await response.json()
-    } catch {
-      /* non-JSON error body */
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      try {
-        const { clearAuth } = await import('../utils/storage')
-        await clearAuth()
-      } catch {
-        /* storage clear */
-      }
-    }
-
-    const defaultMsg =
-      response.status === 401 || response.status === 403
-        ? 'Your Talvyn session has expired. Reconnect your account.'
-        : "Couldn't save this job. Please try again."
-
-    throw new ApiError(
-      response.status,
-      body,
-      (body['error'] as string) || defaultMsg
-    )
-  }
-
-  // 204 No Content
-  if (response.status === 204) return undefined as unknown as T
-
-  return response.json() as Promise<T>
+  if (!isExtensionUiContext()) throw new ApiError(0, {}, 'Talvyn API requests require the extension message bridge.')
+  return requestViaBackground<T>(path, options)
 }
 
 export const api = {

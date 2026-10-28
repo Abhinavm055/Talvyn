@@ -141,8 +141,8 @@ const f8 = createMockField({
 })
 const m8 = fieldMatcher.matchField(f8, sampleProfile)
 assert(
-  m8.detectedType === 'workAuthorization' && m8.valueToFill === 'yes',
-  'Work authorization radio resolved to "yes"',
+  m8.detectedType === 'workAuthorization' && m8.valueToFill === sampleProfile.workAuthorization && !m8.canAutofill && m8.requiresReview,
+  'Work authorization preserves verified profile text and requires explicit review',
   `detectedType: ${m8.detectedType}, valueToFill: ${m8.valueToFill}, conf: ${m8.confidence}%, reason: ${m8.reason}`
 )
 
@@ -157,7 +157,7 @@ const f9 = createMockField({
   ],
 })
 const m9 = fieldMatcher.matchField(f9, sampleProfile)
-assert(m9.detectedType === 'visaStatus' && m9.valueToFill === 'no_sponsorship', 'Visa sponsorship select option matched correctly')
+assert(m9.detectedType === 'visaStatus' && m9.valueToFill === sampleProfile.visaStatus && !m9.canAutofill && m9.requiresReview, 'Visa sponsorship preserves verified profile text and requires explicit review')
 
 // ─── TEST 4: Name Handling & Missing Surname Rule ─────────────────────────────
 console.log('\n--- 4. Testing Name Handling & Never Inventing Surname ---')

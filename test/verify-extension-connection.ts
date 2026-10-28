@@ -14,11 +14,14 @@
  * 9. Production Package Artifact Integrity (ZIP contains manifest.json, excludes source/.env)
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { CONFIG } from '../extension/src/utils/config'
 import { prisma } from '../server/lib/prisma'
 import { normalizeProfile } from '../src/api/profile'
 import jwt from 'jsonwebtoken'
 import { config } from '../server/config'
+import { signExtensionAccessToken, signExtensionRefreshToken } from '../server/routes/auth'
+import { validateSessionResponse } from '../extension/src/services/secureConnection'
 import fs from 'fs'
 import path from 'path'
 
@@ -72,6 +75,7 @@ async function runTests() {
   let dbOnline = true
 
   try {
+    requireTestDatabase()
     const testUser = await prisma.user.create({
       data: {
         email: testEmail,
@@ -91,14 +95,16 @@ async function runTests() {
     })
     testUserId = testUser.id
   } catch (err) {
+    allowDatabaseFixtureFallback(err)
     dbOnline = false
+    console.warn('  SKIP live job/profile database synchronization: database unavailable; remaining data-shape checks use fixtures.')
   }
 
-  const token = jwt.sign({ userId: testUserId }, config.jwtSecret, { expiresIn: '7d' })
+  const token = signExtensionAccessToken(testUserId, 'connection-test-session', 0)
   const decoded = jwt.verify(token, config.jwtSecret) as { userId: string }
   assert(
-    decoded.userId === testUserId,
-    'Extension token verifies against Talvyn JWT secret and resolves user'
+    decoded.userId === testUserId && (decoded as jwt.JwtPayload).tokenUse === 'extension_access',
+    'Extension-scoped access token verifies against Talvyn JWT secret and resolves user'
   )
 
   // ─── 3. Live Profile Synchronization ───────────────────────────────────────
@@ -232,12 +238,20 @@ async function runTests() {
   )
 
   const bgCode = fs.readFileSync(srcBackgroundPath, 'utf8')
+  const verifiedUser = { id: testUserId, email: testEmail }
+  const sessionResponse = { sessionId: 'connection-test-session', accessToken: token, refreshToken: signExtensionRefreshToken('connection-test-session'), user: verifiedUser }
   assert(
-    bgCode.includes('CONNECTION_REQUEST_RECEIVED') &&
-    bgCode.includes('TOKEN_VALIDATION_STARTED') &&
-    bgCode.includes('TOKEN_VALIDATION_SUCCESS') &&
-    bgCode.includes('SESSION_STORED'),
-    'Background service worker implements required connection tracing logs'
+    validateSessionResponse(sessionResponse, verifiedUser)?.user.id === testUserId,
+    'Connection accepts consistent extension session claims and the server-verified account'
+  )
+  assert(
+    validateSessionResponse({ ...sessionResponse, sessionId: 'different-session' }, verifiedUser) === null &&
+    validateSessionResponse(sessionResponse, { ...verifiedUser, id: 'different-user' }) === null,
+    'Connection rejects credentials bound to a different session or account'
+  )
+  assert(
+    bgCode.includes('TALVYN_GET_PAIRING_REQUEST') && bgCode.includes('TALVYN_COMPLETE_CONNECTION') && !bgCode.includes("message.type === 'TALVYN_CONNECT_EXTENSION'"),
+    'The worker requires local pairing proof and rejects legacy webpage credential transfer'
   )
 
   // Ensure no secrets or credentials logged
@@ -275,11 +289,10 @@ async function runTests() {
   // ─── 9. Package ZIP Artifact Integrity & Manifest Validation ─────────────
   console.log('\n--- 9. Testing Extension Production Package Artifact & Manifest ---')
 
-  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn v1.zip')
+  const packageZipPath = path.resolve(process.cwd(), 'extension', 'dist-package', 'talvyn-extension.zip')
   const distManifestPath = path.resolve(process.cwd(), 'extension', 'dist', 'manifest.json')
   const srcManifestPath = path.resolve(process.cwd(), 'extension', 'src', 'manifest.ts')
   const srcContentPath = path.resolve(process.cwd(), 'extension', 'src', 'content', 'index.ts')
-  const publicZipPath = path.resolve(process.cwd(), 'public', 'downloads', 'talvyn v1.zip')
 
   const srcContentCode = fs.readFileSync(srcContentPath, 'utf8')
   assert(
@@ -307,12 +320,19 @@ async function runTests() {
 
   assert(
     fs.existsSync(packageZipPath),
-    'Distribution package talvyn v1.zip exists in extension/dist-package'
+    'Publisher/developer package talvyn-extension.zip exists in extension/dist-package'
   )
 
+  const extensionsPage = fs.readFileSync(path.resolve(process.cwd(), 'src', 'pages', 'extensions', 'Extensions.tsx'), 'utf8')
+  const releasePage = fs.readFileSync(path.resolve(process.cwd(), 'src', 'pages', 'releases', 'ReleaseNotes.tsx'), 'utf8')
+  const connectPage = fs.readFileSync(path.resolve(process.cwd(), 'src', 'pages', 'extensions', 'ExtensionConnect.tsx'), 'utf8')
   assert(
-    fs.existsSync(publicZipPath),
-    'Public download package talvyn v1.zip exists in public/downloads for static hosting on Vercel'
+    ![extensionsPage, releasePage, connectPage].some((source) => source.includes('/downloads/')),
+    'Consumer installation and connection pages avoid unverified local download paths'
+  )
+  assert(
+    extensionsPage.includes('chrome://extensions') && extensionsPage.includes('brave://extensions'),
+    'Consumer installation documentation provides verified unpacked browser setup instructions'
   )
 
   const distLogoPath = path.resolve(process.cwd(), 'extension', 'dist', 'icons', 'logotalvyn.png')
@@ -333,12 +353,38 @@ async function runTests() {
   const apiClientPath = path.resolve(process.cwd(), 'extension', 'src', 'services', 'apiClient.ts')
   const apiClientCode = fs.readFileSync(apiClientPath, 'utf8')
 
-  assert(
-    apiClientCode.includes('isContentScript') &&
-    apiClientCode.includes('requestViaBackground') &&
-    apiClientCode.includes('chrome.runtime.sendMessage'),
-    'Content script API client routes requests through background worker bridge to eliminate CORS'
-  )
+  const globalKeys = ['window', 'document', 'chrome', 'fetch'] as const
+  const descriptors = new Map(globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  let actualMessage: Record<string, unknown> | undefined
+  let directFetchCalled = false
+  try {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: {} })
+    Object.defineProperty(globalThis, 'chrome', { configurable: true, value: { runtime: {
+      id: 'a'.repeat(32),
+      sendMessage: (message: Record<string, unknown>, callback: (response: unknown) => void) => {
+        actualMessage = message
+        callback({ success: true, data: { saved: true } })
+      },
+    } } })
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: () => {
+      directFetchCalled = true
+      throw new Error('Extension UI must never make direct authenticated fetches')
+    } })
+    const { api } = await import('../extension/src/services/apiClient')
+    const result = await api.get<{ saved: boolean }>('/api/jobs/check-url?url=https%3A%2F%2Fexample.com%2Fjob')
+    assert(
+      result.saved === true && actualMessage?.type === 'TALVYN_API_REQUEST' && !directFetchCalled &&
+      !('token' in actualMessage) && !('accessToken' in actualMessage) && !('refreshToken' in actualMessage),
+      'Extension UI data requests route through the worker without direct authenticated fetches or credential payloads'
+    )
+  } finally {
+    for (const key of globalKeys) {
+      const descriptor = descriptors.get(key)
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else Reflect.deleteProperty(globalThis, key)
+    }
+  }
 
   const backgroundPath = path.resolve(process.cwd(), 'extension', 'src', 'background', 'index.ts')
   const backgroundCode = fs.readFileSync(backgroundPath, 'utf8')

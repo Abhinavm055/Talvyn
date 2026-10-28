@@ -1,45 +1,28 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 
-// In development, defaults to '/api' (proxied by Vite to localhost:3001).
-// In production, reads VITE_API_URL (e.g. 'https://talvyn-api.onrender.com') if configured.
-const getApiBaseUrl = (): string => {
-  const envUrl =
-    typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL
-      ? import.meta.env.VITE_API_URL
-      : typeof process !== 'undefined' && process?.env?.VITE_API_URL
-        ? process.env.VITE_API_URL
-        : ''
-
-  if (!envUrl) return '/api'
-  return envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/+$/, '')}/api`
+declare module 'axios' {
+  interface AxiosRequestConfig { talvynSessionRevision?: number }
 }
 
+// Same-origin /api is proxied to the API by Vite/Vercel. The HttpOnly cookie
+// works in Brave without third-party cookie access.
 export const apiClient = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: '/api',
+  withCredentials: true,
+  timeout: 20000,
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach token on every request
 apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+  config.talvynSessionRevision = useAuthStore.getState().sessionRevision
   return config
 })
 
-import { notifyExtensionDisconnect } from '../utils/extensionSync'
-
-// Handle 401 — clear auth and redirect to login
 apiClient.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    if (error.response?.status === 401) {
-      await notifyExtensionDisconnect()
-      useAuthStore.getState().logout()
-      window.location.href = '/login'
-    }
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && error.config?.talvynSessionRevision === useAuthStore.getState().sessionRevision) useAuthStore.getState().logout()
     return Promise.reject(error)
-  }
+  },
 )

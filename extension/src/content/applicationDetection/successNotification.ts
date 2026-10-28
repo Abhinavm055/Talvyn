@@ -13,6 +13,10 @@ export interface SuccessNotificationCallbacks {
 export class SuccessNotificationManager {
   private activeElement: HTMLElement | null = null
 
+  private escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] || character))
+  }
+
   /**
    * Shows the Confirmed Success banner with "View Job" and "Undo" buttons.
    */
@@ -79,7 +83,7 @@ export class SuccessNotificationManager {
               background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:12px;
               font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;
             ">Dismiss</button>
-            <a id="talvyn-view-job-link" href="${CONFIG.DASHBOARD_URL}/jobs/${job.id}" target="_blank" style="
+            <a id="talvyn-view-job-link" href="${CONFIG.DASHBOARD_URL}/jobs/${encodeURIComponent(job.id)}" target="_blank" rel="noopener noreferrer" style="
               background:#4f46e5;color:white;text-decoration:none;font-size:12px;
               font-weight:600;padding:6px 14px;border-radius:6px;display:inline-block;
             ">View Job →</a>
@@ -196,7 +200,7 @@ export class SuccessNotificationManager {
         font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
         font-size:13px;display:flex;align-items:center;justify-content:space-between;
       ">
-        <span>${isNew ? 'Tracked application removed.' : `Status reverted to ${previousStatus || 'SAVED'}.`}</span>
+        <span>${isNew ? 'Tracked application removed.' : `Status reverted to ${this.escapeHtml(previousStatus || 'SAVED')}.`}</span>
         <button id="talvyn-close-revert-btn" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px;">×</button>
       </div>
     `

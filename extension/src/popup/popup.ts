@@ -4,15 +4,19 @@
  * Implements:
  * 1. Celestial Dark & Light theme with interactive Sun-touches-Moon eclipse toggle
  * 2. Manual Job Save section to quickly add any job to the pipeline
- * 3. Strict authentication state machine (loading -> connected | disconnected | expired | error)
+ * 3. Authentication state machine (loading -> connected | reconnecting | reconnect-required | disconnected)
  * 4. Active tab floating intelligence trigger
  * 5. Quick dashboard navigation routes
  */
 
 import { jobsService } from '../services/jobsService'
-import { AuthUser, Job, JobStatus } from '../types'
+import { EXTENSION_RELEASE_NOTES } from '../releaseNotes'
+import { CONFIG, getDashboardRouteUrl } from '../utils/config'
+import { validateLocalAiSettings } from '../services/localAi'
+import { shouldShowReleaseNotice } from '../services/releaseLifecycle'
+import { AuthUser, Job, JobStatus, JobType } from '../types'
 
-type PopupState = 'loading' | 'disconnected' | 'connected' | 'expired' | 'error'
+type PopupState = 'loading' | 'disconnected' | 'connected' | 'reconnecting' | 'reconnect-required' | 'error'
 type ThemeMode = 'dark' | 'light'
 export type PopupMode = 'analyze' | 'manual-save'
 
@@ -29,6 +33,10 @@ export function setPopupMode(mode: PopupMode): void {
 }
 
 const app = document.getElementById('app')!
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!))
+}
 
 // ─── Theme Management ─────────────────────────────────────────────────────────
 
@@ -180,44 +188,44 @@ async function openDashboardRoute(route: 'dashboard' | 'profile' | 'tracker' | '
       route,
     })
   } catch {
-    const fallbackUrls: Record<string, string> = {
-      dashboard: 'https://talvyn.vercel.app/dashboard',
-      profile: 'https://talvyn.vercel.app/profile',
-      tracker: 'https://talvyn.vercel.app/tracker',
-      settings: 'https://talvyn.vercel.app/extensions',
-    }
-    window.open(fallbackUrls[route] || 'https://talvyn.vercel.app/dashboard', '_blank')
+    window.open(getDashboardRouteUrl(route), '_blank')
   }
 }
 
 async function triggerConnectAccount(): Promise<void> {
   try {
-    await sendBackgroundMessage({
+    const result = await sendBackgroundMessage({
       type: 'CONNECT_TALVYN',
     })
+    if (!result?.success) renderError(result?.error || 'Talvyn could not start the connection. Please retry.')
   } catch {
-    const extId = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : ''
-    const url = extId
-      ? `https://talvyn.vercel.app/extension/connect?extId=${encodeURIComponent(extId)}`
-      : `https://talvyn.vercel.app/extension/connect`
-    window.open(url, '_blank')
+    renderError('Talvyn could not start the connection. Please retry.')
   }
 }
 
 async function triggerDisconnectAccount(): Promise<void> {
   try {
-    await sendBackgroundMessage({
+    const result = await sendBackgroundMessage({
       type: 'DISCONNECT_TALVYN',
     })
+    if (!result?.success) { renderReconnecting(result?.error || 'Disconnect could not be confirmed. Please retry.'); return }
   } catch (err) {
-    console.warn('[Talvyn Popup] Failed to disconnect via background:', err)
+    renderReconnecting('Disconnect could not be confirmed. Please retry.')
+    return
   }
   currentState = 'disconnected'
   currentUser = null
   renderDisconnected()
 }
 
-export async function triggerActiveTabIntelligencePanel(): Promise<void> {
+export interface ActivePageAnalysisResult {
+  success: boolean
+  mode?: string
+  detectedJobs?: number
+  error?: string
+}
+
+export async function triggerActiveTabIntelligencePanel(): Promise<ActivePageAnalysisResult | null> {
   console.log('[Talvyn Popup] Triggering floating intelligence panel on active tab...')
   try {
     let activeTab: chrome.tabs.Tab | null = null
@@ -235,29 +243,42 @@ export async function triggerActiveTabIntelligencePanel(): Promise<void> {
     }
 
     if (!activeTab?.id) {
-      await sendBackgroundMessage({ type: 'TRIGGER_ACTIVE_TAB_PANEL' })
-      return
+      const response = await sendBackgroundMessage<any>({ type: 'TRIGGER_ACTIVE_TAB_PANEL' })
+      const result = response?.result || response
+      if (!response?.success || result?.success === false) {
+        throw new Error(result?.error || response?.error || 'Could not analyze the active tab.')
+      }
+      return result
     }
 
     const tabUrl = activeTab.url || ''
     const tabTitle = activeTab.title || ''
 
     try {
-      await chrome.tabs.sendMessage(activeTab.id, {
+      const response = await chrome.tabs.sendMessage(activeTab.id, {
         type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
         tabUrl,
         tabTitle,
       })
+      if (response?.success === false) throw new Error(response.error || 'Page analysis failed.')
+      if (!response) throw new Error('The page did not return an analysis result.')
+      return response as ActivePageAnalysisResult
     } catch {
-      await sendBackgroundMessage({
+      const response = await sendBackgroundMessage<any>({
         type: 'TRIGGER_ACTIVE_TAB_PANEL',
         tabId: activeTab.id,
         tabUrl,
         tabTitle,
       })
+      const result = response?.result || response
+      if (!response?.success || result?.success === false || !result) {
+        throw new Error(result?.error || response?.error || 'Could not analyze the active tab.')
+      }
+      return result
     }
   } catch (err: any) {
     console.error('[Talvyn Popup] Failed to trigger active tab floating window:', err?.message || err)
+    throw err instanceof Error ? err : new Error(String(err))
   }
 }
 
@@ -273,9 +294,8 @@ async function init() {
   try {
     const response = await sendBackgroundMessage<{
       success: boolean
-      state?: 'connected' | 'disconnected' | 'expired' | 'error'
+      state?: 'connected' | 'disconnected' | 'reconnecting' | 'reconnect-required' | 'error'
       user?: AuthUser | null
-      token?: string | null
       isOffline?: boolean
       error?: string
     }>({ type: 'GET_AUTH_STATUS' })
@@ -293,10 +313,13 @@ async function init() {
       currentUser = response.user
       isOfflineMode = Boolean(response.isOffline)
       renderConnected(response.user, { isOffline: isOfflineMode })
-    } else if (response.state === 'expired') {
+    } else if (response.state === 'reconnect-required') {
       console.log('[Talvyn] SESSION_EXPIRED')
-      currentState = 'expired'
+      currentState = 'reconnect-required'
       renderExpired()
+    } else if (response.state === 'reconnecting') {
+      currentState = 'reconnecting'
+      renderReconnecting(response.error)
     } else {
       currentState = 'disconnected'
       renderDisconnected()
@@ -319,7 +342,6 @@ function renderLoading() {
       <img
         src="${logoUrl}"
         alt="Talvyn"
-        onerror="this.onerror=null;this.src='${fallbackUrl}';"
         style="width: 46px; height: 46px; border-radius: 12px; filter: drop-shadow(0 0 16px rgba(80,84,234,0.45)); margin-bottom: 16px; object-fit: contain;"
       />
       <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); margin-bottom: 4px;">Talvyn</div>
@@ -344,7 +366,6 @@ function renderDisconnected() {
             <img
               src="${logoUrl}"
               alt="Talvyn"
-              onerror="this.onerror=null;this.src='${fallbackUrl}';"
               style="width: 32px; height: 32px; border-radius: 9px; filter: drop-shadow(0 0 12px rgba(80,84,234,0.4)); flex-shrink: 0; object-fit: contain;"
             />
             <div>
@@ -440,7 +461,6 @@ function renderExpired() {
             <img
               src="${logoUrl}"
               alt="Talvyn"
-              onerror="this.onerror=null;this.src='${fallbackUrl}';"
               style="width: 32px; height: 32px; border-radius: 9px; filter: drop-shadow(0 0 12px rgba(80,84,234,0.4)); flex-shrink: 0; object-fit: contain;"
             />
             <div>
@@ -456,7 +476,7 @@ function renderExpired() {
               color: #FBBF24; font-size: 10px; font-weight: 700; border: 1px solid rgba(245,158,11,0.3);
             ">
               <span style="width: 6px; height: 6px; border-radius: 50%; background: #F59E0B; display: inline-block;"></span>
-              Session expired
+              Reconnect required
             </div>
             ${renderThemeToggleHtml()}
           </div>
@@ -470,8 +490,8 @@ function renderExpired() {
         ">
           <span style="font-size: 16px;">⚠️</span>
           <div>
-            <div style="font-weight: 700; color: #FBBF24; margin-bottom: 3px;">Session Expired</div>
-            Your Talvyn session has expired. Reconnect your account to continue capturing and tracking jobs.
+            <div style="font-weight: 700; color: #FBBF24; margin-bottom: 3px;">Reconnect Required</div>
+            This extension session expired or was revoked. Reconnect from your Talvyn account to continue.
           </div>
         </div>
 
@@ -511,6 +531,19 @@ function renderExpired() {
   })
 }
 
+function renderReconnecting(message?: string) {
+  app.innerHTML = `
+    <div style="padding:24px 18px;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg-main);color:var(--text-primary);">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px;">Reconnecting to Talvyn</div>
+      <p id="reconnecting-status-message" style="font-size:11.5px;color:var(--text-secondary);line-height:1.5;max-width:260px;margin:0 0 16px;"></p>
+      <button id="retry-auth-status-btn" type="button" style="padding:9px 14px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card);color:var(--text-primary);font-weight:600;cursor:pointer;">Retry connection</button>
+    </div>
+  `
+  const messageNode = document.getElementById('reconnecting-status-message')
+  if (messageNode) messageNode.textContent = message || 'The server could not verify your extension session. Talvyn will retry when the connection is available.'
+  document.getElementById('retry-auth-status-btn')?.addEventListener('click', () => { void init() })
+}
+
 // ─── Error View ───────────────────────────────────────────────────────────────
 
 function renderError(message: string) {
@@ -526,7 +559,6 @@ function renderError(message: string) {
             <img
               src="${logoUrl}"
               alt="Talvyn"
-              onerror="this.onerror=null;this.src='${fallbackUrl}';"
               style="width: 32px; height: 32px; border-radius: 9px; filter: drop-shadow(0 0 12px rgba(80,84,234,0.4)); flex-shrink: 0; object-fit: contain;"
             />
             <div>
@@ -557,7 +589,7 @@ function renderError(message: string) {
           <span style="font-size: 16px;">⚠️</span>
           <div>
             <div style="font-weight: 700; color: #F87171; margin-bottom: 3px;">Connection Issue</div>
-            ${message}
+            ${escapeHtml(message)}
           </div>
         </div>
 
@@ -613,7 +645,6 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
             <img
               src="${logoUrl}"
               alt="Talvyn"
-              onerror="this.onerror=null;this.src='${fallbackUrl}';"
               style="width: 32px; height: 32px; border-radius: 9px; object-fit: contain; flex-shrink: 0;"
             />
             <div>
@@ -675,7 +706,7 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
           Disconnect Account
         </button>
 
-        <span style="font-size: 11px; color: var(--text-muted);">Talvyn v1.1</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Talvyn v${chrome.runtime.getManifest().version}</span>
       </div>
     </div>
   `
@@ -700,13 +731,17 @@ function renderConnected(user: AuthUser, options: { isOffline?: boolean } = {}) 
       <span>Analyzing Page...</span>
     `
     try {
-      await triggerActiveTabIntelligencePanel()
-      analyzeBtn.innerHTML = `
-        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        <span>✓ Intelligence Active</span>
-      `
-    } catch {
-      analyzeBtn.innerHTML = originalContent
+      const result = await triggerActiveTabIntelligencePanel()
+      const label = result?.mode === 'not-job-page'
+        ? 'No Job Detected'
+        : result?.mode === 'job-listing'
+        ? `${result.detectedJobs ?? 0} Jobs Found`
+        : result?.success
+        ? 'Analysis Opened'
+        : 'Analysis Unavailable'
+      analyzeBtn.innerHTML = `<span>${escapeHtml(label)}</span>`
+    } catch (error) {
+      analyzeBtn.innerHTML = `<span>${escapeHtml(error instanceof Error ? error.message : 'Analysis Failed')}</span>`
     } finally {
       setTimeout(() => {
         analyzeBtn.disabled = false
@@ -939,7 +974,7 @@ function getManualSaveModeHtml(): string {
               name="jobUrl"
               class="manual-input"
               placeholder="https://company.com/jobs/..."
-              value="${initialUrl}"
+              value="${escapeHtml(initialUrl)}"
             />
           </div>
           <div>
@@ -1133,10 +1168,10 @@ async function loadRecentJobs() {
         ">
           <div style="min-width: 0; flex: 1; padding-right: 8px;">
             <div style="font-weight: 700; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${job.title}
+              ${escapeHtml(job.title)}
             </div>
             <div style="font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">
-              ${job.company}
+              ${escapeHtml(job.company)}
             </div>
           </div>
           <button type="button" class="recent-job-pill" style="
@@ -1145,7 +1180,7 @@ async function loadRecentJobs() {
             background: var(--bg-card-subtle); color: var(--text-secondary);
             border: 1px solid var(--border-color); cursor: pointer; flex-shrink: 0;
             transition: all 0.15s ease;
-          " data-url="${job.jobUrl || ''}">
+          " data-url="${escapeHtml(job.jobUrl || '')}">
             <span>${job.status === 'APPLIED' ? 'Applied' : 'Saved'}</span>
             <span style="font-size: 13px; line-height: 1; color: var(--text-muted);">&rsaquo;</span>
           </button>
@@ -1173,6 +1208,139 @@ async function loadRecentJobs() {
     `
   }
 }
+
+let releaseNoticeDismissedInPopup: string | null = null
+let releaseNoticeCheck: Promise<void> | null = null
+let localSettingsRender: Promise<void> | null = null
+
+async function renderLocalSettings(): Promise<void> {
+  if (localSettingsRender || app.querySelector('#talvyn-local-ai-settings')) return
+  localSettingsRender = (async () => {
+    const result = await sendBackgroundMessage({ type: 'GET_LOCAL_AI_SETTINGS' }).catch(() => null)
+    if (!result?.success || app.querySelector('#talvyn-local-ai-settings')) return
+    const settings = result.settings
+    const section = document.createElement('details')
+    section.id = 'talvyn-local-ai-settings'
+    section.style.cssText = 'margin:0 16px 14px;padding:10px;border:1px solid var(--border-color);border-radius:10px;font-size:11px;color:var(--text-secondary);'
+    section.innerHTML = `
+      <summary style="cursor:pointer;font-weight:600;color:var(--text-primary)">Optional local AI</summary>
+      <p style="font-size:10.5px;line-height:1.5;margin:9px 0">Analysis works without AI. Enable suggestions from your own downloaded Ollama model. Only detected job title, company, description, and requirements are sent to your local service. Profile data and credentials are excluded. Cloud models are unsupported.</p>
+      <label style="display:flex;gap:7px;margin:8px 0;align-items:center"><input id="local-ai-enabled" type="checkbox" ${settings.enabled ? 'checked' : ''}> Enable local AI suggestions</label>
+      <label style="display:block;margin:8px 0">Loopback endpoint<input id="local-ai-endpoint" class="manual-input" type="url" value="${escapeHtml(settings.endpoint)}" placeholder="http://127.0.0.1:11434" style="margin-top:4px"></label>
+      <label style="display:block;margin:8px 0">Downloaded model<input id="local-ai-model" class="manual-input" type="text" value="${escapeHtml(settings.model)}" placeholder="Model name shown by ollama list" style="margin-top:4px"></label>
+      <label style="display:flex;gap:7px;margin:9px 0;line-height:1.4;align-items:flex-start"><input id="local-ai-consent" type="checkbox" ${settings.consent ? 'checked' : ''}> I allow detected job information to be sent to my configured local model.</label>
+      <div style="display:flex;gap:8px;margin-top:9px"><button id="local-ai-save" type="button" class="popup-nav-btn" style="padding:7px 10px;cursor:pointer">Save settings</button><button id="local-ai-check" type="button" class="popup-nav-btn" style="padding:7px 10px;cursor:pointer">Check local model</button></div>
+      <p id="local-ai-feedback" role="status" style="margin:8px 0 0;line-height:1.4"></p>`
+    app.append(section)
+    const feedback = section.querySelector('#local-ai-feedback') as HTMLElement
+    section.querySelector('#local-ai-save')?.addEventListener('click', async () => {
+      const next = validateLocalAiSettings({
+        enabled: (section.querySelector('#local-ai-enabled') as HTMLInputElement).checked,
+        consent: (section.querySelector('#local-ai-consent') as HTMLInputElement).checked,
+        endpoint: (section.querySelector('#local-ai-endpoint') as HTMLInputElement).value,
+        model: (section.querySelector('#local-ai-model') as HTMLInputElement).value,
+      })
+      if (!next) { feedback.textContent = 'Use localhost or 127.0.0.1, a downloaded model name, and explicit consent when enabling local AI.'; return }
+      const button = section.querySelector('#local-ai-save') as HTMLButtonElement
+      button.disabled = true
+      try {
+        if (next.enabled) {
+          const endpoint = new URL(next.endpoint)
+          // Permission request runs directly from this explicit user action.
+          const allowed = await chrome.permissions.request({ origins: [`${endpoint.protocol}//${endpoint.hostname}/*`] })
+          if (!allowed) { feedback.textContent = 'Browser permission was declined. Local AI remains disabled.'; return }
+        }
+        const response = await sendBackgroundMessage({ type: 'SET_LOCAL_AI_SETTINGS', settings: next })
+        feedback.textContent = response?.success ? (next.enabled ? 'Settings saved. Check your downloaded local model before analyzing a page.' : 'Local AI disabled. Deterministic analysis remains available.') : response?.error || 'Settings could not be saved.'
+      } catch { feedback.textContent = 'Settings could not be saved. Please retry.' }
+      finally { button.disabled = false }
+    })
+    section.querySelector('#local-ai-check')?.addEventListener('click', async () => {
+      const button = section.querySelector('#local-ai-check') as HTMLButtonElement
+      button.disabled = true; feedback.textContent = 'Checking your local model…'
+      try {
+        const response = await sendBackgroundMessage({ type: 'CHECK_LOCAL_AI' })
+        feedback.textContent = response?.success && response.available ? 'Downloaded local model is available.' : response?.reason || 'Local AI is unavailable. Deterministic analysis remains available.'
+      } catch { feedback.textContent = 'Local AI could not be reached. Deterministic analysis remains available.' }
+      finally { button.disabled = false }
+    })
+  })().finally(() => { localSettingsRender = null })
+  await localSettingsRender
+}
+
+async function renderPendingReleaseNotice(): Promise<void> {
+  if (releaseNoticeCheck || app.querySelector('#talvyn-release-notice')) return
+
+  releaseNoticeCheck = (async () => {
+    const runningVersion = chrome.runtime.getManifest().version
+    const values = await chrome.storage.local.get([
+      'talvyn_pending_release_version',
+      'talvyn_release_notice_dismissed_version',
+    ])
+    const pendingVersion = values.talvyn_pending_release_version as string | undefined
+    const dismissedVersion = releaseNoticeDismissedInPopup || values.talvyn_release_notice_dismissed_version as string | undefined
+    if (
+      !shouldShowReleaseNotice(pendingVersion, runningVersion, dismissedVersion) ||
+      releaseNoticeDismissedInPopup === runningVersion
+    ) return
+
+    const notice = document.createElement('section')
+    notice.id = 'talvyn-release-notice'
+    notice.setAttribute('role', 'status')
+    notice.style.cssText = 'margin:12px 16px 0;padding:12px;border:1px solid rgba(99,102,241,.38);border-radius:12px;background:rgba(99,102,241,.10);color:var(--text-primary);'
+
+    const heading = document.createElement('div')
+    heading.style.cssText = 'font-size:12px;font-weight:700;margin-bottom:3px;'
+    heading.textContent = `What’s New in Talvyn · v${runningVersion}`
+    const title = document.createElement('div')
+    title.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:6px;'
+    title.textContent = EXTENSION_RELEASE_NOTES.title
+    const list = document.createElement('ul')
+    list.style.cssText = 'padding-left:16px;margin:0 0 9px;font-size:10.5px;line-height:1.45;color:var(--text-secondary);'
+    for (const change of EXTENSION_RELEASE_NOTES.changes.slice(0, 3)) {
+      const item = document.createElement('li')
+      item.textContent = change
+      list.append(item)
+    }
+
+    const actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
+    const explore = document.createElement('button')
+    explore.type = 'button'
+    explore.textContent = 'Explore updates'
+    explore.style.cssText = 'border:0;background:none;padding:0;color:#8B8DF8;font:600 11px sans-serif;cursor:pointer;'
+    explore.addEventListener('click', () => {
+      void chrome.tabs.create({ url: `${CONFIG.DASHBOARD_URL}/releases` })
+    })
+    const dismiss = document.createElement('button')
+    dismiss.type = 'button'
+    dismiss.textContent = 'Dismiss'
+    dismiss.style.cssText = 'border:0;background:none;padding:0;color:var(--text-muted);font:500 10.5px sans-serif;cursor:pointer;'
+    dismiss.addEventListener('click', async () => {
+      releaseNoticeDismissedInPopup = runningVersion
+      await chrome.storage.local.set({ talvyn_release_notice_dismissed_version: runningVersion })
+      notice.remove()
+    })
+    actions.append(explore, dismiss)
+    notice.append(heading, title, list, actions)
+    app.prepend(notice)
+  })().finally(() => {
+    releaseNoticeCheck = null
+  })
+
+  await releaseNoticeCheck
+}
+
+const releaseNoticeObserver = new MutationObserver(() => {
+  app.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
+    if (image.dataset.fallbackAttached) return
+    image.dataset.fallbackAttached = 'true'
+    image.addEventListener('error', () => { image.src = getFallbackIconUrl() }, { once: true })
+  })
+  void renderPendingReleaseNotice()
+  void renderLocalSettings()
+})
+releaseNoticeObserver.observe(app, { childList: true })
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────
 

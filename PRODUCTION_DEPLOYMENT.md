@@ -1,105 +1,52 @@
-# Talvyn Production Deployment Guide
+# Talvyn production deployment
 
-This document provides the complete, step-by-step instructions for deploying Talvyn to production:
-- **Backend**: Render (Node.js/Express)
-- **Frontend**: Vercel (React/Vite SPA)
-- **Database**: Neon PostgreSQL
-- **Extension**: Chrome Extension Distribution
+No deployment, store publication, commit or push is performed by the implementation task. The local build requires coordinated API and website configuration before an authorized deployment.
 
----
+## Architecture and environment
 
-## 1. Environment Variables Specification
+The website is a Vite static application hosted on Vercel. Express/Prisma runs on Render against PostgreSQL. The extension talks directly to the configured API; the website uses a same-origin `/api` proxy so HttpOnly authentication cookies work without third-party cookies.
 
-### A. Backend API Environment Variables (Render Dashboard)
+Backend environment: `DATABASE_URL`, distinct strong `JWT_SECRET` and `JWT_REFRESH_SECRET`, `CLIENT_URL`, `NODE_ENV=production`, and real `TALVYN_EXTENSION_IDS`. Google sign-in also requires the existing Google client configuration. The backend refuses new extension pairings if the trusted ID list is empty. CORS permits exact configured website and extension origins; authentication/proof checks still apply.
 
-| Variable | Description | Example (Production) | Sensitive? |
-|---|---|---|---|
-| `PORT` | Server listening port | Automatically assigned by Render (e.g. `10000`) | No |
-| `NODE_ENV` | Environment mode | `production` | No |
-| `DATABASE_URL` | Neon PostgreSQL connection string | `postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/talvyn?sslmode=require` | **YES (CRITICAL)** |
-| `CLIENT_URL` | Allowed frontend origin for CORS (Vercel domain) | `https://talvyn.vercel.app` | No |
-| `JWT_SECRET` | Secret key for signing access tokens | `64+ character random secret` | **YES (CRITICAL)** |
-| `JWT_REFRESH_SECRET` | Secret key for refresh tokens | `64+ character random secret` | **YES (CRITICAL)** |
-| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID | `*.apps.googleusercontent.com` | Public Identifier |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 Web Client Secret | `GOCSPX-...` | **YES (CRITICAL)** |
-| `GOOGLE_ALLOWED_ORIGIN` | Allowed Google auth origin (Vercel domain) | `https://talvyn.vercel.app` | No |
+Website build variables: real `VITE_TALVYN_EXTENSION_ID`, `VITE_TALVYN_GITHUB_REPOSITORY`, Google public client ID as appropriate, and optional `TALVYN_PUBLISHED_EXTENSION_VERSION` only after that version is actually published. No browser API secret belongs in VITE variables. Website API requests use `/api`; the Vercel API proxy currently targets `https://talvyn-backend-7ucf.onrender.com`. The extension production API/website origins are configured in its config/manifest. Change matching origins together for another host.
 
-> 🔒 **Security Rule**: Never commit `.env` or paste backend secrets into frontend client code, repository commits, or extension bundles.
+## Authorized rollout order
 
----
+1. Back up the intended database using its provider controls. Confirm its migration history; do not run development resets or blindly baseline an existing production database.
+2. Apply pending migrations with `npm run db:deploy`, including `20261013000000_extension_sessions`, `20261013010000_extension_pairing` and `20261022000000_saved_searches`. They add session/pairing state, auth-version binding and account-owned named filters; they do not delete jobs, profiles or tracker records. Prisma's migration lock/checksums remain authoritative.
+3. Generate the Prisma client and build/deploy the API using the existing Render commands. The repository does not automatically run migrations during free-tier Render builds; arrange the authorized migration step separately.
+4. Build the website with `npm run build:web`, deploy its `dist` output and verify the same-origin proxy forwards Cookie, Set-Cookie, Origin and request bodies correctly.
+5. Verify email and Google sign-in, cookie session restoration, website logout, explicit global sign-out and real extension pairing before making the new extension available.
+6. Follow GitHub release distribution instructions in [EXTENSION_SETUP.md](EXTENSION_SETUP.md). Publish the tagged release with `talvyn-extension.zip` and its SHA-256 checksum only after authorization.
 
-### B. Frontend Environment Variables (Vercel Project Settings)
+## Authentication compatibility
 
-| Variable | Description | Example (Production) | Sensitive? |
-|---|---|---|---|
-| `VITE_API_URL` | Render Backend API Base URL | `https://talvyn-api.onrender.com` | No (Public) |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Web Client ID for Sign-In | `*.apps.googleusercontent.com` | No (Public) |
+Website responses no longer return bearer tokens to JavaScript. The cookie is HttpOnly, SameSite=Lax, scoped to `/api`, and Secure in production. Mutation requests require an allowed website Origin. Proxying on the website origin avoids Brave's cross-site cookie restrictions.
 
----
+Existing website logins must sign in again; the client removes the legacy persisted bearer state. Previous extension token-copy connection messages and direct website credential issuance are retired. Supported extension API requests still use independent short-lived bearer tokens. This is an authentication compatibility change, not a silent data migration.
 
-## 2. Deployment Sequence
+Saved-search UI needs the new table and compatible `/api/saved-searches` routes before exposure. It filters existing saved jobs only; no scheduler/feed/notification provider is added. Search names/criteria are server-side account preferences until explicitly deleted, unaffected by normal logout/disconnect. Update operator privacy/retention disclosures accordingly. Roll back application exposure without dropping user search data. See [saved-search contract, limits and manual checks](docs/SAVED-SEARCHES.md). No production migration/deployment has been performed by this local increment.
 
-```mermaid
-flowchart TD
-    A[1. Neon Database Ready] --> B[2. Deploy Backend on Render]
-    B --> C[3. Run prisma migrate deploy]
-    B --> D[4. Deploy Frontend on Vercel]
-    D --> E[5. Update Google Cloud Console Authorized Origins]
-    B --> F[6. Package Chrome Extension with Production API URL]
-```
+A five-minute, single-use, proof-bound connection request is created by the extension. The website verifies worker ownership, displays the account, and approves with explicit persistence consent and expected user ID. Only the worker redeems the verifier. Access tokens last 15 minutes and rotating refresh sessions expire after 30 days of inactivity. Server auth-version checks prevent global-sign-out races from resurrecting refresh sessions.
 
----
+Website logout clears only its cookie. Extension disconnect revokes its session before reporting success. Global sign-out invalidates website cookies, extension sessions and pending approvals. Server outages must show retry/reconnecting states rather than confirmed success.
 
-## 3. Manual Deployment Steps
+## Builds and release metadata
 
-### Step 1: Database Migration (Neon PostgreSQL)
-1. Verify `DATABASE_URL` in Neon Console.
-2. In Render build step (or via local terminal with production `DATABASE_URL`):
-   ```bash
-   npm run db:deploy
-   ```
-   *(Uses `prisma migrate deploy` which applies existing migrations without deleting any data).*
+- `npm run build:server`: server TypeScript compilation.
+- `npm run build:web`: generate release metadata, website TypeScript check and Vite build. It does not build/distribute extension ZIPs.
+- `npm run build:extension`: extension TypeScript check and production Vite build.
+- `npm run build:extension:dev`: development-origin unpacked build.
+- `npm run package:extension`: production build plus publisher artifact at `extension/dist-package/talvyn-extension.zip`.
+- `npm run verify:extension-package`: archive/runtime-reference/version and checked bundle-pattern verification; no claim of store approval.
+- `npm test`: focused new regressions plus existing project suites. The runner never inherits the application database. Persistence checks require an explicitly configured, disposable migrated `TALVYN_TEST_DATABASE_URL`; otherwise they report skips/fixture mode. Passing fixtures do not verify PostgreSQL persistence or production transactions.
+- `npm run test:postgres`: create a fresh temporary loopback PostgreSQL cluster, apply/check migrations, run real HTTP/database integration and the suites, then stop and remove that cluster. Requires installed PostgreSQL tools; see [validation details](docs/POSTGRES-VALIDATION.md).
+- `npm run test:integration`: run real HTTP/PostgreSQL checks against an explicitly configured disposable migrated `TALVYN_TEST_DATABASE_URL`. A configured database failure fails instead of silently switching to fixtures.
 
-### Step 2: Deploy Backend to Render
-1. Go to [Render Dashboard](https://dashboard.render.com).
-2. Click **New +** $\to$ **Web Service** $\to$ Connect repository `Abhinavm055/Talvyn`.
-3. Configure settings:
-   - **Name**: `talvyn-backend`
-   - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run prisma:generate && npm run build:server`
-   - **Start Command**: `npm run start:server`
-   - **Health Check Path**: `/api/health`
-4. Add the Backend Environment Variables listed in Section 1A.
-5. Deploy and verify health check at `https://your-backend.onrender.com/api/health`.
+The built/runtime manifest is the installed version source. Live release availability is served by `/api/releases/extension` which checks GitHub release metadata assets and GitHub API status dynamically with SSRF protection and caching. When no release has been published yet, the API reports `not-published`. Once a verified release is published via GitHub Actions, the website dynamically exposes the verified download URL and SHA-256 checksum. Browser unpacked Reload updates the extension; a website refresh does not.
 
-### Step 3: Deploy Frontend to Vercel
-1. Go to [Vercel Dashboard](https://vercel.com).
-2. Click **Add New...** $\to$ **Project** $\to$ Import repository `Abhinavm055/Talvyn`.
-3. Configure settings:
-   - **Framework Preset**: `Vite`
-   - **Build Command**: `npm run build:web`
-   - **Output Directory**: `dist`
-4. Add the Frontend Environment Variables listed in Section 1B:
-   - `VITE_API_URL`: Your Render backend URL (e.g. `https://talvyn-api.onrender.com`)
-   - `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth Web Client ID
-5. Deploy! Vercel will use `vercel.json` for client-side SPA routing.
+## AI, privacy and operational limits
 
-### Step 4: Update Google Cloud Console OAuth Credentials
-1. Open [Google Cloud Console](https://console.cloud.google.com/) $\to$ **APIs & Services** $\to$ **Credentials**.
-2. Edit your Web Client ID:
-   - **Authorized JavaScript origins**:
-     - `https://your-frontend.vercel.app`
-     - `http://localhost:5173`
-   - **Authorized redirect URIs**:
-     - `https://your-frontend.vercel.app`
-     - `https://your-frontend.vercel.app/login`
-3. Save changes.
+No paid AI provider is implemented or required. Grok is absent/disabled and no XAI key is used. Optional Ollama stays in the extension, requires local configuration/consent and uses loopback with optional host access; see [local setup](docs/LOCAL-AI.md).
 
-### Step 5: Package Chrome Extension for Production
-1. In `extension/src/utils/config.ts`, update `API_BASE` to your Render API URL and `DASHBOARD_URL` to your Vercel URL (or use environment override).
-2. Run packaging command:
-   ```bash
-   npm run package:extension
-   ```
-3. The production package is created at `extension/dist-package/talvyn-chrome-extension.zip`.
-4. Distribute `.zip` or upload to the Chrome Web Store Developer Dashboard.
+Before publishing, complete the privacy page's real operator contact/retention/deletion details and ensure statements match deployment practices. The API's process-local rate limiter is suitable for this deployment shape; multiple replicas need a shared limiter at the API gateway or shared store. Production database integration, actual cookie proxy behavior, live ATS behavior and store updates require the manual checks in the implementation report.

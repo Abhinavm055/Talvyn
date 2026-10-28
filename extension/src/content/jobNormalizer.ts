@@ -30,15 +30,15 @@ export type ShortlistRecommendation =
   | 'MODERATE_MATCH'
   | 'LOW_MATCH'
 
-export interface NormalizedJob {
+export interface NormalizedJob extends ExtractedJob {
   title: string
   company: string
   jobUrl: string
   sourceWebsite: string
-  location: string | null
-  salary: string | null
-  description: string | null
-  jobType: BackendJobType
+  location?: string
+  salary?: string
+  description?: string
+  jobType?: BackendJobType
   status: 'SAVED'
   applyUrl?: string
 }
@@ -85,7 +85,7 @@ export function normalizeJobType(
   rawType: string = '',
   title: string = '',
   description: string = ''
-): BackendJobType {
+): BackendJobType | null {
   const clean = rawType.trim().toLowerCase().replace(/[-_]/g, ' ')
   const cleanTitle = title.toLowerCase()
 
@@ -115,7 +115,7 @@ export function normalizeJobType(
     return 'OTHER'
   }
 
-  return 'FULL_TIME'
+  return null
 }
 
 /**
@@ -251,7 +251,9 @@ export function normalizeJob(
     ? 'Experience match'
     : experienceMatch.status === 'MISMATCH'
     ? `Experience mismatch: Required ${experienceMatch.requiredText}, Profile: ${experienceMatch.profileText}`
-    : 'Experience standard/flexible'
+    : experienceMatch.requiredText !== 'Not specified'
+    ? 'Experience compatibility cannot be determined because profile experience is not specified'
+    : 'Job experience requirement is not specified'
 
   // ─── 3. Education Match (20%) ───────────────────────────────────────────────
   const educationMatch = evaluateEducationMatchStrict(title, description || undefined, profile, 0.20)
@@ -268,7 +270,11 @@ export function normalizeJob(
   const matchedSkills = skillsMatch.matchedSkills
   const missingSkills = skillsMatch.missingSkills
   const skillsMatchStatus = skillsMatch.status
-  const skillsMatchReason = skillsMatch.status === 'MATCH' ? 'Skills match' : 'Missing key skills'
+  const skillsMatchReason = skillsMatch.status === 'MATCH'
+    ? 'Skills match'
+    : skillsMatch.status === 'MISMATCH'
+    ? 'Detected job skills are not listed in the profile'
+    : 'Candidate skills are not specified in the profile'
 
   // ─── 5. Location Match (5%) ─────────────────────────────────────────────────
   const locationMatch = evaluateLocationMatch(location || undefined, description || undefined, profile, 0.05)
@@ -374,45 +380,31 @@ export function normalizeJob(
     matchedFactors.push('Location match')
   }
 
-  if (matchedFactors.length === 0 && !isExpHardMismatch && !isRoleMismatch) {
-    matchedFactors.push('Skills match')
-    matchedFactors.push('Experience match')
-  }
-
   // ─── Application Readiness Calculation ──────────────────────────────────────
-  let readinessScore = 90
-  const readinessFactors: string[] = []
-  const readinessIssues: string[] = []
-
-  readinessFactors.push('Resume available')
-  readinessFactors.push('Profile complete')
-
-  if (isExpHardMismatch) {
-    readinessIssues.push('Experience level differs')
-  } else {
-    readinessFactors.push('Experience suitable')
-  }
-
-  if (missingSkills.length > 2) {
-    readinessScore -= 10
-    readinessIssues.push(`Missing: ${missingSkills[0]}`)
-  }
-
-  if (completenessScore < 70) {
-    readinessIssues.push('Resume could be tailored')
-  }
-
-  readinessScore = Math.max(70, Math.min(100, readinessScore))
+  const profileReadinessChecks = [
+    { label: 'Name', ready: Boolean(profile.legalFullName || profile.givenName || profile.preferredName) },
+    { label: 'Email', ready: Boolean(profile.email) },
+    { label: 'Phone', ready: Boolean(profile.phone) },
+    { label: 'Skills', ready: Boolean(profile.skills?.length) },
+    { label: 'Experience', ready: profile.experienceYears !== null && profile.experienceYears !== undefined },
+    { label: 'Education', ready: Boolean(profile.degree) },
+  ]
+  const readinessFactors = profileReadinessChecks.filter((item) => item.ready).map((item) => `${item.label} on profile`)
+  const readinessIssues = profileReadinessChecks.filter((item) => !item.ready).map((item) => `Add ${item.label.toLowerCase()} to profile`)
+  if (isExpHardMismatch) readinessIssues.push('Experience requirement differs from the profile')
+  if (missingSkills.length > 0 && profile.skills?.length) readinessIssues.push(`Review skill gap: ${missingSkills[0]}`)
+  const readinessScore = Math.round((profileReadinessChecks.filter((item) => item.ready).length / profileReadinessChecks.length) * 100)
 
   const normalized: NormalizedJob = {
+    ...rawJob,
     title,
     company,
     jobUrl,
     sourceWebsite,
-    location,
-    salary,
-    description,
-    jobType,
+    location: location || undefined,
+    salary: salary || undefined,
+    description: description || undefined,
+    jobType: jobType || undefined,
     status: 'SAVED',
     applyUrl: (rawJob.applyUrl || '').trim() || undefined,
   }

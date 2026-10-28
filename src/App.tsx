@@ -1,17 +1,18 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router-dom'
 import { router } from './router'
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 2, // 2 minutes
-      retry: 1,
-    },
-  },
-})
+import { queryClient } from './lib/queryClient'
+import { initializeAuth } from './api/initializeAuth'
 
 export default function App() {
+  useEffect(() => {
+    void initializeAuth()
+    const check = () => { void initializeAuth() }
+    window.addEventListener('focus', check)
+    return () => window.removeEventListener('focus', check)
+  }, [])
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

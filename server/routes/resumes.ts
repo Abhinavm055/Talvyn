@@ -279,6 +279,8 @@ router.get('/:id/file', async (req: AuthRequest, res: Response) => {
       return
     }
 
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Content-Type', fileData.mimeType)
     res.setHeader(
       'Content-Disposition',

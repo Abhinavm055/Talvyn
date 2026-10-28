@@ -279,6 +279,20 @@ assert(
   'Experience match evaluates as PASS for 3 years vs 2-4 years'
 )
 
+const unspecifiedExperienceProfile: UserProfile = {
+  ...fresherProfile,
+  preferredRoles: [],
+  experienceYears: null,
+  skills: [],
+  degree: undefined,
+  specialization: undefined,
+}
+const scoreWithUnknownExperience = analyzeJobRelevance(job2to4Years, unspecifiedExperienceProfile)
+assert(
+  scoreWithUnknownExperience.experienceMatch.status === 'UNSPECIFIED' && !scoreWithUnknownExperience.experienceMatch.isHardMismatch,
+  'Unknown profile experience remains unspecified instead of being treated as a fresher mismatch'
+)
+
 // 4e. Skill match cannot override hard experience mismatch
 assert(
   scoreFresher2to4.matchedSkills?.length! >= 2 && scoreFresher2to4.category === 'LOW_RELEVANCE',

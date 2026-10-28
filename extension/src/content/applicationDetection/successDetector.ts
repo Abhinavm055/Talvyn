@@ -8,7 +8,7 @@ import { applicationSessionManager } from './applicationSession'
 import { jobResolver } from './jobResolver'
 import { successNotificationManager } from './successNotification'
 import { jobsService } from '../../services/jobsService'
-import { getToken } from '../../utils/storage'
+import { getUser } from '../../utils/storage'
 
 export class ApplicationSuccessDetector {
   private hasProcessedCurrentPage = false
@@ -49,8 +49,8 @@ export class ApplicationSuccessDetector {
       return result || null
     }
 
-    const token = await getToken()
-    if (!token) {
+    const user = await getUser()
+    if (!user) {
       console.log('[Talvyn] Success detected, but user not logged in. Skipping auto-tracking.')
       return result
     }

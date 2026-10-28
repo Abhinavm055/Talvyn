@@ -23,7 +23,7 @@ import {
 } from '../src/content/applicationAssistant/questionAssistant/answerProvider'
 import { resumeRecommender } from '../src/content/applicationAssistant/resumeRecommender'
 import { DetectedFormField, UserProfile, Resume } from '../src/types'
-import { prisma } from '../../server/lib/prisma'
+import { PrismaClient } from '@prisma/client'
 
 console.log('=================================================================')
 console.log('TALVYN PHASE 2F: UNIVERSAL APPLICATION ASSISTANT TESTS')
@@ -31,6 +31,7 @@ console.log('=================================================================\n
 
 let passedTests = 0
 let failedTests = 0
+let skippedTests = 0
 
 function assert(condition: boolean, testName: string, detail?: string) {
   if (condition) {
@@ -224,10 +225,8 @@ async function runTests() {
   })
 
   assert(
-    answerWhyJoin.suggestedAnswer.includes('Stripe') &&
-    answerWhyJoin.suggestedAnswer.includes('Backend Engineer') &&
-    answerWhyJoin.suggestedAnswer.includes('Java'),
-    'Synthesizes tailored answer citing company, role, and candidate skills'
+    answerWhyJoin.suggestedAnswer === '' && answerWhyJoin.confidence === 0,
+    'Leaves company motivation questions blank when the profile has no verified motivation data'
   )
 
   const answerFit = await ruleBasedAnswerProvider.generateAnswer({
@@ -238,9 +237,8 @@ async function runTests() {
   })
 
   assert(
-    answerFit.suggestedAnswer.includes('Senior Backend Developer') &&
-    answerFit.suggestedAnswer.includes('4+ years of experience'),
-    'Synthesizes why candidate is a good fit using experience years and skills'
+    answerFit.suggestedAnswer === '' && answerFit.confidence === 0,
+    'Leaves fit questions blank instead of inventing achievements or work history'
   )
 
   const answerNotice = await ruleBasedAnswerProvider.generateAnswer({
@@ -249,9 +247,21 @@ async function runTests() {
   })
 
   assert(
-    answerNotice.suggestedAnswer.includes('1 Month'),
-    'Answers notice period question using candidate profile value'
+    answerNotice.suggestedAnswer === '1 Month',
+    'Uses only the exact notice-period value from the candidate profile'
   )
+
+  const answerAvailability = await ruleBasedAnswerProvider.generateAnswer({
+    questionText: 'When can you start?',
+    profile: mockProfile,
+  })
+  assert(answerAvailability.suggestedAnswer === '', 'Does not infer start date from notice period')
+
+  const answerRelocation = await ruleBasedAnswerProvider.generateAnswer({
+    questionText: 'Are you willing to relocate?',
+    profile: mockProfile,
+  })
+  assert(answerRelocation.suggestedAnswer === '', 'Does not invent relocation preference')
 
   // ─── 4. Resume Recommendation ──────────────────────────────────────────────
   console.log('\n--- 4. Testing Resume Recommendation ---')
@@ -314,16 +324,23 @@ async function runTests() {
   // ─── 7. Backend Application Session Start & Timeline Integration ───────────
   console.log('\n--- 7. Testing Backend Application Start & Duplicate Note Guard ---')
 
+  const dedicatedTestUrl = process.env.TALVYN_TEST_DATABASE_URL?.trim()
+  if (!dedicatedTestUrl) {
+    skippedTests++
+    console.log('  ↷ SKIP: Database-backed application timeline checks (set TALVYN_TEST_DATABASE_URL to a dedicated test database)')
+  } else {
+  const prisma = new PrismaClient({ datasources: { db: { url: dedicatedTestUrl } } })
   const timestamp = Date.now()
   const testEmail = `app.asst.${timestamp}@example.com`
-  const testUser = await prisma.user.create({
-    data: {
-      email: testEmail,
-      authProvider: 'EMAIL',
-      profile: { create: { email: testEmail, legalFullName: 'Test Candidate' } },
-    },
-  })
-
+  let testUser: Awaited<ReturnType<typeof prisma.user.create>> | null = null
+  try {
+    testUser = await prisma.user.create({
+      data: {
+        email: testEmail,
+        authProvider: 'EMAIL',
+        profile: { create: { email: testEmail, legalFullName: 'Test Candidate' } },
+      },
+    })
   const testJob = await prisma.job.create({
     data: {
       userId: testUser.id,
@@ -384,9 +401,20 @@ async function runTests() {
     startedNotes.length === 1,
     'Guards against duplicate APPLICATION_STARTED timeline notes on repeated starts'
   )
+  } finally {
+    try {
+      if (testUser) {
+        await prisma.note.deleteMany({ where: { userId: testUser.id } })
+        await prisma.job.deleteMany({ where: { userId: testUser.id } })
+        await prisma.userProfile.deleteMany({ where: { userId: testUser.id } })
+        await prisma.user.delete({ where: { id: testUser.id } })
+      }
+    } finally { await prisma.$disconnect() }
+  }
+  }
 
   console.log('\n=================================================================')
-  console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`)
+  console.log(`TOTAL TESTS: ${passedTests + failedTests + skippedTests} | PASSED: ${passedTests} | FAILED: ${failedTests} | SKIPPED: ${skippedTests}`)
   console.log('=================================================================')
 
   if (failedTests > 0) process.exit(1)

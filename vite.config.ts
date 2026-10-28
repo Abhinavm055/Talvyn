@@ -1,8 +1,23 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { readFileSync } from 'node:fs'
+import { resolveWebsiteExtensionId } from './server/services/extensionIdentity'
+import { normalizeRepository } from './server/contracts/extensionRelease'
+import { EXTENSION_VERSION } from './extension/src/manifest'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
+  const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'))
+  const packageRepository = typeof packageJson.repository === 'object' ? packageJson.repository?.url : packageJson.repository
+  const repository = normalizeRepository(env.TALVYN_GITHUB_REPOSITORY || packageRepository)
+  if (!repository) throw new Error('Configure the actual GitHub repository in package.json.repository or TALVYN_GITHUB_REPOSITORY.')
+  return {
+  define: {
+    'import.meta.env.VITE_TALVYN_EXTENSION_ID': JSON.stringify(resolveWebsiteExtensionId(mode, env)),
+    'import.meta.env.VITE_TALVYN_GITHUB_REPOSITORY': JSON.stringify(repository),
+    'import.meta.env.VITE_TALVYN_LOCAL_EXTENSION_VERSION': JSON.stringify(EXTENSION_VERSION),
+  },
   plugins: [react()],
   resolve: {
     alias: {
@@ -30,4 +45,5 @@ export default defineConfig({
       },
     },
   },
+  }
 })

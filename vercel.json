@@ -2,13 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "routes": [
     {
-      "src": "/downloads/(.*)",
-      "dest": "/downloads/$1",
-      "headers": {
-        "Content-Type": "application/zip",
-        "Content-Disposition": "attachment; filename=\"talvyn v1.zip\"",
-        "Cache-Control": "public, max-age=0, must-revalidate"
-      }
+      "src": "/api/(.*)",
+      "dest": "https://talvyn-backend-7ucf.onrender.com/api/$1",
+      "headers": { "Cache-Control": "private, no-store" }
+    },
+    {
+      "src": "/extension-release.json",
+      "dest": "/extension-release.json",
+      "headers": { "Cache-Control": "public, max-age=0, must-revalidate" }
     },
     {
       "src": "/assets/(.*)",

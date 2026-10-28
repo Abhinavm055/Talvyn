@@ -1,5 +1,7 @@
 import { ExtractedJob, OpportunityType, ApplicationReadinessResult, UserProfile } from '../types'
 import { JobNormalizationResult, normalizeJob } from './jobNormalizer'
+import { prepareJobGuidance } from './jobIntelligence'
+import { LocalAiResult } from '../services/localAi'
 import { profileService } from '../services/profileService'
 import { CONFIG } from '../utils/config'
 
@@ -325,6 +327,35 @@ function attachActionListeners(panel: HTMLElement, job?: ExtractedJob, options?:
     const url = job?.jobUrl || currentJobData?.jobUrl
     if (url) window.open(url, '_blank')
   })
+
+  panel.querySelector('#talvyn-local-ai-btn')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement
+    const output = panel.querySelector('#talvyn-local-ai-output') as HTMLElement | null
+    const sourceJob = job || currentJobData
+    if (!output || !sourceJob || button.disabled) return
+    button.disabled = true
+    output.textContent = 'Requesting local suggestions… Deterministic analysis remains available.'
+    try {
+      const response = await new Promise<LocalAiResult>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Local AI timed out.')), 55000)
+        chrome.runtime.sendMessage({ type: 'LOCAL_AI_ANALYZE_JOB', data: {
+          title: sourceJob.title, company: sourceJob.company,
+          description: sourceJob.description, requirements: sourceJob.requirements,
+        } }, (result: LocalAiResult) => {
+          clearTimeout(timeout)
+          if (chrome.runtime.lastError) reject(new Error('Extension connection is unavailable.'))
+          else resolve(result)
+        })
+      })
+      if (response?.success && typeof response.summary === 'string' && Array.isArray(response.preparation)) {
+        output.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">Local AI suggestions · Unverified</div><p style="margin:0 0 5px;">${escapeHtml(response.summary)}</p><ul style="margin:0;padding-left:16px;">${response.preparation.map((suggestion) => `<li>${escapeHtml(suggestion)}</li>`).join('')}</ul><div style="margin-top:5px;">Review suggestions against the posting. They do not change extracted facts, the match score, or saved job data.</div>`
+      } else {
+        output.textContent = response?.reason || 'Local AI is unavailable. Configure Ollama in the extension popup; deterministic analysis remains available.'
+      }
+    } catch (error) {
+      output.textContent = `${error instanceof Error ? error.message : 'Local AI is unavailable.'} Deterministic analysis remains available.`
+    } finally { button.disabled = false }
+  })
 }
 
 export const CAPSULE_ID = 'talvyn-capsule'
@@ -422,8 +453,8 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
   const bgCard = isPanelDark ? '#1e293b' : '#f8fafc'
   const bgInput = isPanelDark ? '#0f172a' : '#ffffff'
 
-  const currentExp = job.experience || norm?.experienceRequiredText || ''
-  const currentEdu = job.education || norm?.educationRequiredText || ''
+  const currentExp = job.experience || ''
+  const currentEdu = job.education || ''
 
   body.innerHTML = `
     <div id="talvyn-confirm-save-view" style="font-size:12px;color:${textPrimary};">
@@ -487,7 +518,7 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
             <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
               Job Type
             </label>
-            <input type="text" id="talvyn-edit-jobType" value="${escapeHtml(job.jobType ? formatJobType(job.jobType) : 'Full Time')}" style="
+            <input type="text" id="talvyn-edit-jobType" value="${escapeHtml(job.jobType ? formatJobType(job.jobType) : '')}" style="
               width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
               background:${bgInput};color:${textPrimary};outline:none;
             " placeholder="Full Time, Internship, Contract" />
@@ -497,7 +528,7 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
             <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
               Experience
             </label>
-            <input type="text" id="talvyn-edit-experience" value="${escapeHtml(currentExp !== 'Not specified' ? currentExp : '')}" style="
+            <input type="text" id="talvyn-edit-experience" value="${escapeHtml(currentExp !== '— Not specified' ? currentExp : '')}" style="
               width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
               background:${bgInput};color:${textPrimary};outline:none;
             " placeholder="e.g. 2–4 years, Fresher" />
@@ -507,7 +538,7 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
             <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;text-transform:uppercase;">
               Education
             </label>
-            <input type="text" id="talvyn-edit-education" value="${escapeHtml(currentEdu !== 'Not specified' ? currentEdu : '')}" style="
+            <input type="text" id="talvyn-edit-education" value="${escapeHtml(currentEdu !== '— Not specified' ? currentEdu : '')}" style="
               width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
               background:${bgInput};color:${textPrimary};outline:none;
             " placeholder="e.g. B.Tech / equivalent, Bachelor's" />
@@ -521,6 +552,10 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
               width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;
               background:${bgInput};color:${textPrimary};outline:none;
             " />
+          </div>
+          <div style="margin-top:8px;">
+            <label style="display:block;font-size:10.5px;font-weight:700;color:${textSecondary};margin-bottom:3px;">Job description</label>
+            <textarea id="talvyn-edit-description" rows="5" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid ${borderCard};border-radius:6px;background:${bgInput};color:${textPrimary};">${escapeHtml(job.description || '')}</textarea>
           </div>
         </div>
       </div>
@@ -557,12 +592,13 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
   body.querySelector('#talvyn-confirm-save-btn')?.addEventListener('click', async () => {
     const titleVal = (body.querySelector('#talvyn-edit-title') as HTMLInputElement)?.value.trim() || job.title
     const compVal = (body.querySelector('#talvyn-edit-company') as HTMLInputElement)?.value.trim() || job.company
-    const locVal = (body.querySelector('#talvyn-edit-location') as HTMLInputElement)?.value.trim() || job.location
-    const salVal = (body.querySelector('#talvyn-edit-salary') as HTMLInputElement)?.value.trim() || job.salary
-    const typeVal = (body.querySelector('#talvyn-edit-jobType') as HTMLInputElement)?.value.trim() || job.jobType
-    const expVal = (body.querySelector('#talvyn-edit-experience') as HTMLInputElement)?.value.trim() || currentExp
-    const eduVal = (body.querySelector('#talvyn-edit-education') as HTMLInputElement)?.value.trim() || currentEdu
+    const locVal = (body.querySelector('#talvyn-edit-location') as HTMLInputElement)?.value.trim()
+    const salVal = (body.querySelector('#talvyn-edit-salary') as HTMLInputElement)?.value.trim()
+    const typeVal = (body.querySelector('#talvyn-edit-jobType') as HTMLInputElement)?.value.trim()
+    const expVal = (body.querySelector('#talvyn-edit-experience') as HTMLInputElement)?.value.trim()
+    const eduVal = (body.querySelector('#talvyn-edit-education') as HTMLInputElement)?.value.trim()
     const urlVal = (body.querySelector('#talvyn-edit-url') as HTMLInputElement)?.value.trim() || job.jobUrl
+    const descriptionVal = (body.querySelector('#talvyn-edit-description') as HTMLTextAreaElement)?.value.trim()
 
     const updatedJob: ExtractedJob = {
       ...job,
@@ -574,6 +610,7 @@ export function openConfirmSaveScreen(panel: HTMLElement, job: ExtractedJob, opt
       experience: expVal || undefined,
       education: eduVal || undefined,
       jobUrl: urlVal,
+      description: descriptionVal || undefined,
     }
 
     if (footer) footer.style.display = 'block'
@@ -739,7 +776,7 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
   const phone = profile?.phoneNumber || profile?.phone || ''
   const loc = profile?.preferredLocations?.[0] || profile?.location || profile?.city || ''
   const roles = (profile?.preferredRoles || []).join(', ')
-  const expYears = profile?.experienceYears !== undefined && profile?.experienceYears !== null ? String(profile?.experienceYears) : '0'
+  const expYears = profile?.experienceYears !== undefined && profile?.experienceYears !== null ? String(profile?.experienceYears) : ''
   const degree = profile?.degree || profile?.education || ''
   const skills = (profile?.skills || []).join(', ')
   const linkedin = profile?.linkedInUrl || profile?.linkedinUrl || ''
@@ -863,8 +900,8 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
     }
 
     const expStr = getValue('p-exp', expYears)
-    const parsedExp = parseInt(expStr, 10)
-    const finalExpYears = isNaN(parsedExp) ? 0 : parsedExp
+    const parsedExp = expStr.trim() ? Number(expStr) : NaN
+    const finalExpYears = Number.isFinite(parsedExp) && parsedExp >= 0 ? parsedExp : null
 
     const rawRoles = getValue('p-roles', roles)
     const preferredRoles = rawRoles ? rawRoles.split(',').map((r) => r.trim()).filter(Boolean) : []
@@ -878,23 +915,21 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
       userId: profile?.userId || 'user',
       givenName: getValue('p-given', givenName),
       familyName: getValue('p-family', familyName),
-      name: `${getValue('p-given', givenName)} ${getValue('p-family', familyName)}`.trim(),
       email: getValue('p-email', email),
-      phoneNumber: getValue('p-phone', phone),
-      location: getValue('p-loc', loc),
+      phone: getValue('p-phone', phone),
       preferredLocations: [getValue('p-loc', loc)].filter(Boolean),
       preferredRoles,
       experienceYears: finalExpYears,
       degree: getValue('p-degree', degree),
       skills: skillsArray,
-      linkedInUrl: getValue('p-linkedin', linkedin),
+      linkedinUrl: getValue('p-linkedin', linkedin),
       githubUrl: getValue('p-github', github),
       workAuthorization: getValue('p-auth', workAuth),
       expectedSalary: getValue('p-salary', expectedSalary),
       preferredJobTypes: profile?.preferredJobTypes || [],
       otherLinks: profile?.otherLinks || [],
       workStyle: profile?.workStyle || 'ANY',
-      onboardingCompleted: true,
+      onboardingCompleted: profile?.onboardingCompleted || false,
     }
 
     try {
@@ -902,19 +937,30 @@ function openProfileView(panel: HTMLElement, job: ExtractedJob, options?: any): 
         givenName: updatedProfile.givenName,
         familyName: updatedProfile.familyName,
         email: updatedProfile.email,
-        phone: updatedProfile.phoneNumber,
+        phone: updatedProfile.phone,
         preferredRoles: updatedProfile.preferredRoles,
         experienceYears: updatedProfile.experienceYears,
         degree: updatedProfile.degree,
         skills: updatedProfile.skills,
         preferredLocations: updatedProfile.preferredLocations,
-        linkedinUrl: updatedProfile.linkedInUrl,
+        linkedinUrl: updatedProfile.linkedinUrl,
         githubUrl: updatedProfile.githubUrl,
         workAuthorization: updatedProfile.workAuthorization,
         expectedSalary: updatedProfile.expectedSalary,
-      } as any)
+      })
     } catch (err) {
       console.warn('[Talvyn] Profile update error:', err)
+      saveBtn.disabled = false
+      saveBtn.textContent = 'Retry Save Profile'
+      let errorNotice = body.querySelector('#talvyn-profile-save-error')
+      if (!errorNotice) {
+        errorNotice = document.createElement('div')
+        errorNotice.id = 'talvyn-profile-save-error'
+        errorNotice.setAttribute('style', 'color:#dc2626;font-size:11px;margin-top:6px;')
+        saveBtn.parentElement?.appendChild(errorNotice)
+      }
+      errorNotice.textContent = 'Profile changes could not be saved. Check your connection and retry.'
+      return
     }
 
     // Re-run matching with updated profile
@@ -1053,6 +1099,9 @@ export interface StructuredJobSections {
     salary: string
     experience: string
     education: string
+    sourceWebsite: string
+    sourceUrl: string
+    extractedAt: string
   }
   descriptionSummary: string
   responsibilities: string[]
@@ -1060,9 +1109,13 @@ export interface StructuredJobSections {
   reason: string
 }
 
-export function extractStructuredSections(job: ExtractedJob, norm?: JobNormalizationResult): StructuredJobSections {
-  const currentExp = job.experience || norm?.experienceRequiredText || '— Not specified'
-  const currentEdu = job.education || norm?.educationRequiredText || '— Not specified'
+export function extractStructuredSections(
+  job: ExtractedJob,
+  norm?: JobNormalizationResult,
+  hasCandidateProfile: boolean = true
+): StructuredJobSections {
+  const currentExp = job.experience || '— Not specified'
+  const currentEdu = job.education || '— Not specified'
   const location = job.location || '— Not specified'
   const salary = job.salary || '— Not specified'
   const jobType = job.jobType ? formatJobType(job.jobType) : '— Not specified'
@@ -1115,25 +1168,7 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     }
   }
   if (responsibilities.length === 0) {
-    const roleSkills = (norm?.matchedSkills && norm.matchedSkills.length > 0)
-      ? norm.matchedSkills
-      : (norm?.matchedFactors?.includes('Skills match') && norm?.roleRequiredText)
-      ? [norm.roleRequiredText]
-      : []
-    if (roleSkills.length > 0) {
-      responsibilities = [
-        `Develop and maintain technical solutions leveraging ${roleSkills.slice(0, 2).join(' and ')}`,
-        `Collaborate with team members to deliver core role deliverables and milestones`,
-      ]
-    } else if (norm?.roleRequiredText || job.title) {
-      responsibilities = [
-        `Deliver high quality engineering and operational outcomes for ${job.title || 'the role'}`,
-        `Collaborate across team initiatives, code reviews, and deliverables`,
-      ]
-    }
-  }
-  if (responsibilities.length === 0) {
-    responsibilities = ['— Not specified']
+    responsibilities = ['— Not extracted from the available job description']
   }
 
   // Deterministic requirements extraction
@@ -1163,35 +1198,17 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
     }
   }
   if (requirements.length === 0) {
-    const reqItems: string[] = []
-    if (currentExp !== '— Not specified') reqItems.push(`Experience: ${currentExp}`)
-    if (currentEdu !== '— Not specified') reqItems.push(`Education: ${currentEdu}`)
-    if (norm?.matchedSkills?.length) {
-      norm.matchedSkills.slice(0, 2).forEach((s) => reqItems.push(`Knowledge of ${s}`))
-    }
-    if (norm?.missingSkills?.length) {
-      norm.missingSkills.slice(0, 2).forEach((s) => reqItems.push(`Proficiency in ${s}`))
-    }
-    if (reqItems.length === 0 && (norm?.experienceProfileText || norm?.educationProfileText)) {
-      if (norm.experienceProfileText && norm.experienceProfileText !== 'Not specified') {
-        reqItems.push(`Experience: ${norm.experienceProfileText}`)
-      }
-      if (norm.educationProfileText && norm.educationProfileText !== 'Not specified') {
-        reqItems.push(`Education: ${norm.educationProfileText}`)
-      }
-    }
-    if (reqItems.length > 0) {
-      requirements = reqItems
-    }
-  }
-  if (requirements.length === 0) {
-    requirements = ['— Not specified']
+    requirements = ['— Not explicitly extracted from the available job description']
   }
 
   // Deterministic recommendation reason
-  let reason = 'Moderate alignment with partial skill and requirement overlap.'
+  let reason = !hasCandidateProfile
+    ? 'Add skills, target roles, experience, or education to your profile to calculate a candidate match.'
+    : norm
+    ? 'The match result is based on Talvyn’s deterministic profile comparison.'
+    : 'Profile match is unavailable because no analysis result was provided.'
   if (norm?.experienceMatchStatus === 'MISMATCH') {
-    reason = `Experience mismatch: Requires ${norm.experienceRequiredText || '2–4 years'}, but candidate is ${norm.experienceProfileText || 'Fresher'}.`
+    reason = `Experience mismatch: Requires ${norm.experienceRequiredText || 'Not specified'}, while the profile shows ${norm.experienceProfileText || 'Not specified'}.`
   } else if (norm?.roleMatchStatus === 'MISMATCH') {
     reason = `Role mismatch: Requires ${norm.roleRequiredText || job.title}, which differs from target role.`
   } else if (norm?.educationMatchStatus === 'MISMATCH') {
@@ -1213,6 +1230,9 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
       salary,
       experience: currentExp,
       education: currentEdu,
+      sourceWebsite: job.sourceWebsite || '— Not specified',
+      sourceUrl: job.jobUrl || '— Not specified',
+      extractedAt: job.extractedAt || '— Not recorded',
     },
     descriptionSummary,
     responsibilities,
@@ -1223,19 +1243,34 @@ export function extractStructuredSections(job: ExtractedJob, norm?: JobNormaliza
 
 function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false): string {
   const norm = options?.normalization
-  const matchScore = norm?.matchScore ?? 82
-  const recommendationLabel = norm?.recommendationLabel ?? 'GOOD MATCH'
-  const recommendationSubtitle = norm?.recommendationSubtitle ?? 'Worth applying'
-  const recommendationIcon = norm?.recommendationIcon ?? '🟢'
+  const candidateProfile = options?.userProfile
+  const hasCandidateProfile = Boolean(
+    candidateProfile && candidateProfile.id !== 'guest' && (
+      candidateProfile.preferredRoles?.length || candidateProfile.skills?.length ||
+      candidateProfile.experienceYears !== null && candidateProfile.experienceYears !== undefined ||
+      candidateProfile.degree
+    )
+  )
+  const matchScore: number | null = hasCandidateProfile && Number.isFinite(norm?.matchScore) ? norm.matchScore : null
+  const recommendationLabel = matchScore === null ? 'PROFILE NEEDED' : (norm?.recommendationLabel || 'NOT SCORED')
+  const recommendationSubtitle = matchScore === null
+    ? 'Add profile information to compare this job with your experience and preferences.'
+    : (norm?.recommendationSubtitle || 'Profile analysis is unavailable.')
+  const recommendationIcon = matchScore === null ? '—' : (norm?.recommendationIcon || '—')
 
   const matchedSkills: string[] = norm?.matchedSkills?.length ? norm.matchedSkills : []
   const missingSkills: string[] = norm?.missingSkills?.length ? norm.missingSkills : []
 
-  const readinessScore = norm?.readinessScore ?? 90
-  const readinessFactors: string[] = norm?.readinessFactors?.length ? norm.readinessFactors : ['Resume available', 'Profile complete', 'Experience suitable']
-  const readinessIssues: string[] = norm?.readinessIssues?.length ? norm.readinessIssues : []
+  const readiness = options?.readiness
+  const readinessScore: number | null = Number.isFinite(readiness?.score) ? readiness.score : null
+  const readinessFactors: string[] = Array.isArray(readiness?.readyItems) ? readiness.readyItems : []
+  const readinessIssues: string[] = Array.isArray(readiness?.missingItems) ? readiness.missingItems : []
+  const deadline = job.deadline || (typeof options?.deadline === 'string' && options.deadline.trim()
+    ? options.deadline.trim()
+    : '— Not identified')
 
-  const sections = extractStructuredSections(job, norm)
+  const sections = extractStructuredSections(job, norm, hasCandidateProfile)
+  const guidance = prepareJobGuidance(job, candidateProfile)
 
   // Color tokens
   const bgCard = isDark ? '#1e293b' : '#f8fafc'
@@ -1245,9 +1280,9 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
   const textMuted = isDark ? '#94a3b8' : '#64748b'
 
   let scoreColor = '#059669'
-  if (matchScore < 50) scoreColor = '#dc2626'
-  else if (matchScore < 70) scoreColor = '#d97706'
-  else if (matchScore < 85) scoreColor = '#2563eb'
+  if (matchScore !== null && matchScore < 50) scoreColor = '#dc2626'
+  else if (matchScore !== null && matchScore < 70) scoreColor = '#d97706'
+  else if (matchScore !== null && matchScore < 85) scoreColor = '#2563eb'
 
   // Factor statuses
   const isRoleMatch = norm?.roleMatchStatus === 'MATCH'
@@ -1260,7 +1295,9 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
   const isEduMismatch = norm?.educationMatchStatus === 'MISMATCH'
   const isEduUnspecified = norm?.educationMatchStatus === 'UNSPECIFIED' || !norm?.educationMatchStatus
 
-  const isSkillsMatch = norm?.skillsMatchStatus !== 'MISMATCH'
+  const isSkillsMatch = norm?.skillsMatchStatus === 'MATCH'
+  const isSkillsMismatch = norm?.skillsMatchStatus === 'MISMATCH'
+  const hasProfileSkills = Boolean(candidateProfile?.skills?.length)
 
   const isLocMatch = norm?.locationMatchStatus === 'MATCH'
   const isLocMismatch = norm?.locationMatchStatus === 'MISMATCH'
@@ -1299,6 +1336,14 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
         <span><strong>Experience:</strong> ${escapeHtml(sections.overview.experience)}</span>
         <span><strong>Education:</strong> ${escapeHtml(sections.overview.education)}</span>
       </div>
+      <div style="font-size:9.5px;color:${textMuted};margin-top:5px;overflow-wrap:anywhere;">
+        <div><strong>Application deadline:</strong> ${escapeHtml(deadline)}</div>
+        <div><strong>Source:</strong> ${escapeHtml(sections.overview.sourceWebsite)}</div>
+        <div><strong>Page:</strong> ${escapeHtml(sections.overview.sourceUrl)}</div>
+        <div><strong>Extracted:</strong> ${escapeHtml(sections.overview.extractedAt)}</div>
+        <div><strong>Extraction:</strong> ${escapeHtml(job.extractionMethod || 'Page adapter')} · Facts from page; profile comparison is deterministic</div>
+        <div><strong>Work arrangement:</strong> ${escapeHtml(job.workArrangement || '— Not specified')}</div>
+      </div>
     </div>
 
     <!-- 2. DESCRIPTION Section -->
@@ -1310,6 +1355,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
       <p style="font-size:11px;color:${textSecondary};line-height:1.4;margin:0;">
         ${escapeHtml(sections.descriptionSummary)}
       </p>
+      ${job.description ? `<details style="font-size:11px;color:${textSecondary};margin-top:5px;"><summary style="cursor:pointer;">Inspect full extracted description</summary><div style="white-space:pre-wrap;margin-top:4px;">${escapeHtml(job.description)}</div></details>` : ''}
     </div>
 
     <!-- 3. RESPONSIBILITIES Section -->
@@ -1340,6 +1386,11 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
       <div style="font-size:10px;font-weight:800;color:#6366f1;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">
         SKILLS
       </div>
+      <div style="font-size:10.5px;color:${textSecondary};margin-bottom:5px;">
+        <div><strong>Explicit required skills:</strong> ${escapeHtml(guidance.requiredSkills.join(', ') || '— Not extracted')}</div>
+        <div><strong>Explicit preferred skills:</strong> ${escapeHtml(guidance.preferredSkills.join(', ') || '— Not extracted')}</div>
+        <div><strong>${hasProfileSkills ? 'Required skills absent from profile' : 'Required skills to compare'}:</strong> ${escapeHtml(guidance.missingRequiredSkills.join(', ') || (guidance.requiredSkills.length && hasProfileSkills ? 'None' : '— Unknown'))}</div>
+      </div>
       <div style="font-size:10.5px;color:${textSecondary};margin-top:2px;">
         <span style="font-weight:700;color:${textPrimary};">Matched Skills:</span>
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
@@ -1352,7 +1403,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
         </div>
       </div>
       <div style="font-size:10.5px;color:${textSecondary};margin-top:4px;">
-        <span style="font-weight:700;color:${textPrimary};">Missing Skills:</span>
+        <span style="font-weight:700;color:${textPrimary};">${hasProfileSkills ? 'Not listed in profile:' : 'Job skills to review:'}</span>
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
           ${missingSkills.length > 0 ? missingSkills.map((s) => `
             <span style="
@@ -1369,7 +1420,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
     <div style="margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:11px;font-weight:700;color:${textSecondary};letter-spacing:0.3px;text-transform:uppercase;">PROFILE MATCH</span>
-        <span style="font-size:14px;font-weight:800;color:${scoreColor};">${matchScore}%</span>
+        <span style="font-size:14px;font-weight:800;color:${scoreColor};">${matchScore === null ? '—' : `${matchScore}%`}</span>
       </div>
 
       <!-- Factor Checkmarks & Statuses -->
@@ -1393,9 +1444,9 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
         </div>
 
         <!-- Skills match -->
-        <div style="font-size:11px;display:flex;align-items:center;gap:5px;color:${isSkillsMatch ? '#059669' : '#dc2626'};">
-          <span style="font-weight:800;">${isSkillsMatch ? '✓' : '⚠'}</span>
-          <span>${isSkillsMatch ? 'Skills match' : 'Missing required skills'}</span>
+        <div style="font-size:11px;display:flex;align-items:center;gap:5px;color:${isSkillsMatch ? '#059669' : isSkillsMismatch ? '#dc2626' : textMuted};">
+          <span style="font-weight:800;">${isSkillsMatch ? '✓' : isSkillsMismatch ? '⚠' : '—'}</span>
+          <span>${isSkillsMatch ? 'Skills match' : isSkillsMismatch ? 'Missing skills' : 'Skills: Not specified'}</span>
         </div>
 
         <!-- Location match -->
@@ -1414,8 +1465,8 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
           border-radius:7px;padding:6px 8px;margin-bottom:6px;line-height:1.4;
         ">
           <div style="font-weight:700;">⚠ Experience mismatch</div>
-          <div>Required: ${escapeHtml(norm?.experienceRequiredText || '2–4 years')}</div>
-          <div>Your profile: ${escapeHtml(norm?.experienceProfileText || 'Fresher')}</div>
+          <div>Required: ${escapeHtml(norm?.experienceRequiredText || 'Not specified')}</div>
+          <div>Your profile: ${escapeHtml(norm?.experienceProfileText || 'Not specified')}</div>
         </div>
       ` : ''}
 
@@ -1473,6 +1524,17 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
       <div style="font-size:11px;color:${textSecondary};line-height:1.4;margin-bottom:4px;">
         ${escapeHtml(sections.reason)}
       </div>
+      <div style="font-size:10px;color:${textMuted};">Official score: role 30%, experience 25%, education 20%, skills 20%, location 5%; existing eligibility caps apply. Unknown criteria are not confirmed eligibility.</div>
+    </div>
+
+    <div style="height:1px;background:${borderCard};margin:8px 0;"></div>
+    <div style="font-size:11px;color:${textSecondary};margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:800;color:#6366f1;margin-bottom:4px;">PREPARATION · DETERMINISTIC GUIDANCE</div>
+      <ul style="margin:0;padding-left:14px;line-height:1.4;">${guidance.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      <div style="margin-top:6px;"><strong>Extracted eligibility:</strong> ${escapeHtml(guidance.eligibility.join(' • ') || '— Not extracted; check the source posting')}</div>
+      <div style="margin-top:6px;"><strong>Application questions:</strong> ${escapeHtml((job.applicationQuestions || []).join(' • ') || '— Review the application form')}</div>
+      <button id="talvyn-local-ai-btn" style="margin-top:7px;padding:5px 8px;border:1px solid ${borderCard};border-radius:6px;background:transparent;color:#6366f1;font-size:11px;cursor:pointer;">Local AI suggestions</button>
+      <div id="talvyn-local-ai-output" style="margin-top:5px;font-size:10.5px;line-height:1.4;">Optional Ollama. Enable a downloaded model with consent in the extension popup. Only extracted job text is sent to your local service.</div>
     </div>
 
     <!-- 9. APPLICATION READINESS Section -->
@@ -1480,7 +1542,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
     <div style="margin-bottom:12px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:11px;font-weight:700;color:${textSecondary};letter-spacing:0.3px;text-transform:uppercase;">APPLICATION READINESS</span>
-        <span style="font-size:12.5px;font-weight:800;color:#059669;">${readinessScore}%</span>
+        <span style="font-size:12.5px;font-weight:800;color:${readinessScore === null ? textMuted : '#059669'};">${readinessScore === null ? '—' : `${readinessScore}%`}</span>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:3px;">
@@ -1494,6 +1556,7 @@ function buildBodyHTML(job: ExtractedJob, options?: any, isDark: boolean = false
             <span style="font-weight:700;">⚠</span> <span>${escapeHtml(ri)}</span>
           </div>
         `).join('')}
+        ${readinessFactors.length === 0 && readinessIssues.length === 0 ? `<div style="font-size:11px;color:${textMuted};">Readiness could not be determined from the available profile and job data.</div>` : ''}
       </div>
     </div>
 

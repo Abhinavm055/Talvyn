@@ -166,6 +166,16 @@ async function runTests() {
   console.log('===========================================================\n')
 
   setupDomMock()
+  let savedProfile: Record<string, unknown> | undefined
+  let rematchedProfile: UserProfile | undefined
+  ;(global as any).chrome = { runtime: {
+    id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', lastError: null,
+    sendMessage(message: { type: string; path: string; method: string; body: string }, callback: (response: object) => void) {
+      if (message.type !== 'TALVYN_API_REQUEST' || message.path !== '/api/profile' || message.method !== 'PUT') throw new Error('Unexpected fixture API request')
+      savedProfile = JSON.parse(message.body)
+      callback({ success: true, data: savedProfile })
+    },
+  } }
 
   const mockJob: ExtractedJob = {
     title: 'Frontend Developer',
@@ -213,6 +223,7 @@ async function runTests() {
       userProfile: initialFresherProfile,
       isConnected: true,
       resumeName: 'John_Frontend_Resume.pdf',
+      onProfileUpdated: (profile) => { rematchedProfile = profile },
     }
   )
 
@@ -292,12 +303,20 @@ async function runTests() {
   // Update skills to include Node.js
   const skillsInput = profileView?.querySelector('#inp-p-skills') as HTMLInputElement | null
   if (skillsInput) skillsInput.value = 'React, TypeScript, Node.js'
+  // This minimal DOM fixture does not apply HTML value attributes automatically.
+  const phoneInput = profileView?.querySelector('#inp-p-phone') as HTMLInputElement | null
+  if (phoneInput) phoneInput.value = initialFresherProfile.phoneNumber || ''
 
   const saveProfileBtn = profileView?.querySelector('#talvyn-save-profile-btn') as HTMLButtonElement | null
   assert(Boolean(saveProfileBtn), '4g: Profile editor has [ 💾 Save Profile & Re-Run Matching ] button')
 
   // Click save profile & re-run matching
   saveProfileBtn?.click()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(savedProfile?.experienceYears === 3 && savedProfile?.phone === initialFresherProfile.phoneNumber,
+    '4g.1: Actual profile save sends canonical experience and phone through the worker bridge')
+  assert(rematchedProfile?.experienceYears === 3 && rematchedProfile?.onboardingCompleted === true,
+    '4g.2: Successful save updates the actual panel profile and preserves onboarding state')
 
   // Verify that profile re-running matches new candidate profile against job
   const updatedProfile: UserProfile = {

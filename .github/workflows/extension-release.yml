@@ -51,7 +51,7 @@ jobs:
       - run: npm test
       - run: npm run test:integration
       - name: Real saved-search HTTP and database checks
-        run: npx --no-install tsx test/verify-saved-searches.ts
+        run: npm run test:saved-searches
       - run: npm run build
       - run: npm run verify:extension-package
       - name: Check version tags against the actual packaged version

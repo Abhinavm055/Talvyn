@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate, AuthRequest } from '../middleware/auth'
 
 const router = Router({ mergeParams: true })
-router.use(authenticate)
+router.use(['/jobs/:jobId/notes', '/notes'], authenticate)
 
 const noteSchema = z.object({
   content: z.string().min(1, 'Note content is required'),

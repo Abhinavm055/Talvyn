@@ -72,6 +72,7 @@ export interface Resume {
   description?: string | null
   isDefault: boolean
   fileUrl?: string | null
+  fileName?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -318,6 +319,13 @@ export interface ExtractedJob {
   description?: string
   responsibilities?: string[]
   requirements?: string[]
+  requiredSkills?: string[]
+  preferredSkills?: string[]
+  eligibility?: string[]
+  applicationQuestions?: string[]
+  deadline?: string
+  workArrangement?: 'REMOTE' | 'HYBRID' | 'ONSITE'
+  extractionMethod?: string
   experience?: string
   education?: string
   jobUrl: string
@@ -430,7 +438,6 @@ export interface ExtensionMessage<T = unknown> {
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
 export interface StorageData {
-  token: string | null
   user: AuthUser | null
   lastDetectedJob: ExtractedJob | null
   lastScanSummary: JobListAnalysisSummary | null

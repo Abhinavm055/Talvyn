@@ -46,9 +46,10 @@ export class GoogleAuthService {
       throw new Error('Google credential/token is required')
     }
 
-    // ── Test/Mock token support for deterministic CI/unit tests ──────────────
-    if (idToken.startsWith('test-google-token:')) {
-      return this.parseMockToken(idToken)
+    // Every accepted credential must pass Google's signature verification.
+    // Fixtures belong in tests; no test-token format is accepted by this API.
+    if (idToken.length > 16384 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(idToken)) {
+      throw new Error('Invalid Google credential format')
     }
 
     // Validate that backend has Google Client ID configured
@@ -81,32 +82,32 @@ export class GoogleAuthService {
    */
   validatePayload(payload: TokenPayload): VerifiedGoogleUser {
     // 1. Email Verification
-    if (!payload.email) {
+    if (typeof payload.email !== 'string' || !payload.email.includes('@')) {
       throw new Error('Google token does not contain an email address')
     }
 
-    if (!payload.email_verified) {
+    if (payload.email_verified !== true) {
       throw new Error('Google account email is not verified')
     }
 
     // 2. Google User ID (sub)
-    if (!payload.sub) {
+    if (typeof payload.sub !== 'string' || !payload.sub) {
       throw new Error('Google token does not contain a subject (user ID)')
     }
 
     // 3. Expiration Check
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
+    if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || payload.exp * 1000 <= Date.now()) {
       throw new Error('Google token has expired')
     }
 
     // 4. Issuer Validation
     const validIssuers = ['accounts.google.com', 'https://accounts.google.com']
-    if (payload.iss && !validIssuers.includes(payload.iss)) {
+    if (!validIssuers.includes(payload.iss)) {
       throw new Error(`Invalid Google token issuer: ${payload.iss}`)
     }
 
     // 5. Audience Check
-    if (config.googleClientId && payload.aud !== config.googleClientId) {
+    if (typeof payload.aud !== 'string' || !payload.aud || (config.googleClientId && payload.aud !== config.googleClientId)) {
       throw new Error('Google token audience does not match backend GOOGLE_CLIENT_ID')
     }
 
@@ -190,36 +191,6 @@ export class GoogleAuthService {
     return { user, isNewUser: true }
   }
 
-  private parseMockToken(token: string): VerifiedGoogleUser {
-    // Format: test-google-token:{"email":"user@test.com","name":"Test User","sub":"g-123","email_verified":true,"exp":...}
-    const jsonStr = token.replace('test-google-token:', '')
-    const data = JSON.parse(jsonStr)
-
-    if (data.exp && data.exp * 1000 < Date.now()) {
-      throw new Error('Google token has expired')
-    }
-
-    if (data.email_verified === false) {
-      throw new Error('Google account email is not verified')
-    }
-
-    if (data.iss && !['accounts.google.com', 'https://accounts.google.com'].includes(data.iss)) {
-      throw new Error(`Invalid Google token issuer: ${data.iss}`)
-    }
-
-    if (data.aud && config.googleClientId && data.aud !== config.googleClientId) {
-      throw new Error('Invalid audience: wrong client ID')
-    }
-
-    return {
-      googleId: data.sub || 'mock-google-id',
-      email: (data.email || 'mock@example.com').toLowerCase().trim(),
-      name: data.name || 'Mock Google User',
-      givenName: data.given_name,
-      familyName: data.family_name,
-      avatarUrl: data.picture,
-    }
-  }
 }
 
 export const googleAuthService = new GoogleAuthService()

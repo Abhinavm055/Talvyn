@@ -692,7 +692,7 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
   assert(normalizeJobType('Internship') === 'INTERNSHIP', 'normalizeJobType maps "Internship" to INTERNSHIP')
   assert(normalizeJobType('Part Time') === 'PART_TIME', 'normalizeJobType maps "Part Time" to PART_TIME')
   assert(normalizeJobType('Contract') === 'CONTRACT', 'normalizeJobType maps "Contract" to CONTRACT')
-  assert(normalizeJobType('Work From Home', 'Software Engineer') === 'FULL_TIME', 'normalizeJobType maps "Work From Home" to FULL_TIME for standard role')
+  assert(normalizeJobType('Work From Home', 'Software Engineer') === null, 'normalizeJobType leaves employment type unknown when only work arrangement is known')
   assert(normalizeJobType('Work From Home', 'Frontend Intern') === 'INTERNSHIP', 'normalizeJobType maps "Work From Home" to INTERNSHIP when title specifies Intern')
   assert(normalizeJobType('Unusual Type X', 'Some Role') === 'OTHER', 'normalizeJobType maps unknown custom strings to OTHER safely')
 
@@ -726,8 +726,8 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
     'Unstop job URL normalized during normalizeJob'
   )
   assert(
-    normUnstopIncomplete.normalized.jobType === 'FULL_TIME',
-    'Unstop job without explicit type defaults safely to FULL_TIME enum'
+    normUnstopIncomplete.normalized.jobType === undefined,
+    'Unstop job without an explicit employment type stays unknown'
   )
 
   // 5. Error formatting: Never show only "Validation failed"
@@ -791,12 +791,21 @@ assert(safeExecutionRecovered, 'Gracefully catches API exceptions and prevents e
     'Extracts missing skill requirement correctly (AWS)'
   )
   assert(
-    highMatchResult.readinessScore >= 85,
+    highMatchResult.readinessScore === 33,
     `Application readiness score calculated (Score: ${highMatchResult.readinessScore}%)`
   )
   assert(
-    highMatchResult.readinessFactors.includes('Resume available') && highMatchResult.readinessFactors.includes('Profile complete'),
-    'Readiness factors include Resume available and Profile complete'
+    highMatchResult.readinessFactors.includes('Skills on profile') &&
+    highMatchResult.readinessFactors.includes('Experience on profile') &&
+    !highMatchResult.readinessFactors.includes('Resume available') &&
+    !highMatchResult.readinessFactors.includes('Profile complete'),
+    'Readiness reports only populated profile facts and does not claim resume or full-profile status'
+  )
+  assert(
+    highMatchResult.readinessIssues.includes('Add name to profile') &&
+    highMatchResult.readinessIssues.includes('Add email to profile') &&
+    highMatchResult.readinessIssues.includes('Add phone to profile'),
+    'Readiness issues identify profile fields that are actually missing'
   )
 
   // 2. Moderate / Different Role Job

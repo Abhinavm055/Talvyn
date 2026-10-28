@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Search, Filter, Briefcase, ArrowRight, MapPin, Building2 } from 'lucide-react'
+import { Plus, Search, Filter, Briefcase, MapPin, Building2 } from 'lucide-react'
 import { jobsApi } from '../../api/jobs'
 import { JobStatus } from '../../types'
 import { Button } from '../../components/ui/Button'
@@ -9,11 +9,16 @@ import { Input } from '../../components/ui/Input'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { Card } from '../../components/ui/Card'
 import { timeAgo } from '../../lib/utils'
+import { SavedSearches } from '../../components/jobs/SavedSearches'
+import { useAuthStore } from '../../store/authStore'
+import { DEFAULT_JOB_SEARCH_FILTERS, JOB_SEARCH_TYPES, filtersToJobQuery } from '../../../server/contracts/jobSearch'
+import type { JobSearchFilters } from '../../../server/contracts/jobSearch'
 
 const ALL_STATUSES: { value: string; label: string }[] = [
   { value: 'ALL', label: 'All Jobs' },
   { value: 'SAVED', label: 'Saved' },
   { value: 'INTERESTED', label: 'Interested' },
+  { value: 'IN_PROGRESS', label: 'In progress' },
   { value: 'APPLIED', label: 'Applied' },
   { value: 'ASSESSMENT', label: 'Assessment' },
   { value: 'INTERVIEW', label: 'Interview' },
@@ -25,20 +30,30 @@ const ALL_STATUSES: { value: string; label: string }[] = [
 ]
 
 export default function JobList() {
-  const [search, setSearch] = useState('')
-  const [activeStatus, setActiveStatus] = useState('ALL')
+  const userId = useAuthStore((state) => state.user?.id)
+  const sessionRevision = useAuthStore((state) => state.sessionRevision)
+  return <JobListContent key={`${userId}:${sessionRevision}`} userId={userId} sessionRevision={sessionRevision} />
+}
+
+function JobListContent({ userId, sessionRevision }: { userId?: string; sessionRevision: number }) {
+  const [filters, setFilters] = useState<JobSearchFilters>({ ...DEFAULT_JOB_SEARCH_FILTERS })
+  const [page, setPage] = useState(1)
+  const search = filters.search
+  const activeStatus = filters.status
+  const filtered = Object.keys(filtersToJobQuery(filters)).length > 0
+  const changeFilters = (next: JobSearchFilters) => { setFilters(next); setPage(1) }
   const navigate = useNavigate()
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['jobs', { status: activeStatus, search }],
-    queryFn: () =>
-      jobsApi.list({
-        status: activeStatus !== 'ALL' ? activeStatus : undefined,
-        search: search || undefined,
-      }),
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['jobs', userId, sessionRevision, filtersToJobQuery(filters), page],
+    queryFn: ({ signal }) => jobsApi.list({ ...filtersToJobQuery(filters), page, limit: 50 }, signal),
+    enabled: Boolean(userId),
   })
 
   const jobs = data?.jobs || []
+  useEffect(() => {
+    if (data && page > Math.max(1, Math.ceil(data.total / 50))) setPage(Math.max(1, Math.ceil(data.total / 50)))
+  }, [data?.total, page])
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
@@ -47,7 +62,7 @@ export default function JobList() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F7FF]">My Jobs</h1>
           <p className="text-slate-500 dark:text-[#A8B0C2] text-sm mt-1">
-            {data?.total ?? 0} job{(data?.total ?? 0) !== 1 ? 's' : ''} saved
+            {isError ? 'Unable to load your jobs' : data ? `${data.total} saved job${data.total !== 1 ? 's' : ''}${filtered ? ' match your filters' : ''}` : 'Loading your saved jobs…'}
           </p>
         </div>
         <Button icon={<Plus />} onClick={() => navigate('/jobs/new')}>
@@ -62,7 +77,9 @@ export default function JobList() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => changeFilters({ ...filters, search: e.target.value })}
+            aria-label="Search saved jobs"
+            maxLength={200}
             placeholder="Search by title, company, or location…"
             className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border border-[#D9DDE7] dark:border-[#252B3A] bg-white dark:bg-[#111522] text-[#11131A] dark:text-[#F5F7FF] placeholder:text-[#858DA0] dark:placeholder-[#737D94] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:dark:ring-[#7C3AED] focus:border-transparent hover:border-[#BFC6D4] dark:hover:border-[#353D50] transition-colors"
           />
@@ -73,12 +90,23 @@ export default function JobList() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <Input label="Company" id="job-filter-company" value={filters.company} maxLength={120} onChange={(event) => changeFilters({ ...filters, company: event.target.value })} placeholder="Any company" />
+        <Input label="Location" id="job-filter-location" value={filters.location} maxLength={120} onChange={(event) => changeFilters({ ...filters, location: event.target.value })} placeholder="Any location" />
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-900 dark:text-[#F5F7FF]">Job type
+          <select aria-label="Job type" value={filters.jobType} onChange={(event) => changeFilters({ ...filters, jobType: event.target.value as JobSearchFilters['jobType'] })} className="h-11 rounded-xl border border-[#D9DDE7] dark:border-[#252B3A] bg-white dark:bg-[#111522] px-3 text-sm dark:text-[#F5F7FF]">
+            {JOB_SEARCH_TYPES.map((type) => <option key={type} value={type}>{type === 'ALL' ? 'Any job type' : type.replace(/_/g, ' ').toLowerCase()}</option>)}
+          </select>
+        </label>
+      </div>
+
       {/* Status tabs */}
       <div className="flex flex-wrap gap-1.5 mb-6">
         {ALL_STATUSES.map((s) => (
           <button
             key={s.value}
-            onClick={() => setActiveStatus(s.value)}
+            aria-pressed={activeStatus === s.value}
+            onClick={() => changeFilters({ ...filters, status: s.value as JobSearchFilters['status'] })}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeStatus === s.value
                 ? 'bg-primary-600 dark:bg-[#7C3AED] text-white font-semibold shadow-xs'
@@ -90,8 +118,11 @@ export default function JobList() {
         ))}
       </div>
 
+      {filtered ? <Button type="button" variant="ghost" size="sm" className="mb-4" onClick={() => changeFilters({ ...DEFAULT_JOB_SEARCH_FILTERS })}>Clear filters</Button> : null}
+      <SavedSearches filters={filters} onApply={changeFilters} />
+
       {/* Job grid */}
-      {isLoading ? (
+      {isError ? <Card padding="md"><p role="alert" className="text-sm text-red-600 dark:text-red-300">Your jobs could not be loaded.</p><Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>Retry jobs</Button></Card> : isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="h-44 bg-white dark:bg-[#111522] rounded-2xl border border-[#E2E5EC] dark:border-[#252B3A] animate-pulse" />
@@ -101,16 +132,16 @@ export default function JobList() {
         <Card padding="lg" className="text-center py-16">
           <Briefcase className="w-12 h-12 text-slate-300 dark:text-[#737D94] mx-auto mb-3" />
           <p className="text-slate-700 dark:text-[#F5F7FF] font-semibold text-base">
-            {search || activeStatus !== 'ALL'
+            {filtered
               ? 'No jobs match your filters'
               : 'No jobs saved yet'}
           </p>
           <p className="text-slate-400 dark:text-[#737D94] text-xs mt-1 mb-5">
-            {search || activeStatus !== 'ALL'
+            {filtered
               ? 'Try adjusting your search or filter'
               : 'Add your first job opportunity to get started'}
           </p>
-          {!search && activeStatus === 'ALL' && (
+          {!filtered && (
             <Button onClick={() => navigate('/jobs/new')} size="sm" icon={<Plus />}>
               Add Your First Job
             </Button>
@@ -160,6 +191,11 @@ export default function JobList() {
           ))}
         </div>
       )}
+      {data && data.total > 50 ? <nav aria-label="Job pages" className="mt-6 flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-[#A8B0C2]">
+        <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous page</Button>
+        <span>Page {page} of {Math.max(1, Math.ceil(data.total / 50))}</span>
+        <Button type="button" variant="outline" size="sm" disabled={page * 50 >= data.total} onClick={() => setPage((value) => value + 1)}>Next page</Button>
+      </nav> : null}
     </div>
   )
 }

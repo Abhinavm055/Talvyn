@@ -25,6 +25,7 @@
  * 20. Apply with Talvyn remains available and functional after saving.
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { prisma as rawPrisma } from '../server/lib/prisma'
 import { z } from 'zod'
 
@@ -138,12 +139,14 @@ async function runTests() {
 
   let prisma: any = rawPrisma
   try {
+    requireTestDatabase()
     await Promise.race([
-      rawPrisma.user.findFirst().catch(() => null),
+      rawPrisma.user.findFirst(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('DB_PROBE_TIMEOUT')), 1000))
     ])
-  } catch {
-    console.log('  [Notice] Remote database server unreachable. Using in-memory status verification engine.\n')
+  } catch (error) {
+    allowDatabaseFixtureFallback(error)
+    console.log('  [Notice] No usable dedicated test database. Using in-memory status verification engine.\n')
     prisma = new InMemoryDb()
   }
 
@@ -171,7 +174,8 @@ async function runTests() {
         }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 1000))
       ])
-    } catch {
+    } catch (error) {
+      allowDatabaseFixtureFallback(error)
       console.log('  [Notice] Remote database error or timeout on create. Switching to in-memory engine.\n')
       prisma = new InMemoryDb()
       user1 = await prisma.user.create({

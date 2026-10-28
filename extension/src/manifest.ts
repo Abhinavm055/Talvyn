@@ -1,10 +1,19 @@
 import { defineManifest } from '@crxjs/vite-plugin'
+import { loadEnv } from 'vite'
+import path from 'node:path'
+import { resolveManifestExtensionIdentity } from '../../server/services/extensionIdentity'
 
-export default defineManifest({
+export const EXTENSION_VERSION = '1.3.0'
+export default defineManifest(({ mode }) => {
+  const env = { ...loadEnv(mode, path.resolve(__dirname, '../..'), ''), ...process.env }
+  const identity = resolveManifestExtensionIdentity(mode, env)
+  return {
   manifest_version: 3,
+  minimum_chrome_version: '102',
+  ...(identity ? { key: identity.publicKey } : {}),
   name: 'Talvyn Browser Extension',
-  version: '1.1.0',
-  description: 'Save jobs from any website directly to your Talvyn dashboard.',
+  version: EXTENSION_VERSION,
+  description: 'Capture job postings, compare them with your profile, and review application autofill in Talvyn.',
 
   // Service worker (background)
   background: {
@@ -32,21 +41,17 @@ export default defineManifest({
     '128': 'icons/icon128.png',
   },
 
-  // Allow production and local Talvyn web app to communicate with extension
+  // Local origins belong only to an explicit development build.
   externally_connectable: {
-    matches: [
-      'https://talvyn.vercel.app/*',
-      'http://localhost:5173/*',
-      'http://localhost:3000/*',
-      'http://127.0.0.1:5173/*',
-      'http://localhost:3001/*',
-    ],
+    matches: mode === 'development'
+      ? ['http://localhost:5173/*', 'http://127.0.0.1:5173/*']
+      : ['https://talvyn.vercel.app/*'],
   },
 
   // Content scripts — injected into all pages, activates only when job detected
   content_scripts: [
     {
-      matches: ['<all_urls>'],
+      matches: ['http://*/*', 'https://*/*'],
       js: ['src/content/index.ts'],
       run_at: 'document_idle',
     },
@@ -60,17 +65,17 @@ export default defineManifest({
   ],
 
   // Host permissions — must match the Talvyn API and frontend URLs
-  host_permissions: [
-    'http://localhost:3001/*',
-    'https://talvyn-backend-7ucf.onrender.com/*',
-    'https://talvyn.vercel.app/*',
-  ],
+  host_permissions: mode === 'development'
+    ? ['http://localhost:3001/*']
+    : ['https://talvyn-backend-7ucf.onrender.com/*'],
+  // Requested only when the user enables their own local model.
+  optional_host_permissions: ['http://localhost/*', 'http://127.0.0.1/*', 'https://localhost/*', 'https://127.0.0.1/*'],
 
   // Web accessible resources
   web_accessible_resources: [
     {
-      resources: ['icons/*', 'assets/*'],
-      matches: ['<all_urls>'],
+      resources: ['icons/*'],
+      matches: ['http://*/*', 'https://*/*'],
     },
   ],
 
@@ -78,5 +83,6 @@ export default defineManifest({
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'",
   },
+  }
 })
 

@@ -15,6 +15,7 @@
  * 10. Manual profile entry still works as a complete fallback.
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { prisma } from '../server/lib/prisma'
 import { resumeParserService } from '../server/services/resumeParserService'
 import { storageService } from '../server/services/storageService'
@@ -279,9 +280,11 @@ Software Developer with skills in Python and Django.
 
   let dbOnline = false
   try {
+    requireTestDatabase()
     await prisma.$queryRaw`SELECT 1`
     dbOnline = true
-  } catch {
+  } catch (error) {
+    allowDatabaseFixtureFallback(error)
     console.log('  [Notice] Database offline, testing schema and model serialization in-memory')
   }
 

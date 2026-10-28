@@ -220,8 +220,8 @@ const normWithSkills = normalizeJob(minimalJob, {
 } as any)
 
 const enrichedSections = extractStructuredSections(minimalJob, normWithSkills)
-assert(enrichedSections.responsibilities.length > 0 && enrichedSections.responsibilities[0] !== '— Not specified', 'Responsibilities populated from matched role skills rather than "— Not specified"')
-assert(enrichedSections.requirements.length > 0 && enrichedSections.requirements[0] !== '— Not specified', 'Requirements populated from matched profile skills rather than "— Not specified"')
+assert(enrichedSections.responsibilities[0] === '— Not extracted from the available job description', 'Does not invent responsibilities from matched profile skills')
+assert(enrichedSections.requirements[0] === '— Not explicitly extracted from the available job description', 'Does not relabel profile skill matches as job requirements')
 
 console.log('\n====================================================================')
 console.log(`TOTAL TESTS: ${passCount + failCount} | PASSED: ${passCount} | FAILED: ${failCount}`)

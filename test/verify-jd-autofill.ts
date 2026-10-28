@@ -19,6 +19,7 @@
  * 14. Job saves successfully to pipeline in database.
  */
 
+import { requireTestDatabase, allowDatabaseFixtureFallback } from './helpers/testDatabase'
 import { prisma } from '../server/lib/prisma'
 import { jdParserService } from '../server/services/jdParserService'
 import fs from 'fs'
@@ -247,9 +248,11 @@ Requirements:
 
   let dbOnline = false
   try {
+    requireTestDatabase()
     await prisma.$queryRaw`SELECT 1`
     dbOnline = true
-  } catch {
+  } catch (error) {
+    allowDatabaseFixtureFallback(error)
     console.log('  [Notice] Database offline, testing Job model in-memory')
   }
 

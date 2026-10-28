@@ -1,53 +1,489 @@
-/**
- * Talvyn Extension – Background Service Worker (Manifest V3)
- *
- * Responsibilities:
- * - Validate stored session on startup / install
- * - Route external messages from Talvyn web app via externally_connectable
- * - Authoritative token verification against live backend (/api/auth/me)
- * - Persist session to chrome.storage.local (talvynAuth)
- * - Set extension badge to reflect auth state
- */
-
-import {
-  getAuthSession,
-  setAuthSession,
-  clearAuth,
-  getToken,
-  getUser,
-} from '../utils/storage'
-import { authService } from '../services/authService'
+/** MV3 service worker: trusted credential owner and one-time account pairing. */
+import { TalvynAuthSession, getAuthSession, setAuthSession, clearAuth, STORAGE_KEYS } from '../utils/storage'
 import { CONFIG, DashboardRoute, getDashboardRouteUrl } from '../utils/config'
-import { ExtensionMessage } from '../types'
+import { isGenuineUpgrade } from '../services/releaseLifecycle'
+import { PAIRING_REQUEST_PATTERN, createPairingSecret, decodeTokenClaims, isAllowedApiRequest, isExactAllowedOrigin, validateSessionResponse } from '../services/secureConnection'
+import { analyzeLocalJob, detectLocalAi, validateLocalAiSettings, LocalAiSettings } from '../services/localAi'
+import type { ApplicationSession } from '../types'
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+const PAIRING_KEY = 'talvyn_pending_pairing'
+const LOCAL_AI_KEY = 'talvyn_local_ai'
+const RECONNECT_KEY = 'talvyn_reconnect_required'
+const APPLICATION_SESSION_KEY = 'talvyn_active_application_session'
+const DEFAULT_LOCAL_AI: LocalAiSettings = { enabled: false, consent: false, endpoint: 'http://127.0.0.1:11434', model: 'llama3.2' }
+interface PendingPairing { requestId: string; verifier: string; expiresAt: string }
 
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  if (reason === 'install') {
-    console.log('[Talvyn] Extension installed')
-    await clearAuth()
-    setBadge('off')
-  }
-  await validateStoredToken()
-})
+// This restriction also covers old installations before migrating their credentials.
+const trustedStorageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+let authGeneration = 0
+let refreshInFlight: Promise<TalvynAuthSession | null> | null = null
+let pairingInFlight: Promise<any> | null = null
+let startPairingInFlight: Promise<any> | null = null
 
-chrome.runtime.onStartup.addListener(async () => {
-  await validateStoredToken()
-})
-
-// ─── Extension Action & Floating Window Trigger ──────────────────────────────
-export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: string, tabTitle?: string): Promise<any> {
-  console.log('[Talvyn] Triggering intelligence panel on tab:', tabId, tabUrl)
+async function boundedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const maximumBodyBytes = 8 * 1024 * 1024
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let timeoutId: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+      reject(new Error('Talvyn API request timed out.'))
+    }, 12_000)
+  })
   try {
-    const response = await chrome.tabs.sendMessage(tabId, {
+    const response = await Promise.race([fetch(url, { ...options, signal: controller.signal, credentials: 'omit', redirect: 'error' }), timeout])
+    if (!response.body) return response
+    reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let length = 0
+    while (true) {
+      const chunk = await Promise.race([reader.read(), timeout])
+      if (chunk.done) break
+      length += chunk.value.byteLength
+      if (length > maximumBodyBytes) {
+        controller.abort()
+        throw new Error('Talvyn API response exceeded its size limit.')
+      }
+      chunks.push(chunk.value)
+    }
+    const buffer = new Uint8Array(length)
+    let offset = 0
+    for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength }
+    return new Response(buffer, { status: response.status, statusText: response.statusText, headers: response.headers })
+  } finally {
+    clearTimeout(timeoutId!)
+    // A stalled stream must not delay timeout cleanup or hold credentials in a task.
+    void reader?.cancel().catch(() => {})
+  }
+}
+
+function setBadge(state: 'on' | 'off'): void {
+  void chrome.action.setBadgeText({ text: state === 'on' ? '✓' : '' })
+  if (state === 'on') void chrome.action.setBadgeBackgroundColor({ color: '#6366f1' })
+}
+
+async function invalidateSession(): Promise<void> {
+  authGeneration++
+  await clearAuth()
+  await clearAccountData()
+  await chrome.storage.local.set({ [RECONNECT_KEY]: true })
+  setBadge('off')
+}
+
+async function refreshAuthSession(): Promise<TalvynAuthSession | null> {
+  if (refreshInFlight) return refreshInFlight
+  const generation = authGeneration
+  refreshInFlight = (async () => {
+    const current = await getAuthSession()
+    if (!current?.refreshToken || !current.sessionId) return null
+    const response = await boundedFetch(`${CONFIG.API_BASE}/api/auth/extension-sessions/refresh`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: current.refreshToken }),
+    })
+    if (!response.ok) {
+      if (generation === authGeneration && (response.status === 401 || response.status === 403)) await invalidateSession()
+      throw Object.assign(new Error('Could not renew the extension session.'), { status: response.status })
+    }
+    const result = await response.json()
+    const verified = validateSessionResponse(result, result.user)
+    if (!verified || verified.sessionId !== current.sessionId || verified.user.id !== current.user.id) {
+      if (generation === authGeneration) await invalidateSession()
+      throw new Error('Invalid extension session returned by the server.')
+    }
+    if (generation !== authGeneration) return null
+    const updated = { ...verified, connectedAt: current.connectedAt }
+    await setAuthSession(updated)
+    return updated
+  })()
+  try { return await refreshInFlight } finally { refreshInFlight = null }
+}
+
+async function getValidAuthSession(): Promise<TalvynAuthSession | null> {
+  await trustedStorageReady
+  const session = await getAuthSession()
+  if (!session) return null
+  if (!session.sessionId || !session.refreshToken || !session.user || typeof session.user.id !== 'string' || typeof session.user.email !== 'string') { await invalidateSession(); return null }
+  const claims = decodeTokenClaims(session.token)
+  if (claims?.tokenUse !== 'extension_access' || claims.sessionId !== session.sessionId || claims.userId !== session.user.id) {
+    await invalidateSession(); return null
+  }
+  if (typeof claims.exp !== 'number' || claims.exp * 1000 <= Date.now() + 60_000) return refreshAuthSession()
+  return session
+}
+
+async function fetchAuthorized(path: string, options: RequestInit = {}, retry = true): Promise<Response> {
+  const generation = authGeneration
+  const session = await getValidAuthSession()
+  if (generation !== authGeneration) throw Object.assign(new Error('The connected account changed. Please retry.'), { status: 409 })
+  if (!session?.token) throw Object.assign(new Error('Reconnect your Talvyn account.'), { status: 401 })
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  headers.set('Authorization', `Bearer ${session.token}`)
+  const response = await boundedFetch(`${CONFIG.API_BASE}${path}`, { ...options, headers })
+  // A request sent for a previous account must never be retried as the new
+  // account, clear its credentials, or return the old account's private data.
+  if (generation !== authGeneration) throw Object.assign(new Error('The connected account changed. Please retry.'), { status: 409 })
+  if (response.status === 401 && retry) {
+    const renewed = await refreshAuthSession()
+    if (generation !== authGeneration) throw Object.assign(new Error('The connected account changed. Please retry.'), { status: 409 })
+    if (renewed) return fetchAuthorized(path, options, false)
+  }
+  if (response.status === 401) await invalidateSession()
+  return response
+}
+
+async function revokeCurrentExtensionSession(): Promise<boolean> {
+  const current = await getAuthSession()
+  if (!current) return true
+  if (!current.sessionId || !current.refreshToken) { await invalidateSession(); return true }
+  try {
+    const response = await fetchAuthorized('/api/auth/extension-sessions/revoke', {
+      method: 'POST', body: JSON.stringify({ sessionId: current.sessionId }),
+    })
+    return response.ok || response.status === 401 || response.status === 403
+  } catch (error: any) {
+    if (error?.status === 401 || error?.status === 403) return true
+    return false
+  }
+}
+
+async function disconnect(): Promise<any> {
+  // Do not claim server revocation when an outage prevents confirmation.
+  if (!(await revokeCurrentExtensionSession())) {
+    return { success: false, state: 'reconnecting', error: 'Could not confirm disconnect with Talvyn. Please retry when the service is available.' }
+  }
+  authGeneration++
+  await clearAuth()
+  await clearAccountData()
+  await chrome.storage.local.remove([PAIRING_KEY, RECONNECT_KEY])
+  setBadge('off')
+  return { success: true, state: 'disconnected' }
+}
+
+async function readPendingPairing(): Promise<PendingPairing | null> {
+  await trustedStorageReady
+  const values = await chrome.storage.local.get(PAIRING_KEY)
+  const pending = values[PAIRING_KEY] as PendingPairing | undefined
+  if (!pending || !PAIRING_REQUEST_PATTERN.test(pending.requestId) || typeof pending.verifier !== 'string') return null
+  if (!Number.isFinite(Date.parse(pending.expiresAt)) || Date.parse(pending.expiresAt) <= Date.now()) {
+    await chrome.storage.local.remove(PAIRING_KEY)
+    return null
+  }
+  return pending
+}
+
+async function startPairing(): Promise<any> {
+  if (startPairingInFlight) return startPairingInFlight
+  startPairingInFlight = (async () => {
+    await trustedStorageReady
+    const existing = await readPendingPairing()
+    if (existing) return { success: true, requestId: existing.requestId, expiresAt: existing.expiresAt }
+    const secret = await createPairingSecret()
+    const response = await boundedFetch(`${CONFIG.API_BASE}/api/auth/extension-pairing/start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extensionId: chrome.runtime.id, challenge: secret.challenge }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) return { success: false, error: result.error || 'Talvyn could not start connection. Please retry.', status: response.status }
+    if (!PAIRING_REQUEST_PATTERN.test(result.requestId) || !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt) <= Date.now()) {
+      return { success: false, error: 'Invalid connection request from Talvyn.' }
+    }
+    await chrome.storage.local.set({ [PAIRING_KEY]: { ...secret, requestId: result.requestId, expiresAt: result.expiresAt } })
+    return { success: true, requestId: result.requestId, expiresAt: result.expiresAt }
+  })()
+  try { return await startPairingInFlight } finally { startPairingInFlight = null }
+}
+
+async function completePairing(requestId: string): Promise<any> {
+  const pending = await readPendingPairing()
+  if (!pending || requestId !== pending.requestId) return { success: false, error: 'This connection request expired or does not belong to this extension.' }
+  if (pairingInFlight) return pairingInFlight
+  const generation = authGeneration
+  pairingInFlight = (async () => {
+    const response = await boundedFetch(`${CONFIG.API_BASE}/api/auth/extension-pairing/exchange`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, verifier: pending.verifier }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (response.status === 202 && result.pending === true) {
+      return { success: false, pending: true, status: 202, error: 'Approve the connection on the Talvyn website.' }
+    }
+    if (!response.ok) {
+      if ([400, 401, 404, 410].includes(response.status)) await chrome.storage.local.remove(PAIRING_KEY)
+      return { success: false, pending: response.status === 409 || response.status === 202, status: response.status, error: result.error || 'Approve the connection on the Talvyn website.' }
+    }
+    const me = await boundedFetch(`${CONFIG.API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${result.accessToken}` } })
+    if (!me.ok) return { success: false, error: 'Talvyn could not verify the new session. Please reconnect.' }
+    const user = await me.json()
+    const verified = validateSessionResponse(result, user)
+    if (!verified) return { success: false, error: 'Talvyn returned inconsistent connection credentials.' }
+    // A pending, unapproved request must never disconnect the existing account.
+    const previousRevoked = generation === authGeneration && await revokeCurrentExtensionSession()
+    if (generation !== authGeneration || !previousRevoked) {
+      await boundedFetch(`${CONFIG.API_BASE}/api/auth/extension-sessions/revoke`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${verified.token}` },
+        body: JSON.stringify({ sessionId: verified.sessionId }),
+      }).catch(() => null)
+      await chrome.storage.local.remove(PAIRING_KEY)
+      return { success: false, error: 'Could not replace the previous session safely. Retry the connection.' }
+    }
+    authGeneration++
+    await setAuthSession(verified)
+    await chrome.storage.local.remove([PAIRING_KEY, RECONNECT_KEY])
+    await clearAccountData()
+    setBadge('on')
+    return { success: true, user: { id: user.id, email: user.email } }
+  })()
+  try { return await pairingInFlight } finally { pairingInFlight = null }
+}
+
+async function clearAccountData(): Promise<void> {
+  const values = await chrome.storage.local.get(null)
+  const keys = Object.keys(values).filter((key) =>
+    key === STORAGE_KEYS.LAST_JOB || key === 'talvyn_last_scan_summary' || key === APPLICATION_SESSION_KEY ||
+    /^(talvyn_(?:application|autofill|save_queue|job_cache|profile_cache))/.test(key))
+  if (keys.length) await chrome.storage.local.remove(keys)
+}
+
+async function getAuthStatus(resumePending = false): Promise<any> {
+  await trustedStorageReady
+  if (resumePending) {
+    const pending = await readPendingPairing()
+    if (pending) {
+      const completed = await completePairing(pending.requestId).catch(() => null)
+      if (completed?.success) {
+        const session = await getAuthSession()
+        if (session) return { success: true, state: 'connected', user: session.user }
+      }
+    }
+  }
+  const current = await getAuthSession()
+  if (!current) {
+    const values = await chrome.storage.local.get(RECONNECT_KEY)
+    setBadge('off')
+    return { success: true, state: values[RECONNECT_KEY] ? 'reconnect-required' : 'disconnected', user: null }
+  }
+  const generation = authGeneration
+  try {
+    const response = await fetchAuthorized('/api/auth/me')
+    if (response.status === 401 || response.status === 403) {
+      await invalidateSession()
+      return { success: true, state: 'reconnect-required', user: null }
+    }
+    if (!response.ok) return { success: true, state: 'reconnecting', user: null, error: 'Talvyn could not verify the connection. Retry when the service is available.' }
+    const user = await response.json()
+    if (generation !== authGeneration) return { success: true, state: 'reconnecting', user: null, error: 'The connected account changed. Retry to verify it.' }
+    const live = await getAuthSession()
+    if (!live || user.id !== live.user.id) { await invalidateSession(); return { success: true, state: 'reconnect-required', user: null } }
+    await setAuthSession({ ...live, user })
+    setBadge('on')
+    return { success: true, state: 'connected', user }
+  } catch (error: any) {
+    return { success: true, state: error?.status === 401 || error?.status === 403 ? 'reconnect-required' : 'reconnecting', user: null,
+      error: 'Unable to verify your connection. Please retry.' }
+  }
+}
+
+chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
+  await trustedStorageReady
+  const version = chrome.runtime.getManifest().version
+  await chrome.storage.local.set({ talvyn_installed_version: version })
+  if (reason === 'install') {
+    await clearAuth(); setBadge('off')
+    await chrome.storage.local.remove(['talvyn_pending_release_version', PAIRING_KEY, RECONNECT_KEY])
+  } else if (isGenuineUpgrade(reason, previousVersion, version)) {
+    await chrome.storage.local.set({ talvyn_pending_release_version: version })
+  }
+  // Legacy website tokens require fresh explicit pairing.
+  await chrome.storage.local.remove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER])
+  await getAuthStatus(true)
+})
+chrome.runtime.onStartup.addListener(() => { void getAuthStatus(true) })
+
+function isInternalSender(sender: chrome.runtime.MessageSender): boolean {
+  return sender.id === chrome.runtime.id && Boolean(sender.url || sender.origin)
+}
+function isTrustedUiSender(sender: chrome.runtime.MessageSender): boolean {
+  const url = sender.url || sender.origin || ''
+  return isInternalSender(sender) && url.startsWith(`chrome-extension://${chrome.runtime.id}/`) && !sender.tab
+}
+
+async function proxyRequest(msg: any): Promise<any> {
+  const generation = authGeneration
+  const method = typeof msg.method === 'string' ? msg.method.toUpperCase() : 'GET'
+  if (!isAllowedApiRequest(msg.path, method)) return { success: false, status: 400, error: 'This API request is not permitted.' }
+  let body: string | undefined
+  try {
+    if (msg.body !== undefined && !['GET', 'DELETE'].includes(method)) body = typeof msg.body === 'string' ? msg.body : JSON.stringify(msg.body)
+    if (body && body.length > 1_000_000) throw new Error('Request too large')
+  } catch { return { success: false, status: 400, error: 'Invalid API payload.' } }
+  try {
+    const response = await fetchAuthorized(msg.path, { method, body })
+    const data = response.status === 204 ? undefined : await response.json().catch(() => ({}))
+    if (generation !== authGeneration) return { success: false, status: 409, error: 'The connected account changed. Please retry.' }
+    if (!response.ok) return { success: false, status: response.status, body: data, job: data?.job, error: data?.error || (response.status === 401 ? 'Reconnect your Talvyn account.' : 'Talvyn could not complete this request. Please retry.') }
+    if (msg.path === '/api/profile' && data) {
+      const current = await getAuthSession()
+      if (current) await setAuthSession({ ...current, user: { ...current.user, profile: data } })
+    }
+    return { success: true, status: response.status, data, payload: data, job: data }
+  } catch (error: any) {
+    return { success: false, status: error?.status || 0, error: error?.status === 401 ? 'Reconnect your Talvyn account.' : 'Connection problem. Please retry.' }
+  }
+}
+
+async function readLocalAiSettings(): Promise<LocalAiSettings> {
+  const values = await chrome.storage.local.get(LOCAL_AI_KEY)
+  try { return validateLocalAiSettings(values[LOCAL_AI_KEY] || DEFAULT_LOCAL_AI) || DEFAULT_LOCAL_AI }
+  catch { return DEFAULT_LOCAL_AI }
+}
+async function hasLocalAiPermission(settings: LocalAiSettings): Promise<boolean> {
+  const endpoint = new URL(settings.endpoint)
+  return chrome.permissions.contains({ origins: [`${endpoint.protocol}//${endpoint.hostname}/*`] })
+}
+
+async function handleInternalMessage(msg: any, sender: chrome.runtime.MessageSender): Promise<any> {
+  await trustedStorageReady
+  if (!isInternalSender(sender) || !msg || typeof msg !== 'object' || typeof msg.type !== 'string') return { success: false, error: 'Invalid extension message.' }
+  const trustedUi = isTrustedUiSender(sender)
+  if (msg.type === 'TALVYN_APPLICATION_SESSION') {
+    if (msg.action === 'get') {
+      const values = await chrome.storage.local.get(APPLICATION_SESSION_KEY)
+      return { success: true, session: values[APPLICATION_SESSION_KEY] || null }
+    }
+    if (msg.action === 'clear') {
+      await chrome.storage.local.remove(APPLICATION_SESSION_KEY)
+      return { success: true }
+    }
+    if (msg.action !== 'set') return { success: false, error: 'Invalid application session action.' }
+    const session = sanitizeApplicationSession(msg.session)
+    if (!session) return { success: false, error: 'Invalid application session.' }
+    await chrome.storage.local.set({ [APPLICATION_SESSION_KEY]: session })
+    return { success: true, session }
+  }
+  if (msg.type === 'GET_AUTH' || msg.type === 'GET_AUTH_STATUS') {
+    const status = await getAuthStatus(true)
+    if (msg.type === 'GET_AUTH_STATUS') return status
+    return { success: true, authenticated: status.state === 'connected', user: status.user,
+      type: 'AUTH_STATE', payload: { isAuthenticated: status.state === 'connected', user: status.user } }
+  }
+  if (msg.type === 'TALVYN_API_REQUEST') return proxyRequest(msg)
+  if (msg.type === 'TALVYN_SAVE_JOB' || msg.type === 'SAVE_JOB') return proxyRequest({ path: '/api/jobs', method: 'POST', body: msg.payload || msg.job })
+  if (msg.type === 'TALVYN_CHECK_DUPLICATE' || msg.type === 'CHECK_DUPLICATE') {
+    const url = msg.payload?.url || msg.url
+    if (typeof url !== 'string' || url.length > 4096 || !/^https?:\/\//.test(url)) return { success: false, error: 'Invalid job URL.' }
+    return proxyRequest({ path: `/api/jobs/check-url?url=${encodeURIComponent(url)}` })
+  }
+  if (msg.type === 'OPEN_DASHBOARD_ROUTE') {
+    if (!['dashboard','profile','tracker','settings','signup'].includes(msg.route)) return { success: false, error: 'Invalid dashboard route.' }
+    const tab = await chrome.tabs.create({ url: getDashboardRouteUrl(msg.route as DashboardRoute) })
+    return { success: true, tabId: tab.id }
+  }
+  if (msg.type === 'CONNECT_TALVYN') {
+    const result = await startPairing()
+    if (!result.success) return result
+    await chrome.tabs.create({ url: `${getDashboardRouteUrl('connect')}?requestId=${encodeURIComponent(result.requestId)}` })
+    return result
+  }
+  if (msg.type === 'DISCONNECT_TALVYN') return trustedUi ? disconnect() : { success: false, error: 'Disconnect from the extension popup.' }
+  if (msg.type === 'GET_LOCAL_AI_SETTINGS') return trustedUi ? { success: true, settings: await readLocalAiSettings() } : { success: false, error: 'Settings are available in the popup.' }
+  if (msg.type === 'SET_LOCAL_AI_SETTINGS') {
+    if (!trustedUi) return { success: false, error: 'Update settings in the popup.' }
+    const settings = validateLocalAiSettings(msg.settings)
+    if (!settings) return { success: false, error: 'Use a loopback endpoint and a downloaded local model.' }
+    if (settings.enabled && (!settings.consent || !(await hasLocalAiPermission(settings)))) return { success: false, error: 'Local AI requires explicit consent and browser permission.' }
+    await chrome.storage.local.set({ [LOCAL_AI_KEY]: settings })
+    return { success: true, settings }
+  }
+  if (msg.type === 'CHECK_LOCAL_AI' || msg.type === 'LOCAL_AI_ANALYZE_JOB') {
+    const settings = await readLocalAiSettings()
+    if (!settings.enabled || !settings.consent || !(await hasLocalAiPermission(settings))) return { success: false, reason: 'Local AI is disabled or its browser permission is missing.' }
+    if (msg.type === 'CHECK_LOCAL_AI') return trustedUi ? detectLocalAi(settings) : { success: false, reason: 'Check local AI in the popup.' }
+    return analyzeLocalJob(msg.data, settings)
+  }
+  if (msg.type === 'TRIGGER_ACTIVE_TAB_PANEL' || msg.type === 'TALVYN_OPEN_FLOATING_WINDOW') {
+    if (!trustedUi) return { success: false, error: 'Open analysis using the extension popup.' }
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    const tab = tabs[0]
+    if (!tab?.id) return { success: false, error: 'No active tab found.' }
+    const result = await triggerIntelligencePanelOnTab(tab.id, tab.url, tab.title)
+    return result ? { success: result.success !== false, result } : { success: false, error: 'This page could not be analyzed. Try a job page in a regular browser tab.' }
+  }
+  return { success: false, error: 'Unsupported extension message.' }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  void handleInternalMessage(message, sender).then(sendResponse).catch(() => sendResponse({ success: false, error: 'Talvyn could not complete this request. Please retry.' }))
+  return true
+})
+
+function sanitizeApplicationSession(value: unknown): ApplicationSession | null {
+  if (!value || typeof value !== 'object') return null
+  const data = value as Record<string, unknown>
+  if (typeof data.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(data.id) ||
+      typeof data.pageUrl !== 'string' || data.pageUrl.length > 4096 || !isHttpUrl(data.pageUrl) ||
+      typeof data.startedAt !== 'string' || !Number.isFinite(Date.parse(data.startedAt)) ||
+      typeof data.lastActivityAt !== 'string' || !Number.isFinite(Date.parse(data.lastActivityAt)) ||
+      Date.parse(data.startedAt) > Date.now() + 300_000 || Date.parse(data.lastActivityAt) > Date.now() + 300_000) return null
+  const session: ApplicationSession = { id: data.id, pageUrl: data.pageUrl, startedAt: data.startedAt, lastActivityAt: data.lastActivityAt }
+  for (const key of ['jobUrl', 'jobTitle', 'company', 'location'] as const) {
+    if (data[key] !== undefined && data[key] !== null) {
+      if (typeof data[key] !== 'string' || (data[key] as string).length > (key === 'jobUrl' ? 4096 : 1000)) return null
+      if (key === 'jobUrl' && !isHttpUrl(data[key] as string)) return null
+      session[key] = data[key] as string
+    }
+  }
+  if (data.submitted !== undefined && typeof data.submitted !== 'boolean') return null
+  if (typeof data.submitted === 'boolean') session.submitted = data.submitted
+  return session
+}
+
+function isHttpUrl(value: string): boolean {
+  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password }
+  catch { return false }
+}
+
+chrome.runtime.onMessageExternal.addListener((message: any, sender, sendResponse) => {
+  if (!isExactAllowedOrigin(sender.url || sender.origin, CONFIG.WEB_ORIGINS) || !message || typeof message !== 'object' || typeof message.type !== 'string') {
+    sendResponse({ success: false, error: 'Unauthorized website message.' }); return false
+  }
+  // Discovery must remain independent of authentication and API availability.
+  if (message.type === 'TALVYN_PING_EXTENSION') {
+    sendResponse({ success: true, installed: true, version: chrome.runtime.getManifest().version, protocolVersion: CONFIG.PROTOCOL_VERSION }); return false
+  }
+  void (async () => {
+    if (message.type === 'TALVYN_START_CONNECTION') return startPairing()
+    if (message.type === 'TALVYN_GET_PAIRING_REQUEST') {
+      const pending = await readPendingPairing()
+      return pending && message.requestId === pending.requestId
+        ? { success: true, requestId: pending.requestId, expiresAt: pending.expiresAt }
+        : { success: false, error: 'This request does not belong to the installed extension.' }
+    }
+    if (message.type === 'TALVYN_COMPLETE_CONNECTION') {
+      if (typeof message.requestId !== 'string' || !PAIRING_REQUEST_PATTERN.test(message.requestId)) return { success: false, error: 'Invalid connection request.' }
+      return completePairing(message.requestId)
+    }
+    if (message.type === 'TALVYN_GET_STATUS') {
+      const status = await getAuthStatus(false)
+      return { success: true, state: status.state, connectionState: status.state, error: status.error,
+        user: status.user ? { id: status.user.id, email: status.user.email } : null, version: chrome.runtime.getManifest().version }
+    }
+    if (message.type === 'TALVYN_DISCONNECT_EXTENSION') return disconnect()
+    return { success: false, error: 'Unsupported website message.' }
+  })().then(sendResponse).catch(() => sendResponse({ success: false, error: 'Talvyn could not complete this request. Please retry.' }))
+  return true
+})
+
+interface PanelTriggerResult { success?: boolean; mode?: string; detectedJobs?: number; error?: string }
+export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: string, tabTitle?: string): Promise<PanelTriggerResult | null> {
+  try {
+    const response: PanelTriggerResult = await chrome.tabs.sendMessage(tabId, {
       type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
       tabUrl,
       tabTitle,
     })
-    console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL responded:', response)
     return response
-  } catch (err: any) {
-    console.log('[Talvyn] Content script not reachable directly, attempting programmatic injection:', err?.message || err)
+  } catch {
     if (
       tabUrl?.startsWith('chrome://') ||
       tabUrl?.startsWith('chrome-extension://') ||
@@ -55,7 +491,6 @@ export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: stri
       tabUrl?.startsWith('brave://') ||
       tabUrl?.startsWith('about:')
     ) {
-      console.warn('[Talvyn] Cannot inject content script into browser internal page:', tabUrl)
       return null
     }
 
@@ -64,7 +499,6 @@ export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: stri
         const manifest = chrome.runtime.getManifest()
         const contentScriptFiles = manifest.content_scripts?.[0]?.js || []
         if (contentScriptFiles.length > 0) {
-          console.log('[Talvyn] Programmatically injecting content script files from background:', contentScriptFiles)
           await chrome.scripting.executeScript({
             target: { tabId },
             files: contentScriptFiles,
@@ -73,12 +507,11 @@ export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: stri
           for (let attempt = 1; attempt <= 3; attempt++) {
             await new Promise((resolve) => setTimeout(resolve, attempt * 150))
             try {
-              const retryRes = await chrome.tabs.sendMessage(tabId, {
+              const retryRes: PanelTriggerResult = await chrome.tabs.sendMessage(tabId, {
                 type: 'TALVYN_OPEN_INTELLIGENCE_PANEL',
                 tabUrl,
                 tabTitle,
               })
-              console.log('[Talvyn] TALVYN_OPEN_INTELLIGENCE_PANEL retry succeeded after background injection:', retryRes)
               return retryRes
             } catch {
               /* retry */
@@ -86,9 +519,7 @@ export async function triggerIntelligencePanelOnTab(tabId: number, tabUrl?: stri
           }
         }
       }
-    } catch (injectErr) {
-      console.error('[Talvyn] Failed to inject content script:', injectErr)
-    }
+    } catch { /* Restricted pages remain unavailable; caller presents the result. */ }
   }
   return null
 }
@@ -97,567 +528,4 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return
   await triggerIntelligencePanelOnTab(tab.id, tab.url, tab.title)
 })
-
-// ─── Token Validation ─────────────────────────────────────────────────────────
-
-function isTokenExpired(token: string): boolean {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return false
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const payload = JSON.parse(atob(base64))
-    if (payload && typeof payload.exp === 'number') {
-      return Date.now() >= payload.exp * 1000
-    }
-    return false
-  } catch {
-    return false
-  }
-}
-
-async function validateStoredToken(): Promise<void> {
-  const session = await getAuthSession()
-  if (!session?.token) {
-    setBadge('off')
-    return
-  }
-
-  if (isTokenExpired(session.token)) {
-    console.warn('[Talvyn] Stored token expired by expiry timestamp, clearing auth')
-    await clearAuth()
-    setBadge('off')
-    return
-  }
-
-  try {
-    const user = await authService.me()
-    await setAuthSession({
-      token: session.token,
-      user,
-      connectedAt: session.connectedAt || new Date().toISOString(),
-    })
-    setBadge('on')
-    console.log('[Talvyn] Token valid, logged in as', user.email)
-  } catch (err: any) {
-    const isAuthFailure =
-      err?.status === 401 ||
-      err?.status === 403 ||
-      err?.status === 404 ||
-      err?.statusCode === 401 ||
-      err?.statusCode === 403 ||
-      err?.statusCode === 404 ||
-      err?.message?.includes('expired') ||
-      err?.message?.includes('unauthorized') ||
-      err?.message?.includes('Invalid or expired token')
-
-    if (isAuthFailure) {
-      console.warn('[Talvyn] Stored token expired/invalid, clearing auth')
-      await clearAuth()
-      setBadge('off')
-    } else {
-      console.warn('[Talvyn] Token validation check failed due to network/cold start, retaining session:', err?.message || err)
-    }
-  }
-}
-
-// ─── Badge helpers ────────────────────────────────────────────────────────────
-
-function setBadge(state: 'on' | 'off'): void {
-  if (state === 'on') {
-    chrome.action.setBadgeText({ text: '✓' })
-    chrome.action.setBadgeBackgroundColor({ color: '#6366f1' }) // primary indigo
-  } else {
-    chrome.action.setBadgeText({ text: '' })
-  }
-}
-
-// ─── Internal Message Router (Popup & Content Scripts) ────────────────────────
-
-chrome.runtime.onMessage.addListener(
-  (message: any, _sender, sendResponse) => {
-    handleInternalMessage(message)
-      .then(sendResponse)
-      .catch((err) => sendResponse({ success: false, error: String(err?.message || err) }))
-    return true
-  }
-)
-
-async function handleInternalMessage(msg: any): Promise<any> {
-  if (!msg || typeof msg !== 'object') {
-    return { success: false, error: 'Invalid message payload' }
-  }
-
-  // 1. TALVYN_API_REQUEST — Generic background proxy for content script API requests
-  if (msg.type === 'TALVYN_API_REQUEST') {
-    const session = await getAuthSession()
-    const token = session?.token
-    const method = (msg.method || 'GET').toUpperCase()
-    const path = msg.path || ''
-    const url = `${CONFIG.API_BASE}${path}`
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(msg.headers || {}),
-    }
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
-    try {
-      const fetchOptions: RequestInit = {
-        method,
-        headers,
-      }
-
-      if (msg.body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-        fetchOptions.body = typeof msg.body === 'string' ? msg.body : JSON.stringify(msg.body)
-      }
-
-      const response = await fetch(url, fetchOptions)
-
-      if (!response.ok) {
-        let errorBody: any = {}
-        try {
-          errorBody = await response.json()
-        } catch {
-          /* non-JSON error body */
-        }
-
-        if (response.status === 401) {
-          return {
-            success: false,
-            status: 401,
-            error: 'Your Talvyn session expired',
-            body: errorBody,
-          }
-        }
-        if (response.status === 403) {
-          return {
-            success: false,
-            status: 403,
-            error: "You don't have permission to save this job",
-            body: errorBody,
-          }
-        }
-        if (response.status === 409) {
-          return {
-            success: false,
-            status: 409,
-            error: 'This job is already saved',
-            body: errorBody,
-          }
-        }
-        if (response.status === 422) {
-          return {
-            success: false,
-            status: 422,
-            error: errorBody.error || 'Missing required job information',
-            body: errorBody,
-          }
-        }
-        if (response.status >= 500) {
-          return {
-            success: false,
-            status: response.status,
-            error: "Talvyn couldn't save this job. Try again.",
-            body: errorBody,
-          }
-        }
-
-        return {
-          success: false,
-          status: response.status,
-          error: errorBody.error || "Talvyn couldn't save this job. Try again.",
-          body: errorBody,
-        }
-      }
-
-      if (response.status === 204) {
-        return { success: true, status: 204, data: undefined }
-      }
-
-      const data = await response.json()
-      return { success: true, status: response.status, data }
-    } catch (err: any) {
-      console.error('[Talvyn] Background API proxy error:', err?.message || err)
-      return {
-        success: false,
-        status: 0,
-        error: 'Connection problem. Your job will retry.',
-      }
-    }
-  }
-
-  // 2. TALVYN_SAVE_JOB / SAVE_JOB
-  if (msg.type === 'TALVYN_SAVE_JOB' || msg.type === 'SAVE_JOB') {
-    try {
-      const session = await getAuthSession()
-      if (!session?.token) {
-        return {
-          success: false,
-          status: 401,
-          error: 'Your Talvyn session expired',
-        }
-      }
-
-      const payload = msg.payload || msg.job
-      const url = `${CONFIG.API_BASE}/api/jobs`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        let errBody: any = {}
-        try { errBody = await res.json() } catch {}
-        if (res.status === 401) return { success: false, status: 401, error: 'Your Talvyn session expired', body: errBody }
-        if (res.status === 403) return { success: false, status: 403, error: "You don't have permission to save this job", body: errBody }
-        if (res.status === 409) return { success: false, status: 409, error: 'This job is already saved', body: errBody, job: errBody.job }
-        if (res.status === 422) return { success: false, status: 422, error: errBody.error || 'Missing required job information', body: errBody }
-        if (res.status >= 500) return { success: false, status: res.status, error: "Talvyn couldn't save this job. Try again.", body: errBody }
-        return {
-          success: false,
-          status: res.status,
-          error: errBody.error || "Talvyn couldn't save this job. Try again.",
-          body: errBody,
-        }
-      }
-
-      const savedJob = await res.json()
-      return { success: true, data: savedJob, job: savedJob }
-    } catch (err: any) {
-      console.error('[Talvyn] Save job error in background worker:', err?.message || err)
-      return {
-        success: false,
-        status: 500,
-        error: "Couldn't save this job. Please try again.",
-      }
-    }
-  }
-
-  // 3. TALVYN_CHECK_DUPLICATE / CHECK_DUPLICATE
-  if (msg.type === 'TALVYN_CHECK_DUPLICATE' || msg.type === 'CHECK_DUPLICATE') {
-    try {
-      const session = await getAuthSession()
-      if (!session?.token) {
-        return { success: true, data: { exists: false, job: null } }
-      }
-
-      const targetUrl = msg.payload?.url || msg.url
-      const url = `${CONFIG.API_BASE}/api/jobs/check-url?url=${encodeURIComponent(targetUrl)}`
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.token}`,
-        },
-      })
-
-      if (!res.ok) {
-        return { success: true, data: { exists: false, job: null } }
-      }
-
-      const data = await res.json()
-      return { success: true, data, payload: data }
-    } catch {
-      return { success: true, data: { exists: false, job: null } }
-    }
-  }
-
-  // 4. GET_AUTH / GET_AUTH_STATUS
-  if (msg.type === 'GET_AUTH') {
-    const session = await getAuthSession()
-    return {
-      type: 'AUTH_STATE',
-      payload: {
-        isAuthenticated: Boolean(session?.token),
-        user: session?.user || null,
-      },
-    }
-  }
-
-  if (msg.type === 'GET_AUTH_STATUS') {
-    const session = await getAuthSession()
-    if (!session?.token) {
-      setBadge('off')
-      return {
-        success: true,
-        state: 'disconnected',
-        user: null,
-        token: null,
-      }
-    }
-
-    if (isTokenExpired(session.token)) {
-      console.warn('[Talvyn] Auth token mathematically expired during status check, clearing session')
-      await clearAuth()
-      setBadge('off')
-      return {
-        success: true,
-        state: 'expired',
-        user: null,
-        token: null,
-      }
-    }
-
-    try {
-      // Validate live token against backend
-      const user = await authService.me()
-      await setAuthSession({
-        token: session.token,
-        user,
-        connectedAt: session.connectedAt || new Date().toISOString(),
-      })
-      setBadge('on')
-      return {
-        success: true,
-        state: 'connected',
-        user,
-        token: session.token,
-      }
-    } catch (err: any) {
-      const isAuthFailure =
-        err?.status === 401 ||
-        err?.status === 403 ||
-        err?.status === 404 ||
-        err?.statusCode === 401 ||
-        err?.statusCode === 403 ||
-        err?.statusCode === 404 ||
-        err?.message?.includes('expired') ||
-        err?.message?.includes('unauthorized') ||
-        err?.message?.includes('Invalid or expired token')
-
-      if (isAuthFailure) {
-        console.warn('[Talvyn] Auth token expired/invalid during status check, clearing session')
-        await clearAuth()
-        setBadge('off')
-        return {
-          success: true,
-          state: 'expired',
-          user: null,
-          token: null,
-        }
-      }
-
-      // Backend validation failed / network error: never trust local storage alone
-      console.warn('[Talvyn] Auth status check could not validate token with backend:', err?.message || err)
-      return {
-        success: false,
-        state: 'error',
-        error: 'Unable to verify authentication with Talvyn server. Please check your connection or reconnect.',
-      }
-    }
-  }
-
-  // 5. OPEN_DASHBOARD_ROUTE
-  if (msg.type === 'OPEN_DASHBOARD_ROUTE') {
-    const route = msg.route as DashboardRoute
-    const extId = chrome.runtime?.id || ''
-    const url = getDashboardRouteUrl(route, extId)
-
-    try {
-      const tab = await chrome.tabs.create({ url })
-      return { success: true, tabId: tab.id, url }
-    } catch (err: any) {
-      console.error('[Talvyn] Failed to open tab for route:', route, err)
-      return { success: false, error: err?.message || 'Failed to open route tab' }
-    }
-  }
-
-  // 6. CONNECT_TALVYN
-  if (msg.type === 'CONNECT_TALVYN') {
-    const extId = chrome.runtime?.id || ''
-    const url = getDashboardRouteUrl('connect', extId)
-
-    try {
-      const tab = await chrome.tabs.create({ url })
-      return { success: true, tabId: tab.id, url }
-    } catch (err: any) {
-      console.error('[Talvyn] Failed to open connect tab:', err)
-      return { success: false, error: err?.message || 'Failed to open connect tab' }
-    }
-  }
-
-  // 7. DISCONNECT_TALVYN
-  if (msg.type === 'DISCONNECT_TALVYN') {
-    await clearAuth()
-    setBadge('off')
-    return { success: true, state: 'disconnected' }
-  }
-
-  // 8. TRIGGER_ACTIVE_TAB_PANEL / TALVYN_OPEN_FLOATING_WINDOW
-  if (msg.type === 'TRIGGER_ACTIVE_TAB_PANEL' || msg.type === 'TALVYN_OPEN_FLOATING_WINDOW') {
-    try {
-      let targetTabId = msg.tabId
-      let targetTabUrl = msg.tabUrl
-      let targetTabTitle = msg.tabTitle
-
-      if (!targetTabId) {
-        // In MV3 Service Worker, query using lastFocusedWindow: true because service workers have no window
-        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-        const activeTab = tabs[0] || (await chrome.tabs.query({ active: true }))[0]
-        if (activeTab?.id) {
-          targetTabId = activeTab.id
-          targetTabUrl = activeTab.url
-          targetTabTitle = activeTab.title
-        }
-      }
-
-      if (targetTabId) {
-        const result = await triggerIntelligencePanelOnTab(targetTabId, targetTabUrl, targetTabTitle)
-        return { success: true, result }
-      }
-      return { success: false, error: 'No active tab found' }
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to trigger intelligence panel' }
-    }
-  }
-
-  return { success: false, error: `Unknown internal message type: ${msg.type}` }
-}
-
-
-// ─── External Web App Messaging (Externally Connectable) ──────────────────────
-
-const ALLOWED_WEB_ORIGINS = [
-  'https://talvyn.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'http://localhost:3001',
-]
-
-function isOriginAllowed(senderUrl?: string): boolean {
-  if (!senderUrl) return false
-  try {
-    const parsed = new URL(senderUrl)
-    const origin = parsed.origin
-    return ALLOWED_WEB_ORIGINS.some((allowed) => allowed === origin)
-  } catch {
-    return false
-  }
-}
-
-chrome.runtime.onMessageExternal.addListener(
-  (message: any, sender, sendResponse) => {
-    const senderUrl = sender.url || sender.origin
-    if (!isOriginAllowed(senderUrl)) {
-      console.warn('[Talvyn] Rejected external message from unauthorized origin:', senderUrl)
-      sendResponse({ success: false, error: 'Unauthorized origin' })
-      return false
-    }
-
-    if (!message || typeof message !== 'object') {
-      sendResponse({ success: false, error: 'Invalid message payload' })
-      return false
-    }
-
-    // 1. Status Ping / Discovery
-    if (message.type === 'TALVYN_PING_EXTENSION') {
-      (async () => {
-        const session = await getAuthSession()
-        sendResponse({
-          success: true,
-          installed: true,
-          version: '1.0.0',
-          connected: Boolean(session?.token),
-          email: session?.user?.email || null,
-        })
-      })()
-      return true
-    }
-
-    // 2. Connect Account with Token Verification
-    if (message.type === 'TALVYN_CONNECT_EXTENSION') {
-      console.log('[Talvyn] CONNECTION_REQUEST_RECEIVED')
-      const { token, user } = message
-      if (!token) {
-        sendResponse({ success: false, error: 'Missing token in connection request' })
-        return false
-      }
-
-      (async () => {
-        try {
-          console.log('[Talvyn] TOKEN_VALIDATION_STARTED')
-          // Live verification against backend before marking connected
-          const verifyResponse = await fetch(`${CONFIG.API_BASE}/api/auth/me`, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-          })
-
-          if (!verifyResponse.ok) {
-            console.warn('[Talvyn] Token verification rejected by backend with status:', verifyResponse.status)
-            sendResponse({ success: false, error: 'Token verification failed with backend' })
-            return
-          }
-
-          const verifiedUser = await verifyResponse.json()
-          console.log('[Talvyn] TOKEN_VALIDATION_SUCCESS')
-
-          const authSession = {
-            token,
-            user: verifiedUser || user,
-            connectedAt: new Date().toISOString(),
-          }
-
-          await setAuthSession(authSession)
-          console.log('[Talvyn] SESSION_STORED')
-
-          setBadge('on')
-          console.log('[Talvyn] Successfully connected Talvyn account for:', verifiedUser?.email || user?.email)
-
-          sendResponse({
-            success: true,
-            user: verifiedUser || user,
-            message: 'Extension connected successfully',
-          })
-        } catch (err: any) {
-          console.error('[Talvyn] Connection verification error:', err?.message || err)
-          sendResponse({
-            success: false,
-            error: err instanceof Error ? err.message : 'Token verification failed',
-          })
-        }
-      })()
-      return true
-    }
-
-    // 3. Disconnect Extension
-    if (message.type === 'TALVYN_DISCONNECT_EXTENSION') {
-      (async () => {
-        await clearAuth()
-        setBadge('off')
-        console.log('[Talvyn] Extension disconnected from web dashboard')
-        sendResponse({ success: true, message: 'Extension disconnected' })
-      })()
-      return true
-    }
-
-    // 4. Get Status
-    if (message.type === 'TALVYN_GET_STATUS') {
-      (async () => {
-        const session = await getAuthSession()
-        sendResponse({
-          success: true,
-          connected: Boolean(session?.token),
-          user: session?.user || null,
-        })
-      })()
-      return true
-    }
-
-    sendResponse({ success: false, error: `Unknown external message type: ${message.type}` })
-    return false
-  }
-)
-
-export {}
 

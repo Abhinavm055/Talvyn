@@ -22,8 +22,10 @@ import {
   Loader2,
   X,
   Plus,
+  LogOut,
 } from 'lucide-react'
 import { profileApi } from '../../api/profile'
+import { authApi } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
@@ -96,9 +98,11 @@ export default function Profile() {
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [isCropModalOpen, setIsCropModalOpen] = useState(false)
+  const [globalSignOutPending, setGlobalSignOutPending] = useState(false)
+  const [globalSignOutError, setGlobalSignOutError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { user, setUser } = useAuthStore()
+  const { user, setUser, logout } = useAuthStore()
   const qc = useQueryClient()
 
   const { data: profile } = useQuery({
@@ -188,6 +192,21 @@ export default function Profile() {
       setAvatarError(err.response?.data?.error || 'Failed to remove photo')
     } finally {
       setAvatarUploading(false)
+    }
+  }
+
+  const handleGlobalSignOut = async () => {
+    if (!confirm('Sign out of Talvyn on all devices? This also disconnects your browser extension.')) return
+    setGlobalSignOutPending(true)
+    setGlobalSignOutError(null)
+    try {
+      await authApi.signOutAll()
+      logout()
+      window.location.assign('/login')
+    } catch (err: any) {
+      setGlobalSignOutError(err.response?.data?.error || 'Could not sign out of all devices. Try again.')
+    } finally {
+      setGlobalSignOutPending(false)
     }
   }
 
@@ -728,6 +747,25 @@ export default function Profile() {
           </div>
         )}
       </form>
+
+      <section className="bg-white dark:bg-[#111522] border border-[#E2E5EC] dark:border-[#252B3A] rounded-2xl p-6 sm:p-8 shadow-card dark:shadow-card-dark space-y-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-[#F5F7FF]">Account sessions</h2>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-[#A8B0C2]">
+            Signing out here affects this website only. Use global sign-out to revoke Talvyn sessions, including connected browser extensions.
+          </p>
+        </div>
+        {globalSignOutError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{globalSignOutError}</p>}
+        <button
+          type="button"
+          onClick={handleGlobalSignOut}
+          disabled={globalSignOutPending}
+          className="inline-flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-900 px-4 py-2.5 text-xs font-semibold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-60"
+        >
+          {globalSignOutPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+          Sign out of all devices
+        </button>
+      </section>
 
       {/* CARD 2: Profile Photo Card */}
       <div className="bg-white dark:bg-[#111522] border border-[#E2E5EC] dark:border-[#252B3A] rounded-2xl p-6 sm:p-8 shadow-card dark:shadow-card-dark space-y-6">

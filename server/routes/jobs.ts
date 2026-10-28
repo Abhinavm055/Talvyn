@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import { jdParserService } from '../services/jdParserService'
+import { buildJobSearchWhere, jobSearchQuerySchema } from '../services/jobSearchFilters'
 
 type JobStatus = 'SAVED' | 'INTERESTED' | 'IN_PROGRESS' | 'APPLIED' | 'ASSESSMENT' | 'INTERVIEW' | 'OFFER' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED'
 type JobType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'FREELANCE' | 'INTERNSHIP' | 'TEMPORARY' | 'GRADUATE_PROGRAM' | 'FELLOWSHIP' | 'COMPETITION' | 'TALENT_OPPORTUNITY' | 'OTHER'
@@ -80,25 +81,21 @@ router.post('/extract-jd', async (req: AuthRequest, res: Response) => {
 
 // GET /api/jobs
 router.get('/', async (req: AuthRequest, res: Response) => {
+  const parsed = jobSearchQuerySchema.safeParse(req.query)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid job search filters or pagination.', details: parsed.error.flatten() })
+    return
+  }
   try {
-    const { status, search, page = '1', limit = '50' } = req.query as Record<string, string>
-
-    const where: Record<string, unknown> = { userId: req.userId }
-    if (status && status !== 'ALL') where.status = status as JobStatus
-    if (search) {
-      where.OR = [
-        { title: { contains: search } },
-        { company: { contains: search } },
-        { location: { contains: search } },
-      ]
-    }
+    const { page, limit, ...filters } = parsed.data
+    const where = buildJobSearchWhere(req.userId!, filters)
 
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
         include: {
           notes: { orderBy: { createdAt: 'desc' }, take: 3 },
           _count: { select: { notes: true } },
@@ -107,7 +104,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       prisma.job.count({ where }),
     ])
 
-    res.json({ jobs, total, page: parseInt(page), limit: parseInt(limit) })
+    res.json({ jobs, total, page, limit })
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch jobs' })
   }

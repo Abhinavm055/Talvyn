@@ -12,7 +12,8 @@ import {
   ApplicationProgress,
   QuestionRiskLevel,
 } from './types'
-import { classifyQuestionRisk } from './questionAssistant/answerProvider'
+import { classifyFieldRisk, isReviewedAutofillEligible } from '../autofill/reviewedAutofill'
+import { fieldMatcher } from '../autofill/fieldMatcher'
 
 export class FormAnalyzer {
   /**
@@ -143,7 +144,10 @@ export class FormAnalyzer {
     return fields.map((field) => {
       const category = this.categorizeField(field)
       const labelText = field.label || field.placeholder || field.name || 'Application Field'
-      const { riskLevel, reason: riskReason } = classifyQuestionRisk(labelText)
+      const { riskLevel, reason: riskReason } = classifyFieldRisk(field)
+      const matched = profile ? fieldMatcher.matchField(field, profile) : null
+      const effectiveRisk = matched?.isSensitive || riskLevel === 'USER_ACTION_REQUIRED'
+        ? 'USER_ACTION_REQUIRED' : matched?.isCustomQuestion ? 'ASSISTED_ANSWER' : riskLevel
 
       const currentValue = field.currentValue
       const isFilled = typeof currentValue === 'string'
@@ -160,12 +164,12 @@ export class FormAnalyzer {
         label: labelText,
         isRequired: field.isRequired,
         isFilled,
-        filledBy: isFilled ? 'USER_INPUT' : 'UNFILLED',
+        filledBy: isFilled ? field.element.getAttribute?.('data-talvyn-autofilled') === 'true' ? 'TALVYN_AUTOFILL' : 'USER_INPUT' : 'UNFILLED',
         currentValue,
-        suggestedValue: null,
-        riskLevel,
-        riskReason,
-        confidence: 85,
+        suggestedValue: matched && isReviewedAutofillEligible(matched) && typeof matched.valueToFill === 'string' ? matched.valueToFill : null,
+        riskLevel: effectiveRisk,
+        riskReason: riskReason || matched?.reason,
+        confidence: matched?.confidence || 0,
       }
     })
   }
